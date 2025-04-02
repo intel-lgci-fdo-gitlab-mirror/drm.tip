@@ -834,7 +834,7 @@ void intel_plane_async_flip(struct intel_dsb *dsb,
 {
 	struct intel_crtc *crtc = to_intel_crtc(crtc_state->uapi.crtc);
 
-	trace_intel_plane_async_flip(plane, crtc, async_flip);
+	trace_intel_plane_async_flip(plane_state, crtc, async_flip);
 	plane->async_flip(dsb, plane, crtc_state, plane_state, async_flip);
 }
 
