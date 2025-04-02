@@ -86,6 +86,8 @@ static bool handle_plane_fault(struct intel_crtc *crtc, enum plane_id plane_id)
 
 	plane->capture_error(crtc, plane, &error);
 
+	trace_intel_plane_fault(plane, crtc, error.ctl, error.surf, error.surflive);
+
 	drm_err_ratelimited(display->drm,
 			    "[CRTC:%d:%s][PLANE:%d:%s] fault (CTL=0x%x, SURF=0x%x, SURFLIVE=0x%x)\n",
 			    crtc->base.base.id, crtc->base.name,
