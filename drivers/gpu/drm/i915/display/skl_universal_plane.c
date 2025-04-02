@@ -1414,19 +1414,12 @@ skl_plane_update_arm(struct intel_dsb *dsb,
 	enum pipe pipe = plane->pipe;
 	u32 x = plane_state->view.color_plane[0].x;
 	u32 y = plane_state->view.color_plane[0].y;
-	u32 plane_ctl, plane_color_ctl = 0;
-
-	plane_ctl = plane_state->ctl |
-		skl_plane_ctl_crtc(crtc_state);
+	u32 plane_ctl = plane_state->ctl;
 
 	/* see intel_plane_atomic_calc_changes() */
 	if (plane->need_async_flip_toggle_wa &&
 	    crtc_state->async_flip_planes & BIT(plane->id))
 		plane_ctl |= PLANE_CTL_ASYNC_FLIP;
-
-	if (DISPLAY_VER(display) >= 10)
-		plane_color_ctl = plane_state->color_ctl |
-			glk_plane_color_ctl_crtc(crtc_state);
 
 	intel_de_write_dsb(display, dsb, PLANE_KEYVAL(pipe, plane_id),
 			   skl_plane_keyval(plane_state));
@@ -1447,7 +1440,7 @@ skl_plane_update_arm(struct intel_dsb *dsb,
 
 	if (DISPLAY_VER(display) >= 10)
 		intel_de_write_dsb(display, dsb, PLANE_COLOR_CTL(pipe, plane_id),
-				   plane_color_ctl);
+				   plane_state->color_ctl);
 
 	/*
 	 * Enable the scaler before the plane so that we don't
@@ -1534,10 +1527,6 @@ icl_plane_update_noarm(struct intel_dsb *dsb,
 	int y = plane_state->view.color_plane[color_plane].y;
 	int src_w = drm_rect_width(&plane_state->uapi.src) >> 16;
 	int src_h = drm_rect_height(&plane_state->uapi.src) >> 16;
-	u32 plane_color_ctl;
-
-	plane_color_ctl = plane_state->color_ctl |
-		glk_plane_color_ctl_crtc(crtc_state);
 
 	/* The scaler will handle the output position */
 	if (plane_state->scaler_id >= 0) {
@@ -1579,7 +1568,7 @@ icl_plane_update_noarm(struct intel_dsb *dsb,
 				   plane_state->cus_ctl);
 
 	intel_de_write_dsb(display, dsb, PLANE_COLOR_CTL(pipe, plane_id),
-			   plane_color_ctl);
+			   plane_state->color_ctl);
 
 	if (fb->format->is_yuv && icl_is_hdr_plane(display, plane_id))
 		icl_program_input_csc(dsb, plane, plane_state);
@@ -1623,10 +1612,6 @@ icl_plane_update_arm(struct intel_dsb *dsb,
 	struct intel_display *display = to_intel_display(plane);
 	enum plane_id plane_id = plane->id;
 	enum pipe pipe = plane->pipe;
-	u32 plane_ctl;
-
-	plane_ctl = plane_state->ctl |
-		skl_plane_ctl_crtc(crtc_state);
 
 	/*
 	 * Enable the scaler before the plane so that we don't
@@ -1646,7 +1631,7 @@ icl_plane_update_arm(struct intel_dsb *dsb,
 	 * the control register just before the surface register.
 	 */
 	intel_de_write_dsb(display, dsb, PLANE_CTL(pipe, plane_id),
-			   plane_ctl);
+			   plane_state->ctl);
 	intel_de_write_dsb(display, dsb, PLANE_SURF(pipe, plane_id),
 			   plane_state->surf);
 }
@@ -1674,8 +1659,6 @@ skl_plane_async_flip(struct intel_dsb *dsb,
 	enum pipe pipe = plane->pipe;
 	u32 plane_ctl = plane_state->ctl;
 	u32 plane_surf = plane_state->surf;
-
-	plane_ctl |= skl_plane_ctl_crtc(crtc_state);
 
 	if (async_flip) {
 		if (DISPLAY_VER(display) >= 30)
@@ -2353,10 +2336,12 @@ static int skl_plane_check(struct intel_crtc_state *crtc_state,
 		plane_state->damage = DRM_RECT_INIT(0, 0, 0, 0);
 	}
 
-	plane_state->ctl = skl_plane_ctl(plane_state);
+	plane_state->ctl = skl_plane_ctl(plane_state) |
+		skl_plane_ctl_crtc(crtc_state);
 
 	if (DISPLAY_VER(display) >= 10)
-		plane_state->color_ctl = glk_plane_color_ctl(plane_state);
+		plane_state->color_ctl = glk_plane_color_ctl(plane_state) |
+			glk_plane_color_ctl_crtc(crtc_state);
 
 	if (intel_format_info_is_yuv_semiplanar(fb->format, fb->modifier) &&
 	    icl_is_hdr_plane(display, plane->id))

@@ -151,6 +151,24 @@ static bool i9xx_plane_has_windowing(struct intel_plane *plane)
 			i9xx_plane == PLANE_C;
 }
 
+static u32 i9xx_plane_ctl_crtc(const struct intel_crtc_state *crtc_state)
+{
+	struct intel_display *display = to_intel_display(crtc_state);
+	struct intel_crtc *crtc = to_intel_crtc(crtc_state->uapi.crtc);
+	u32 dspcntr = 0;
+
+	if (crtc_state->gamma_enable)
+		dspcntr |= DISP_PIPE_GAMMA_ENABLE;
+
+	if (crtc_state->csc_enable)
+		dspcntr |= DISP_PIPE_CSC_ENABLE;
+
+	if (DISPLAY_VER(display) < 5)
+		dspcntr |= DISP_PIPE_SEL(crtc->pipe);
+
+	return dspcntr;
+}
+
 static u32 i9xx_plane_ctl(const struct intel_plane_state *plane_state)
 {
 	struct intel_display *display = to_intel_display(plane_state);
@@ -350,7 +368,8 @@ i9xx_plane_check(struct intel_crtc_state *crtc_state,
 	if (ret)
 		return ret;
 
-	plane_state->ctl = i9xx_plane_ctl(plane_state);
+	plane_state->ctl = i9xx_plane_ctl(plane_state) |
+		i9xx_plane_ctl_crtc(crtc_state);
 
 	return 0;
 }
@@ -366,24 +385,6 @@ static u32 i8xx_plane_surf_offset(const struct intel_plane_state *plane_state)
 u32 i965_plane_surf_offset(const struct intel_plane_state *plane_state)
 {
 	return plane_state->view.color_plane[0].offset;
-}
-
-static u32 i9xx_plane_ctl_crtc(const struct intel_crtc_state *crtc_state)
-{
-	struct intel_display *display = to_intel_display(crtc_state);
-	struct intel_crtc *crtc = to_intel_crtc(crtc_state->uapi.crtc);
-	u32 dspcntr = 0;
-
-	if (crtc_state->gamma_enable)
-		dspcntr |= DISP_PIPE_GAMMA_ENABLE;
-
-	if (crtc_state->csc_enable)
-		dspcntr |= DISP_PIPE_CSC_ENABLE;
-
-	if (DISPLAY_VER(display) < 5)
-		dspcntr |= DISP_PIPE_SEL(crtc->pipe);
-
-	return dspcntr;
 }
 
 static void i9xx_plane_ratio(const struct intel_crtc_state *crtc_state,
@@ -471,9 +472,7 @@ static void i9xx_plane_update_arm(struct intel_dsb *dsb,
 	enum i9xx_plane_id i9xx_plane = plane->i9xx_plane;
 	int x = plane_state->view.color_plane[0].x;
 	int y = plane_state->view.color_plane[0].y;
-	u32 dspcntr;
-
-	dspcntr = plane_state->ctl | i9xx_plane_ctl_crtc(crtc_state);
+	u32 dspcntr = plane_state->ctl;
 
 	/* see intel_plane_atomic_calc_changes() */
 	if (plane->need_async_flip_toggle_wa &&
@@ -602,8 +601,8 @@ g4x_primary_async_flip(struct intel_dsb *dsb,
 		       bool async_flip)
 {
 	struct intel_display *display = to_intel_display(plane);
-	u32 dspcntr = plane_state->ctl | i9xx_plane_ctl_crtc(crtc_state);
 	enum i9xx_plane_id i9xx_plane = plane->i9xx_plane;
+	u32 dspcntr = plane_state->ctl;
 
 	if (async_flip)
 		dspcntr |= DISP_ASYNC_FLIP;

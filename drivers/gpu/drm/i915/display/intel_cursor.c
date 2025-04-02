@@ -265,7 +265,8 @@ static int i845_check_cursor(struct intel_crtc_state *crtc_state,
 		return -EINVAL;
 	}
 
-	plane_state->ctl = i845_cursor_ctl(plane_state);
+	plane_state->ctl = i845_cursor_ctl(plane_state) |
+		i845_cursor_ctl_crtc(crtc_state);
 
 	return 0;
 }
@@ -283,11 +284,9 @@ static void i845_cursor_update_arm(struct intel_dsb *dsb,
 		unsigned int width = drm_rect_width(&plane_state->uapi.dst);
 		unsigned int height = drm_rect_height(&plane_state->uapi.dst);
 
-		cntl = plane_state->ctl |
-			i845_cursor_ctl_crtc(crtc_state);
-
 		size = CURSOR_HEIGHT(height) | CURSOR_WIDTH(width);
 
+		cntl = plane_state->ctl;
 		base = plane_state->surf;
 		pos = intel_cursor_position(crtc_state, plane_state, false);
 	}
@@ -524,7 +523,8 @@ static int i9xx_check_cursor(struct intel_crtc_state *crtc_state,
 		return -EINVAL;
 	}
 
-	plane_state->ctl = i9xx_cursor_ctl(plane_state);
+	plane_state->ctl = i9xx_cursor_ctl(plane_state) |
+		i9xx_cursor_ctl_crtc(crtc_state);
 
 	return 0;
 }
@@ -659,12 +659,10 @@ static void i9xx_cursor_update_arm(struct intel_dsb *dsb,
 		int width = drm_rect_width(&plane_state->uapi.dst);
 		int height = drm_rect_height(&plane_state->uapi.dst);
 
-		cntl = plane_state->ctl |
-			i9xx_cursor_ctl_crtc(crtc_state);
-
 		if (width != height)
 			fbc_ctl = CUR_FBC_EN | CUR_FBC_HEIGHT(height - 1);
 
+		cntl = plane_state->ctl;
 		base = plane_state->surf;
 		pos = intel_cursor_position(crtc_state, plane_state, false);
 	}
