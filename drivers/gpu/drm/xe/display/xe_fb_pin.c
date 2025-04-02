@@ -6,6 +6,7 @@
 #include <drm/ttm/ttm_bo.h>
 
 #include "i915_vma.h"
+#include "intel_atomic_plane.h"
 #include "intel_display_types.h"
 #include "intel_dpt.h"
 #include "intel_fb.h"
@@ -436,6 +437,10 @@ int intel_plane_pin_fb(struct intel_plane_state *new_plane_state,
 		return PTR_ERR(vma);
 
 	new_plane_state->ggtt_vma = vma;
+
+	new_plane_state->surf = intel_plane_ggtt_offset(new_plane_state) +
+		plane->surf_offset(new_plane_state);
+
 	return 0;
 }
 
