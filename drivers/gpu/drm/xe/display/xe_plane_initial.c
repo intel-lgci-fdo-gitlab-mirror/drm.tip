@@ -239,7 +239,7 @@ intel_find_initial_plane_obj(struct intel_crtc *crtc,
 
 	plane_state->ggtt_vma = vma;
 
-	plane_state->surf = intel_plane_ggtt_offset(plane_state);
+	plane_state->surf = i915_ggtt_offset(plane_state->ggtt_vma);
 
 	plane_state->uapi.src_x = 0;
 	plane_state->uapi.src_y = 0;

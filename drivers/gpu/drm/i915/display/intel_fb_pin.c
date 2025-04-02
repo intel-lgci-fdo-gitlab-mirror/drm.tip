@@ -310,7 +310,7 @@ int intel_plane_pin_fb(struct intel_plane_state *plane_state,
 		plane_state->surf = i915_gem_object_get_dma_address(obj, 0) +
 			plane->surf_offset(plane_state);
 	} else {
-		plane_state->surf = intel_plane_ggtt_offset(plane_state) +
+		plane_state->surf = i915_ggtt_offset(plane_state->ggtt_vma) +
 			plane->surf_offset(plane_state);
 	}
 

@@ -438,7 +438,7 @@ int intel_plane_pin_fb(struct intel_plane_state *new_plane_state,
 
 	new_plane_state->ggtt_vma = vma;
 
-	new_plane_state->surf = intel_plane_ggtt_offset(new_plane_state) +
+	new_plane_state->surf = i915_ggtt_offset(new_plane_state->ggtt_vma) +
 		plane->surf_offset(new_plane_state);
 
 	return 0;

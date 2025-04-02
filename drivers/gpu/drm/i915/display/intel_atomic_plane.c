@@ -1565,8 +1565,3 @@ int intel_atomic_check_planes(struct intel_atomic_state *state)
 
 	return 0;
 }
-
-u32 intel_plane_ggtt_offset(const struct intel_plane_state *plane_state)
-{
-	return i915_ggtt_offset(plane_state->ggtt_vma);
-}
