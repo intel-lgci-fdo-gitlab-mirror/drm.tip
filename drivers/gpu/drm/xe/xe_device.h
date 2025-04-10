@@ -47,6 +47,7 @@ int xe_device_probe_early(struct xe_device *xe);
 int xe_device_probe(struct xe_device *xe);
 void xe_device_remove(struct xe_device *xe);
 void xe_device_shutdown(struct xe_device *xe);
+int wait_for_lmem_ready(struct xe_device *xe);
 
 void xe_device_wmb(struct xe_device *xe);
 

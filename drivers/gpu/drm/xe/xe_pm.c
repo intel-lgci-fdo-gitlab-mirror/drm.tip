@@ -182,6 +182,10 @@ int xe_pm_resume(struct xe_device *xe)
 	if (err)
 		return err;
 
+	err = wait_for_lmem_ready(xe);
+	if (err)
+		goto err;
+
 	xe_display_pm_resume_early(xe);
 
 	/*
@@ -471,6 +475,10 @@ int xe_pm_runtime_resume(struct xe_device *xe)
 
 	if (xe->d3cold.allowed) {
 		err = xe_pcode_ready(xe, true);
+		if (err)
+			goto out;
+
+		err = wait_for_lmem_ready(xe);
 		if (err)
 			goto out;
 
