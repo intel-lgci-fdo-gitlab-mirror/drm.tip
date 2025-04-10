@@ -630,7 +630,7 @@ static bool verify_lmem_ready(struct xe_device *xe)
 	return !!val;
 }
 
-static int wait_for_lmem_ready(struct xe_device *xe)
+int wait_for_lmem_ready(struct xe_device *xe)
 {
 	unsigned long timeout, start;
 
