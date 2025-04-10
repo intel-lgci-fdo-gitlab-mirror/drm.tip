@@ -1085,6 +1085,77 @@ out_unref:
 }
 
 /**
+ * xe_bo_notifier_prepare_pinned() - Prepare a pinned VRAM object to be backed
+ * up in system memory.
+ * @bo: The buffer object to prepare.
+ *
+ * On successful completion, the object backup pages are allocated. Expectation
+ * is that this is called from the PM notifier, prior to suspend/hibernation.
+ *
+ * Return: 0 on success. Negative error code on failure.
+ */
+int xe_bo_notifier_prepare_pinned(struct xe_bo *bo)
+{
+	struct xe_device *xe = ttm_to_xe_device(bo->ttm.bdev);
+	struct xe_bo *backup;
+	int ret = 0;
+
+	xe_bo_lock(bo, false);
+
+	xe_assert(xe, !bo->backup_obj);
+
+	/*
+	 * Since this is called from the PM notifier we might have raced with
+	 * someone unpinning this after we dropped the pinned list lock and
+	 * grabbing the above bo lock.
+	 */
+	if (!xe_bo_is_pinned(bo))
+		goto out_unlock_bo;
+
+	if (!xe_bo_is_vram(bo))
+		goto out_unlock_bo;
+
+	if (bo->flags & XE_BO_FLAG_PINNED_NORESTORE)
+		goto out_unlock_bo;
+
+	backup = ___xe_bo_create_locked(xe, NULL, NULL, bo->ttm.base.resv, NULL, bo->size,
+					DRM_XE_GEM_CPU_CACHING_WB, ttm_bo_type_kernel,
+					XE_BO_FLAG_SYSTEM | XE_BO_FLAG_NEEDS_CPU_ACCESS |
+					XE_BO_FLAG_PINNED);
+	if (IS_ERR(backup)) {
+		ret = PTR_ERR(backup);
+		goto out_unlock_bo;
+	}
+
+	ttm_bo_pin(&backup->ttm);
+	bo->backup_obj = backup;
+
+out_unlock_bo:
+	xe_bo_unlock(bo);
+	return ret;
+}
+
+/**
+ * xe_bo_notifier_unprepare_pinned() - Undo the previous prepare operation.
+ * @bo: The buffer object to undo the prepare for.
+ *
+ * Always returns 0. The backup object is removed, if still present. Expectation
+ * it that this called from the PM notifier when undoing the prepare step.
+ */
+int xe_bo_notifier_unprepare_pinned(struct xe_bo *bo)
+{
+	xe_bo_lock(bo, false);
+	if (bo->backup_obj) {
+		ttm_bo_unpin(&bo->backup_obj->ttm);
+		xe_bo_put(bo->backup_obj);
+		bo->backup_obj = NULL;
+	}
+	xe_bo_unlock(bo);
+
+	return 0;
+}
+
+/**
  * xe_bo_evict_pinned() - Evict a pinned VRAM object to system memory
  * @bo: The buffer object to move.
  *
@@ -1098,7 +1169,8 @@ out_unref:
 int xe_bo_evict_pinned(struct xe_bo *bo)
 {
 	struct xe_device *xe = ttm_to_xe_device(bo->ttm.bdev);
-	struct xe_bo *backup;
+	struct xe_bo *backup = bo->backup_obj;
+	bool backup_created = false;
 	bool unmap = false;
 	int ret = 0;
 
@@ -1120,13 +1192,16 @@ int xe_bo_evict_pinned(struct xe_bo *bo)
 	if (bo->flags & XE_BO_FLAG_PINNED_NORESTORE)
 		goto out_unlock_bo;
 
-	backup = ___xe_bo_create_locked(xe, NULL, NULL, bo->ttm.base.resv, NULL, bo->size,
-					DRM_XE_GEM_CPU_CACHING_WB, ttm_bo_type_kernel,
-					XE_BO_FLAG_SYSTEM | XE_BO_FLAG_NEEDS_CPU_ACCESS |
-					XE_BO_FLAG_PINNED);
-	if (IS_ERR(backup)) {
-		ret = PTR_ERR(backup);
-		goto out_unlock_bo;
+	if (!backup) {
+		backup = ___xe_bo_create_locked(xe, NULL, NULL, bo->ttm.base.resv, NULL, bo->size,
+						DRM_XE_GEM_CPU_CACHING_WB, ttm_bo_type_kernel,
+						XE_BO_FLAG_SYSTEM | XE_BO_FLAG_NEEDS_CPU_ACCESS |
+						XE_BO_FLAG_PINNED);
+		if (IS_ERR(backup)) {
+			ret = PTR_ERR(backup);
+			goto out_unlock_bo;
+		}
+		backup_created = true;
 	}
 
 	if (xe_bo_is_user(bo) || (bo->flags & XE_BO_FLAG_PINNED_LATE_RESTORE)) {
@@ -1174,11 +1249,12 @@ int xe_bo_evict_pinned(struct xe_bo *bo)
 				   bo->size);
 	}
 
-	bo->backup_obj = backup;
+	if (!bo->backup_obj)
+		bo->backup_obj = backup;
 
 out_backup:
 	xe_bo_vunmap(backup);
-	if (ret)
+	if (ret && backup_created)
 		xe_bo_put(backup);
 out_unlock_bo:
 	if (unmap)
@@ -1214,9 +1290,11 @@ int xe_bo_restore_pinned(struct xe_bo *bo)
 
 	xe_bo_lock(bo, false);
 
-	ret = ttm_bo_validate(&backup->ttm, &backup->placement, &ctx);
-	if (ret)
-		goto out_backup;
+	if (!xe_bo_is_pinned(backup)) {
+		ret = ttm_bo_validate(&backup->ttm, &backup->placement, &ctx);
+		if (ret)
+			goto out_unlock_bo;
+	}
 
 	if (xe_bo_is_user(bo) || (bo->flags & XE_BO_FLAG_PINNED_LATE_RESTORE)) {
 		struct xe_migrate *migrate;
@@ -1256,7 +1334,7 @@ int xe_bo_restore_pinned(struct xe_bo *bo)
 		if (iosys_map_is_null(&bo->vmap)) {
 			ret = xe_bo_vmap(bo);
 			if (ret)
-				goto out_unlock_bo;
+				goto out_backup;
 			unmap = true;
 		}
 
@@ -1264,7 +1342,8 @@ int xe_bo_restore_pinned(struct xe_bo *bo)
 				 bo->size);
 	}
 
-	bo->backup_obj = NULL;
+	if (!xe_bo_is_pinned(backup))
+		bo->backup_obj = NULL;
 
 out_backup:
 	xe_bo_vunmap(backup);
@@ -2300,6 +2379,12 @@ void xe_bo_unpin(struct xe_bo *bo)
 		xe_assert(xe, !list_empty(&bo->pinned_link));
 		list_del_init(&bo->pinned_link);
 		spin_unlock(&xe->pinned.lock);
+
+		if (bo->backup_obj) {
+			ttm_bo_unpin(&bo->backup_obj->ttm);
+			xe_bo_put(bo->backup_obj);
+			bo->backup_obj = NULL;
+		}
 	}
 	ttm_bo_unpin(&bo->ttm);
 	if (bo->ttm.ttm && ttm_tt_is_populated(bo->ttm.ttm))
