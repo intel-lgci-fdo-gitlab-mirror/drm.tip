@@ -1,0 +1,28 @@
+drm drm-fixes 485442c6a523de1d293350e039a9d9df9c08704c
+	Merge tag 'drm-xe-fixes-2025-04-10' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-fixes
+drm-misc drm-misc-fixes 31660b406d872b5ccb3c2ec6f932969809c35b18
+	accel/ivpu: Add cmdq_id to job related logs
+drm-intel drm-intel-fixes e3ea2eae70692a455e256787e4f54153fb739b90
+	drm/i915/huc: Fix fence not released on early probe errors
+drm-xe drm-xe-fixes 88ecb66b9956a14577d513a6c8c28bb2e7989703
+	drm/xe: Restore EIO errno return when GuC PC start fails
+drm drm-next 0af2f6be1b4281385b618cb86ad946eded089ac8
+	Linux 6.15-rc1
+drm-misc drm-misc-next-fixes 85a063b8b281e144ed96463936fb4e6b3d4fe9e4
+	drm/i2c: tda998x: select CONFIG_DRM_KMS_HELPER
+drm-intel drm-intel-next-fixes 0af2f6be1b4281385b618cb86ad946eded089ac8
+	Linux 6.15-rc1
+drm-xe drm-xe-next-fixes 5e66cf6edddb5f6237e3afb07475ace57ecb56bc
+	drm/xe: Fix unmet direct dependencies warning
+drm-misc drm-misc-next 4c962bc929f1734d209a0862359e25fef8f56fa0
+	drm/hisilicon/hibmc: Add vga connector detect functions
+drm-intel drm-intel-next 1954629dc649b25071eec0d353288c5ee303e358
+	drm/i915/debugfs: move PCH type to display caps
+drm-intel drm-intel-gt-next 795dbde92fe5c6996a02a5b579481de73035e7bf
+	drm/i915/huc: Fix fence not released on early probe errors
+drm-xe drm-xe-next d11c5a928a6e1d786e25a9284ef59bf58a02cf0d
+	drm/xe/vf: Don't expose privileged GT debugfs files if VF
+drm-intel topic/core-for-CI abfe4d1d04b5806ffcf552b2482b8b279846f152
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI b7aa26cfe2bf552630ece2cce510350d1360b575
+	drm/xe/pm: Re-enable D3Cold by default on BMG
