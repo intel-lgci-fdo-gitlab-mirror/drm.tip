@@ -1011,6 +1011,7 @@ const char *xe_hw_engine_class_to_str(enum xe_engine_class class)
 
 	return NULL;
 }
+ALLOW_ERROR_INJECTION(xe_hw_engine_class_to_str, NULL);
 
 u64 xe_hw_engine_read_timestamp(struct xe_hw_engine *hwe)
 {
