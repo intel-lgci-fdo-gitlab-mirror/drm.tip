@@ -571,6 +571,7 @@ kobj_xe_hw_engine_class(struct xe_device *xe, struct kobject *parent, const char
 
 	return keclass;
 }
+ALLOW_ERROR_INJECTION(kobj_xe_hw_engine_class, NULL);
 
 static void hw_engine_class_defaults_fini(void *arg)
 {
