@@ -187,17 +187,24 @@ struct xe_gt {
 
 	/** @tlb_invalidation: TLB invalidation state */
 	struct {
-		/** @tlb_invalidation.seqno: TLB invalidation seqno, protected by CT lock */
+		/** @tlb_invalidation.seqno_lock: TLB invalidation seqno lock */
+		struct mutex seqno_lock;
+		/**
+		 * @tlb_invalidation.seqno: TLB invalidation seqno, protected
+		 * by @tlb_invalidation.seqno_lock
+		 */
 #define TLB_INVALIDATION_SEQNO_MAX	0x100000
 		int seqno;
 		/**
 		 * @tlb_invalidation.seqno_recv: last received TLB invalidation seqno,
-		 * protected by CT lock
+		 * protected by @tlb_invalidation.seqno_lock (send) and
+		 * @tlb_invalidation.pending_lock (send, recv)
 		 */
 		int seqno_recv;
 		/**
 		 * @tlb_invalidation.pending_fences: list of pending fences waiting TLB
-		 * invaliations, protected by CT lock
+		 * invaliations, protected by @tlb_invalidation.seqno_lock
+		 * (send) and @tlb_invalidation.pending_lock (send, recv)
 		 */
 		struct list_head pending_fences;
 		/**
