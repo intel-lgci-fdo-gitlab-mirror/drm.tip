@@ -8,6 +8,7 @@
 #include "xe_gt_tlb_invalidation.h"
 #include "xe_migrate.h"
 #include "xe_module.h"
+#include "xe_pm.h"
 #include "xe_pt.h"
 #include "xe_svm.h"
 #include "xe_ttm_vram_mgr.h"
@@ -378,7 +379,7 @@ static int xe_svm_copy(struct page **pages, dma_addr_t *dma_addr,
 		       unsigned long npages, const enum xe_svm_copy_dir dir)
 {
 	struct xe_vram_region *vr = NULL;
-	struct xe_tile *tile;
+	struct xe_tile *tile = NULL;
 	struct dma_fence *fence = NULL;
 	unsigned long i;
 #define XE_VRAM_ADDR_INVALID	~0x0ull
@@ -412,6 +413,8 @@ static int xe_svm_copy(struct page **pages, dma_addr_t *dma_addr,
 		if (!vr && spage) {
 			vr = page_to_vr(spage);
 			tile = vr_to_tile(vr);
+			if (dir == XE_SVM_COPY_TO_SRAM)
+				xe_pm_runtime_get(tile->xe);
 		}
 		XE_WARN_ON(spage && page_to_vr(spage) != vr);
 
@@ -510,6 +513,8 @@ err_out:
 		dma_fence_wait(fence, false);
 		dma_fence_put(fence);
 	}
+	if (tile && dir == XE_SVM_COPY_TO_SRAM)
+		xe_pm_runtime_put(tile->xe);
 
 	return err;
 #undef XE_MIGRATE_CHUNK_SIZE
