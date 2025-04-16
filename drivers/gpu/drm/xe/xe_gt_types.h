@@ -210,8 +210,8 @@ struct xe_gt {
 		 * xe_gt_tlb_fence_timeout after the timeut interval is over.
 		 */
 		struct delayed_work fence_tdr;
-		/** @tlb_invalidation.lock: protects TLB invalidation fences */
-		spinlock_t lock;
+		/** @tlb_invalidation.fence_lock: protects TLB invalidation fences */
+		spinlock_t fence_lock;
 	} tlb_invalidation;
 
 	/**

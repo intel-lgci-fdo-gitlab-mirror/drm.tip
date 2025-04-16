@@ -119,7 +119,7 @@ int xe_gt_tlb_invalidation_init_early(struct xe_gt *gt)
 	gt->tlb_invalidation.seqno = 1;
 	INIT_LIST_HEAD(&gt->tlb_invalidation.pending_fences);
 	spin_lock_init(&gt->tlb_invalidation.pending_lock);
-	spin_lock_init(&gt->tlb_invalidation.lock);
+	spin_lock_init(&gt->tlb_invalidation.fence_lock);
 	INIT_DELAYED_WORK(&gt->tlb_invalidation.fence_tdr,
 			  xe_gt_tlb_fence_timeout);
 
@@ -564,11 +564,11 @@ void xe_gt_tlb_invalidation_fence_init(struct xe_gt *gt,
 {
 	xe_pm_runtime_get_noresume(gt_to_xe(gt));
 
-	spin_lock_irq(&gt->tlb_invalidation.lock);
+	spin_lock_irq(&gt->tlb_invalidation.fence_lock);
 	dma_fence_init(&fence->base, &invalidation_fence_ops,
-		       &gt->tlb_invalidation.lock,
+		       &gt->tlb_invalidation.fence_lock,
 		       dma_fence_context_alloc(1), 1);
-	spin_unlock_irq(&gt->tlb_invalidation.lock);
+	spin_unlock_irq(&gt->tlb_invalidation.fence_lock);
 	INIT_LIST_HEAD(&fence->link);
 	if (stack)
 		set_bit(FENCE_STACK_BIT, &fence->base.flags);
