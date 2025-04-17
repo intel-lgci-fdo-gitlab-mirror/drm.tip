@@ -302,7 +302,7 @@ int xe_pm_init(struct xe_device *xe)
 	xe->d3cold.capable = xe_pm_pci_d3cold_capable(xe);
 
 	if (xe->d3cold.capable) {
-		err = xe_device_sysfs_init(xe);
+		err = xe_pm_sysfs_init(xe);
 		if (err)
 			return err;
 

@@ -63,14 +63,14 @@ vram_d3cold_threshold_store(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR_RW(vram_d3cold_threshold);
 
-static void xe_device_sysfs_fini(void *arg)
+static void xe_pm_sysfs_fini(void *arg)
 {
 	struct xe_device *xe = arg;
 
 	sysfs_remove_file(&xe->drm.dev->kobj, &dev_attr_vram_d3cold_threshold.attr);
 }
 
-int xe_device_sysfs_init(struct xe_device *xe)
+int xe_pm_sysfs_init(struct xe_device *xe)
 {
 	struct device *dev = xe->drm.dev;
 	int ret;
@@ -79,5 +79,5 @@ int xe_device_sysfs_init(struct xe_device *xe)
 	if (ret)
 		return ret;
 
-	return devm_add_action_or_reset(dev, xe_device_sysfs_fini, xe);
+	return devm_add_action_or_reset(dev, xe_pm_sysfs_fini, xe);
 }
