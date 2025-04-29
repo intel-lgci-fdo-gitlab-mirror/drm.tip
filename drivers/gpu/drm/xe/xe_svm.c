@@ -674,6 +674,30 @@ bool xe_svm_range_validate_and_evict(struct xe_vm *vm,
 	return ret;
 }
 
+/**
+ * xe_svm_range_find_or_insert_start - Find an address for range find/allocate
+ * @vm: xe_vm pointer
+ * @start: start address
+ * @end: end address
+ * @vma: Pointer to struct xe_vma
+ *
+ *
+ * This function searches for a cpu vma, within the specified
+ * range [start, end] in the given VM. It adjusts the range based on the
+ * xe_vma start and end addresses. If no cpu VMA is found, it returns 0.
+ *
+ * Return: The starting address of the VMA within the range, or 0 if no VMA is found
+ */
+u64 xe_svm_range_find_or_insert_start(struct xe_vm *vm, u64 start, u64 end, struct xe_vma *vma)
+{
+	u64 ret;
+
+	ret =  drm_gpusvm_range_find_or_insert_start(&vm->svm.gpusvm,
+						     max(start, xe_vma_start(vma)),
+						     min(end, xe_vma_end(vma)));
+	return ret == ULONG_MAX ? 0 : ret;
+}
+
 #if IS_ENABLED(CONFIG_DRM_XE_DEVMEM_MIRROR)
 static struct xe_vram_region *tile_to_vr(struct xe_tile *tile)
 {

@@ -87,6 +87,8 @@ bool xe_svm_range_validate_and_evict(struct xe_vm *vm,
 				     struct xe_svm_range *range,
 				     u8 tile_mask, bool devmem_only);
 
+u64 xe_svm_range_find_or_insert_start(struct xe_vm *vm, u64 addr, u64 end,  struct xe_vma *vma);
+
 /**
  * xe_svm_range_has_dma_mapping() - SVM range has DMA mapping
  * @range: SVM range
@@ -286,6 +288,12 @@ bool xe_svm_range_validate_and_evict(struct xe_vm *vm,
 				     u8 tile_mask, bool devmem_only)
 {
 	return false;
+}
+
+static inline
+u64 xe_svm_range_find_or_insert_start(struct xe_vm *vm, u64 addr, u64 end, struct xe_vma *vma)
+{
+	return 0;
 }
 
 #define xe_svm_assert_in_notifier(...) do {} while (0)
