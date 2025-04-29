@@ -83,6 +83,10 @@ int xe_svm_range_get_pages(struct xe_vm *vm, struct xe_svm_range *range,
 bool xe_svm_range_needs_migrate_to_vram(struct xe_svm_range *range, struct xe_vma *vma,
 					bool preferred_region_is_vram);
 
+bool xe_svm_range_validate_and_evict(struct xe_vm *vm,
+				     struct xe_svm_range *range,
+				     u8 tile_mask, bool devmem_only);
+
 /**
  * xe_svm_range_has_dma_mapping() - SVM range has DMA mapping
  * @range: SVM range
@@ -272,6 +276,14 @@ static inline unsigned long xe_svm_range_size(struct xe_svm_range *range)
 static inline
 bool xe_svm_range_needs_migrate_to_vram(struct xe_svm_range *range, struct xe_vma *vma,
 					u32 region)
+{
+	return false;
+}
+
+static inline
+bool xe_svm_range_validate_and_evict(struct xe_vm *vm,
+				     struct xe_svm_range *range,
+				     u8 tile_mask, bool devmem_only)
 {
 	return false;
 }
