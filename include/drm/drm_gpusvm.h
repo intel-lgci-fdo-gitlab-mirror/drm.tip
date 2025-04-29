@@ -315,6 +315,11 @@ void drm_gpusvm_fini(struct drm_gpusvm *gpusvm);
 
 void drm_gpusvm_free(struct drm_gpusvm *gpusvm);
 
+unsigned long
+drm_gpusvm_range_find_or_insert_start(struct drm_gpusvm *gpusvm,
+				      unsigned long start,
+				      unsigned long end);
+
 struct drm_gpusvm_range *
 drm_gpusvm_range_find_or_insert(struct drm_gpusvm *gpusvm,
 				unsigned long fault_addr,
