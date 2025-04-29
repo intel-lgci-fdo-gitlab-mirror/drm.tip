@@ -637,6 +637,43 @@ static bool xe_svm_range_is_valid(struct xe_svm_range *range,
 		&& (!devmem_only || range->base.flags.migrate_devmem);
 }
 
+/**
+ * xe_svm_range_validate_and_evict() - Check if the SVM range is valid
+ * @vm: xe_vm pointer
+ * @range: Pointer to the SVM range structure
+ * @tile_mask: Mask representing the tiles to be checked
+ * @devmem_only: if true range needs to be in devmem
+ *
+ * The xe_svm_range_validate_and_evict() function checks if a range is
+ * valid and located in the desired memory region. Additionally, if the
+ * range is valid in VRAM but the desired region is SMEM, it evicts the
+ * ranges to SMEM.
+ *
+ * Return: true if the range is valid, false otherwise
+ */
+bool xe_svm_range_validate_and_evict(struct xe_vm *vm,
+				     struct xe_svm_range *range,
+				     u8 tile_mask, bool devmem_only)
+{
+	bool range_evict = false;
+	bool ret;
+
+	xe_svm_notifier_lock(vm);
+
+	ret = (range->tile_present & ~range->tile_invalidated & tile_mask) == tile_mask &&
+	       (devmem_only == xe_svm_range_in_vram(range));
+
+	if (!ret && !devmem_only && xe_svm_range_in_vram(range))
+		range_evict = true;
+
+	xe_svm_notifier_unlock(vm);
+
+	if (range_evict)
+		drm_gpusvm_range_evict(&vm->svm.gpusvm, &range->base);
+
+	return ret;
+}
+
 #if IS_ENABLED(CONFIG_DRM_XE_DEVMEM_MIRROR)
 static struct xe_vram_region *tile_to_vr(struct xe_tile *tile)
 {
