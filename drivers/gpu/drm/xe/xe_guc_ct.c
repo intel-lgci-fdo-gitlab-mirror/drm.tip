@@ -1769,6 +1769,12 @@ void xe_guc_ct_print(struct xe_guc_ct *ct, struct drm_printer *p, bool want_ctb)
 }
 
 #if IS_ENABLED(CONFIG_DRM_XE_DEBUG)
+static noinline int xe_should_fail_ct_dead_capture(void)
+{
+	return 0;
+}
+ALLOW_ERROR_INJECTION(xe_should_fail_ct_dead_capture, ERRNO);
+
 static void ct_dead_capture(struct xe_guc_ct *ct, struct guc_ctb *ctb, u32 reason_code)
 {
 	struct xe_guc_log_snapshot *snapshot_log;
@@ -1776,6 +1782,13 @@ static void ct_dead_capture(struct xe_guc_ct *ct, struct guc_ctb *ctb, u32 reaso
 	struct xe_guc *guc = ct_to_guc(ct);
 	unsigned long flags;
 	bool have_capture;
+
+	/*
+	 * Huge dump is getting generated when injecting error for guc CT/MMIO
+	 * functions. So, let us suppress the dump when fault is injected.
+	 */
+	if (xe_should_fail_ct_dead_capture())
+		return;
 
 	if (ctb)
 		ctb->info.broken = true;
