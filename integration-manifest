@@ -1,0 +1,36 @@
+drm drm-fixes 394586aa7e7233c7fbae7fef31b0115fa3d66b5f
+	Merge tag 'drm-intel-fixes-2026-07-23' of https://gitlab.freedesktop.org/drm/i915/kernel into drm-fixes
+drm-misc drm-misc-fixes 6273dd3ffb54ec581855b82ae77331b66028249c
+	drm/vc4: Shut down BO cache timer before teardown
+drm-rust drm-rust-fixes dc59e4fea9d83f03bad6bddf3fa2e52491777482
+	Linux 7.2-rc1
+drm-intel drm-intel-fixes a411ea4a87162898d2a0547fdfb721ddb7626be3
+	drm/i915/backlight: Remove DP_EDP_BACKLIGHT_AUX_ENABLE_CAP check for DPCD backlight
+drm-xe drm-xe-fixes d2c6800ad1802bed72a6de1416536737f114f1d6
+	drm/xe/vm: Fix SVM leak on resv obj alloc failure in xe_vm_create()
+drm drm-next a1c81cb05273077219fa809424330fdaa4346d5b
+	Merge tag 'drm-intel-gt-next-2026-07-16' of https://gitlab.freedesktop.org/drm/i915/kernel into drm-next
+drm-misc drm-misc-next-fixes 52d4ab1ca790a668cc8f2c27017138b1c467168c
+	Merge tag 'drm-misc-next-fixes-2026-06-11' of https://gitlab.freedesktop.org/drm/misc/kernel into drm-next
+drm-rust drm-rust-next-fixes 99676aed1fec109d62822e21a06760eb098dc5f4
+	gpu: nova-core: move lifetime to `Bar0`
+drm-intel drm-intel-next-fixes 2ee8dbd880b14fb0b5115bf2353c7900aa33b95b
+	drm/i915/cdclk: Fix up CDCLK_FREQ_DECIMAL without a full PLL re-enable
+drm-xe drm-xe-next-fixes 0b5ed2756d45b04669502a1f13b1657ec7664571
+	drm/xe: Add compact-PT and addr mask handling for page reclaim
+drm-misc drm-misc-next c182a2ae13886463f7ae36e034449477306d182b
+	drm/etnaviv: force flush on power register ops
+drm-rust drm-rust-next 6dcbb4b1320fa91fee349462a52bb69135f2e45e
+	gpu: nova-core: reserve vGPU WPR2 heap
+drm-intel drm-intel-next 6d7efb5fbb812d7cd7899dd1aacacb02a36a5886
+	drm/i915/dp: set VSC_SDP MSA delegation only for capable sinks
+drm-intel drm-intel-gt-next 682ea2d28d18bb06f9fc663cb5ab7e80dc0e606a
+	drm/i915/selftests: Fix GT PM sort comparators
+drm-xe drm-xe-next 8b2d3bb766c69976da4767fb3b7299a909367f58
+	drm/xe/nvls: Drop force_probe requirement
+drm-intel topic/core-for-CI d8451c92a4da76aa7cabb07864ef2a601c482ca7
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI b275cb3f07a7ab3ef3bd419db86bd42fa95dcedb
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
