@@ -802,6 +802,9 @@ static int exec_queue_set_hang_replay_state(struct xe_device *xe,
 	u64 __user *address = u64_to_user_ptr(value);
 	void *ptr;
 
+	if (q->replay_state)
+		return -EINVAL;
+
 	ptr = vmemdup_user(address, size);
 	if (XE_IOCTL_DBG(xe, IS_ERR(ptr)))
 		return PTR_ERR(ptr);
@@ -1116,6 +1119,9 @@ static int exec_queue_user_ext_set_property(struct xe_device *xe,
 
 	idx = array_index_nospec(ext.property, ARRAY_SIZE(exec_queue_set_property_funcs));
 	if (!exec_queue_set_property_funcs[idx])
+		return -EINVAL;
+
+	if (XE_IOCTL_DBG(xe, *properties & BIT_ULL(idx)))
 		return -EINVAL;
 
 	*properties |= BIT_ULL(idx);
