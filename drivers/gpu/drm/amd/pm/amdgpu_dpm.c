@@ -1190,6 +1190,7 @@ static bool amdgpu_dpm_is_pp_table_allowed(struct amdgpu_device *adev)
 	       !adev->scpm_enabled;
 }
 
+
 int amdgpu_dpm_get_pp_table(struct amdgpu_device *adev, char *table,
 			    size_t size)
 {
@@ -2132,11 +2133,4 @@ ssize_t amdgpu_dpm_get_xcp_metrics(struct amdgpu_device *adev, int xcp_id,
 	mutex_unlock(&adev->pm.mutex);
 
 	return ret;
-}
-
-const struct ras_smu_drv *amdgpu_dpm_get_ras_smu_driver(struct amdgpu_device *adev)
-{
-	void *pp_handle = adev->powerplay.pp_handle;
-
-	return smu_get_ras_smu_driver(pp_handle);
 }
