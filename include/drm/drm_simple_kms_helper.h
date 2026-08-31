@@ -44,6 +44,7 @@ struct drm_simple_display_pipe_funcs {
 	void (*destroy_crtc_state)(struct drm_simple_display_pipe *pipe,
 				   struct drm_crtc_state *crtc_state);
 	void (*reset_plane)(struct drm_simple_display_pipe *pipe);
+	struct drm_plane_state * (*create_plane_state)(struct drm_simple_display_pipe *pipe);
 	struct drm_plane_state * (*duplicate_plane_state)(struct drm_simple_display_pipe *pipe);
 	void (*destroy_plane_state)(struct drm_simple_display_pipe *pipe,
 				    struct drm_plane_state *plane_state);
@@ -67,10 +68,6 @@ int drm_simple_display_pipe_init(struct drm_device *dev,
 			const uint32_t *formats, unsigned int format_count,
 			const uint64_t *format_modifiers,
 			struct drm_connector *connector);
-
-int drm_simple_encoder_init(struct drm_device *dev,
-			    struct drm_encoder *encoder,
-			    int encoder_type);
 
 void *__drmm_simple_encoder_alloc(struct drm_device *dev, size_t size,
 				  size_t offset, int encoder_type);
