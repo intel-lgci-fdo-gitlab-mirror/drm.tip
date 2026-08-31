@@ -1,0 +1,42 @@
+drm drm-fixes 8d3ae59288f1e7d58d76558a6ee96d533bc5019f
+	Linux 7.2
+drm-misc drm-misc-fixes 8eae39cd0adf28ba81a46090b10484cf402c0ac8
+	drm/pagemap: Reset migration page count on eviction retry
+drm-rust drm-rust-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-intel drm-intel-fixes 3785d40831ba5601296283e0197e10e089392757
+	drm/i915: Guard against NULL driver_data in i915_pci_probe()
+drm-xe drm-xe-fixes ef526d122b62af5afa437f095aa6661a953676c4
+	drm/xe: Fix xe_device_probe() failure
+drm-amdgpu drm-amdgpu-fixes 8d3ae59288f1e7d58d76558a6ee96d533bc5019f
+	Linux 7.2
+drm drm-next cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-misc drm-misc-next-fixes 271e90eb5f9ff34951647e5ed33c1775eebcca50
+	drm: use drm_warn() in validate_blend_mode_for_alpha_formats()
+drm-rust drm-rust-next-fixes 4c9ba407018e8deb06dbc643112bac8f40404f95
+	gpu: nova-core: falcon: use I/O projection to check transfer bounds
+drm-intel drm-intel-next-fixes 65b92bc671db7c222f8de1146c88e40fe8764d95
+	Merge tag 'drm-xe-next-fixes-2026-08-13' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-xe drm-xe-next-fixes a62212b35a214c2ff3bd1c785a440d7ad8205ec9
+	drm/xe/sysctrl: Read mailbox phase bit from hardware
+drm-amdgpu drm-amdgpu-next-fixes 1ff8d3e3165fd077faa4259fd232bdddcd30249f
+	Merge tag 'drm-xe-next-fixes-2026-08-20' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-misc drm-misc-next 0116f19db5931348c937eafa1f76a9a19bf82c81
+	drm/nouveau: honor HF-EEODB EDIDs by converting to struct drm_edid
+drm-rust drm-rust-next c63829528980507a0a9146031e0c08499f53cf3d
+	Merge tag 'v7.3-rc1' into drm-rust-next
+drm-intel drm-intel-next 3802cbc4b41c64500a11ba6ea8f36d42b9736989
+	drm/i915/pcode: rename GEN6_PCODE_DATA to match spec
+drm-intel drm-intel-gt-next 18ec6327d3456f5d8a9b55832d376935d2eb3577
+	drm/i915/selftest: Fix a typo in alloc_workqueue call
+drm-xe drm-xe-next cc467969646b9778c947bec1383fb3cdaada14d5
+	Merge drm/drm-next into drm-xe-next
+drm-amdgpu drm-amdgpu-next 1ff8d3e3165fd077faa4259fd232bdddcd30249f
+	Merge tag 'drm-xe-next-fixes-2026-08-20' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-intel topic/core-for-CI 3cf6ff1708aeb3154fa0117b430031abfe7f7ff0
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI b275cb3f07a7ab3ef3bd419db86bd42fa95dcedb
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
