@@ -663,7 +663,8 @@ int pqm_update_mqd(struct process_queue_manager *pqm,
 
 	/* ASICs that have WGPs must enforce pairwise enabled mask checks. */
 	if (minfo && minfo->cu_mask.ptr &&
-			KFD_GC_VERSION(pqn->q->device) >= IP_VERSION(10, 0, 0)) {
+			KFD_GC_VERSION(pqn->q->device) >= IP_VERSION(10, 0, 0) &&
+			KFD_GC_VERSION(pqn->q->device) < IP_VERSION(12, 1, 0)) {
 		int i;
 
 		for (i = 0; i < minfo->cu_mask.count; i += 2) {
@@ -1169,13 +1170,13 @@ int pqm_debugfs_mqds(struct seq_file *m, void *data)
 			mqd_mgr = q->device->dqm->mqd_mgrs[mqd_type];
 			size = mqd_mgr->mqd_stride(mqd_mgr,
 							&q->properties);
-		}
 
-		for (xcc = 0; xcc < num_xccs; xcc++) {
-			mqd = q->mqd + size * xcc;
-			r = mqd_mgr->debugfs_show_mqd(m, mqd);
-			if (r != 0)
-				break;
+			for (xcc = 0; xcc < num_xccs; xcc++) {
+				mqd = q->mqd + size * xcc;
+				r = mqd_mgr->debugfs_show_mqd(m, mqd);
+				if (r != 0)
+					break;
+			}
 		}
 	}
 
