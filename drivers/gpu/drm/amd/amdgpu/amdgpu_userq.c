@@ -241,7 +241,6 @@ int amdgpu_userq_input_va_validate(struct amdgpu_device *adev,
 	struct amdgpu_vm *vm = queue->vm;
 	u64 start_addr;
 	u64 end_addr;
-	u64 start_page;
 
 	/* Caller must hold vm->root.bo reservation */
 	dma_resv_assert_held(queue->vm->root.bo->tbo.base.resv);
@@ -253,16 +252,14 @@ int amdgpu_userq_input_va_validate(struct amdgpu_device *adev,
 	if (check_add_overflow(start_addr, expected_size - 1, &end_addr))
 		return -EINVAL;
 
-	start_page = start_addr >> AMDGPU_GPU_PAGE_SHIFT;
-
-	va_map = amdgpu_vm_bo_lookup_mapping(vm, start_page);
+	va_map = amdgpu_vm_bo_lookup_mapping(vm, start_addr);
 	if (!va_map)
 		return -EINVAL;
 
-	/* Lookup guarantees start_page is mapped; ensure full span is covered. */
+	/* Lookup guarantees start_addr is mapped; ensure full span is covered. */
 	if ((end_addr >> AMDGPU_GPU_PAGE_SHIFT) <= va_map->last) {
 		va_map->bo_va->userq_va_mapped = true;
-		*va_out = start_page;
+		*va_out = start_addr;
 		return 0;
 	}
 
@@ -543,12 +540,15 @@ amdgpu_userq_destroy(struct amdgpu_userq_mgr *uq_mgr, struct amdgpu_usermode_que
 	trace_amdgpu_userq_destroy_start(queue);
 
 	cancel_delayed_work_sync(&uq_mgr->resume_work);
+	/* Cancel before taking userq_mutex: cancel_delayed_work_sync() waits
+	 * for any running instance, which itself takes userq_mutex.
+	 */
+	cancel_delayed_work_sync(&queue->hang_detect_work);
 
 	mutex_lock(&uq_mgr->userq_mutex);
 	amdgpu_userq_wait_for_last_fence(queue);
 
 	amdgpu_userq_detach_doorbell(queue);
-	cancel_delayed_work_sync(&queue->hang_detect_work);
 
 #if defined(CONFIG_DEBUG_FS)
 	debugfs_remove_recursive(queue->debugfs_queue);
@@ -659,6 +659,24 @@ amdgpu_userq_create(struct drm_file *filp, union drm_amdgpu_userq *args)
 
 	uq_funcs = adev->userq_funcs[args->in.ip_type];
 	if (!uq_funcs) {
+		switch (args->in.ip_type) {
+		case AMDGPU_HW_IP_GFX:
+		case AMDGPU_HW_IP_COMPUTE:
+			dev_warn_once(adev->dev,
+				      "Usermode queues for GFX/COMPUTE is not supported by the fw "
+				      "on this ASIC (me: %u, pfp: %u, mec: %u, mes: %u)\n",
+				      adev->gfx.me_fw_version, adev->gfx.pfp_fw_version,
+				      adev->gfx.mec_fw_version, adev->mes.fw_version[0]);
+			break;
+		case AMDGPU_HW_IP_DMA:
+			dev_warn_once(adev->dev,
+				      "Usermode queues for SDMA is not supported by the fw "
+				      "on this ASIC (sdma: %u)\n",
+				      adev->sdma.instance[0].fw_version);
+			break;
+		default:
+			break;
+		}
 		r = -EINVAL;
 		goto err_pm_runtime;
 	}
@@ -1544,7 +1562,7 @@ int amdgpu_userq_post_reset(struct amdgpu_device *adev, bool vram_lost)
 	struct amdgpu_usermode_queue *queue;
 	const struct amdgpu_userq_funcs *userq_funcs;
 	unsigned long queue_id;
-	int r = 0;
+	int ret = 0, r;
 
 	xa_for_each(&adev->userq_doorbell_xa, queue_id, queue) {
 		if (queue->state == AMDGPU_USERQ_STATE_HUNG && !vram_lost) {
@@ -1555,6 +1573,7 @@ int amdgpu_userq_post_reset(struct amdgpu_device *adev, bool vram_lost)
 			r = userq_funcs->map(queue);
 			if (r) {
 				dev_err(adev->dev, "Failed to remap queue %ld\n", queue_id);
+				ret = r;
 				continue;
 			}
 			trace_amdgpu_userq_state_changed(queue, AMDGPU_USERQ_STATE_MAPPED);
@@ -1562,5 +1581,5 @@ int amdgpu_userq_post_reset(struct amdgpu_device *adev, bool vram_lost)
 		}
 	}
 
-	return r;
+	return ret;
 }
