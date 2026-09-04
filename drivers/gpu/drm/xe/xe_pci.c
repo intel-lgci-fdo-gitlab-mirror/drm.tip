@@ -770,10 +770,10 @@ static int xe_probe_info_early(struct xe_device *xe,
  * passed to the driver at probe time from PCI ID table.
  */
 static int xe_info_init_early(struct xe_device *xe,
-			      const struct xe_device_desc *desc,
-			      const struct xe_subplatform_desc *subplatform_desc,
 			      struct xe_probed_info *probed_info)
 {
+	const struct xe_subplatform_desc *subplatform_desc = xe->subplatform_desc;
+	const struct xe_device_desc *desc = xe->desc;
 	int err;
 
 	xe->info.devid = probed_info->devid;
@@ -1221,7 +1221,7 @@ static int __xe_pci_probe(struct pci_dev *pdev, const struct xe_device_desc *des
 	if (err)
 		return err;
 
-	err = xe_info_init_early(xe, desc, subplatform_desc, &probed_info);
+	err = xe_info_init_early(xe, &probed_info);
 	if (err)
 		return err;
 
