@@ -117,6 +117,12 @@ struct xe_device {
 	/** @devcoredump: device coredump */
 	struct xe_devcoredump devcoredump;
 
+	/** @desc: device descriptor */
+	const struct xe_device_desc *desc;
+
+	/** @subplatform_desc: subplatform descriptor */
+	const struct xe_subplatform_desc *subplatform_desc;
+
 	/** @info: device info */
 	struct intel_device_info {
 		/** @info.platform_name: platform name */

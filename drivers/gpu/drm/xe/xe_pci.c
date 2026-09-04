@@ -1207,6 +1207,8 @@ static int __xe_pci_probe(struct pci_dev *pdev, const struct xe_device_desc *des
 	if (IS_ERR(xe))
 		return PTR_ERR(xe);
 
+	xe->desc = desc;
+	xe->subplatform_desc = subplatform_desc;
 	xe->devres_group = group;
 
 	pci_set_drvdata(pdev, &xe->drm);
