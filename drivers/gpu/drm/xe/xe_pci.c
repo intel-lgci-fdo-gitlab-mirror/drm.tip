@@ -752,7 +752,6 @@ struct xe_probed_info {
  * Probe from the hardware the info required by xe_info_init_early().
  */
 static int xe_probe_info_early(struct xe_device *xe,
-			       const struct xe_device_desc *desc,
 			       struct xe_probed_info *probed_info)
 {
 	struct pci_dev *pdev = to_pci_dev(xe->drm.dev);
@@ -760,7 +759,7 @@ static int xe_probe_info_early(struct xe_device *xe,
 	probed_info->devid = pdev->device;
 	probed_info->revid = pdev->revision;
 
-	xe_step_platform_get(desc->platform, probed_info->revid, &probed_info->step);
+	xe_step_platform_get(xe->desc->platform, probed_info->revid, &probed_info->step);
 
 	return 0;
 }
@@ -1217,7 +1216,7 @@ static int __xe_pci_probe(struct pci_dev *pdev, const struct xe_device_desc *des
 
 	pci_set_master(pdev);
 
-	err = xe_probe_info_early(xe, desc, &probed_info);
+	err = xe_probe_info_early(xe, &probed_info);
 	if (err)
 		return err;
 
