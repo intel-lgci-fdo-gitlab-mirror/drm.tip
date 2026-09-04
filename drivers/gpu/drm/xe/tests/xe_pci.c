@@ -392,7 +392,7 @@ done:
 		return err;
 
 	xe_info_init_early(xe, desc, subplatform_desc, &probed_info);
-	xe_info_init(xe, desc, &probed_info);
+	xe_info_init(xe, &probed_info);
 
 	return 0;
 }

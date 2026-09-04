@@ -1010,7 +1010,6 @@ static int xe_probe_info(struct xe_device *xe,
  * present in device info.
  */
 static int xe_info_init(struct xe_device *xe,
-			const struct xe_device_desc *desc,
 			struct xe_probed_info *probed_info)
 {
 	const struct xe_ip *graphics_ip;
@@ -1243,7 +1242,7 @@ static int __xe_pci_probe(struct pci_dev *pdev, const struct xe_device_desc *des
 	if (err)
 		return err;
 
-	err = xe_info_init(xe, desc, &probed_info);
+	err = xe_info_init(xe, &probed_info);
 	if (err)
 		return err;
 
