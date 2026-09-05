@@ -1,0 +1,42 @@
+drm drm-fixes c96294afbcb5737da18229e788ca45a5d534abc5
+	Merge tag 'drm-xe-fixes-2026-09-03' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-fixes
+drm-misc drm-misc-fixes 2b39d680c9e0fb4d625f2916980977622e84248c
+	accel: ethosu: Ensure SRAM region size matches job
+drm-rust drm-rust-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-intel drm-intel-fixes 3785d40831ba5601296283e0197e10e089392757
+	drm/i915: Guard against NULL driver_data in i915_pci_probe()
+drm-xe drm-xe-fixes 0e68c74e44da81a4599c52437ee1f63a2c234470
+	drm/xe/vram: report FLAT_CCS base misalignment
+drm-amdgpu drm-amdgpu-fixes 13af55f71399f5e562f6cb59ad413476e513c4d4
+	drm/amdgpu/userq: fix struct drm_amdgpu_info_device padding for 32bit compile
+drm drm-next cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-misc drm-misc-next-fixes 271e90eb5f9ff34951647e5ed33c1775eebcca50
+	drm: use drm_warn() in validate_blend_mode_for_alpha_formats()
+drm-rust drm-rust-next-fixes 4c9ba407018e8deb06dbc643112bac8f40404f95
+	gpu: nova-core: falcon: use I/O projection to check transfer bounds
+drm-intel drm-intel-next-fixes 65b92bc671db7c222f8de1146c88e40fe8764d95
+	Merge tag 'drm-xe-next-fixes-2026-08-13' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes 1ff8d3e3165fd077faa4259fd232bdddcd30249f
+	Merge tag 'drm-xe-next-fixes-2026-08-20' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-misc drm-misc-next a9f09b5ea0c3db1e2d4c0f8d3ebdd612d8aa0366
+	drm/bridge: dw-hdmi-qp: use drm_hdmi_acr_get_n_cts() helper for audio N/CTS
+drm-rust drm-rust-next e1df8a1560a97d2f5c1965d4844ab64769e92a91
+	gpu: nova-core: gsp: fix a broken doc link on GspMessage
+drm-intel drm-intel-next 0d63d6fc993b1fb97e314f435bdefbf0ccd947bd
+	drm/i915/display: Reset use_flipq when duplicating crtc state
+drm-intel drm-intel-gt-next 18ec6327d3456f5d8a9b55832d376935d2eb3577
+	drm/i915/selftest: Fix a typo in alloc_workqueue call
+drm-xe drm-xe-next 6ef3eb10aea4260f752c06489a5369c2b67848b0
+	drm/xe: Add fault-inject based VRAM page offline injection
+drm-amdgpu drm-amdgpu-next 4f9ab6eb259437701991c2af3fbd666f2fbc4e19
+	Documentation: add initial UALink Documentation
+drm-intel topic/core-for-CI 3cf6ff1708aeb3154fa0117b430031abfe7f7ff0
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI b275cb3f07a7ab3ef3bd419db86bd42fa95dcedb
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
