@@ -351,7 +351,7 @@ int xe_pci_fake_device_init(struct xe_device *xe)
 
 	if (!data) {
 		desc = (const void *)ent->driver_data;
-		subplatform_desc = NULL;
+		subplatform_desc = desc->subplatforms;
 		goto done;
 	}
 
