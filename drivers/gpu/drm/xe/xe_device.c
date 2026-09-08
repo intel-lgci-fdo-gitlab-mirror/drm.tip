@@ -1051,6 +1051,10 @@ int xe_device_probe(struct xe_device *xe)
 	if (err)
 		return err;
 
+	err = xe_vram_reserve_memtest_bo(xe);
+	if (err)
+		return err;
+
 	for_each_tile(tile, xe, id) {
 		err = xe_tile_init(tile);
 		if (err)
@@ -1066,6 +1070,10 @@ int xe_device_probe(struct xe_device *xe)
 		if (err)
 			return err;
 	}
+
+	err = xe_vram_memtest(xe);
+	if (err)
+		return err;
 
 	err = xe_pagefault_init(xe);
 	if (err)
@@ -1270,7 +1278,7 @@ bool xe_device_is_l2_flush_optimized(struct xe_device *xe)
 	return false;
 }
 
-void xe_device_l2_flush(struct xe_device *xe)
+void xe_device_l2_flush(struct xe_device *xe, bool force)
 {
 	struct xe_gt *gt;
 
@@ -1278,7 +1286,7 @@ void xe_device_l2_flush(struct xe_device *xe)
 	if (!gt)
 		return;
 
-	if (!XE_GT_WA(gt, 16023588340))
+	if (!force && !XE_GT_WA(gt, 16023588340))
 		return;
 
 	CLASS(xe_force_wake, fw_ref)(gt_to_fw(gt), XE_FW_GT);
@@ -1333,7 +1341,7 @@ void xe_device_td_flush(struct xe_device *xe)
 
 	if (XE_GT_WA(root_gt, 16023588340)) {
 		/* A transient flush is not sufficient: flush the L2 */
-		xe_device_l2_flush(xe);
+		xe_device_l2_flush(xe, false);
 	} else {
 		xe_guc_pc_apply_flush_freq_limit(&root_gt->uc.guc.pc);
 		tdf_request_sync(xe);
