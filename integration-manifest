@@ -1,0 +1,42 @@
+drm drm-fixes df2908090cda368b01ff43709f51890076c56157
+	Linux 7.3-rc2
+drm-misc drm-misc-fixes fcfe64715b425262af1b36f498f9197f3537ceed
+	drm/ttm: apply the swapout bulk_move fix to the intended condition
+drm-rust drm-rust-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-intel drm-intel-fixes cbd3dafc2003db679ccd2f6c6a2551db79657049
+	drm/i915: Fix memory leak in query_perf_config_list()
+drm-xe drm-xe-fixes f5fcf7e638b904397ec0f66d3ea6766ef0cfe25b
+	drm/xe: Flush LSC untyped L1 dataport cache after rcs/ccs batches
+drm-amdgpu drm-amdgpu-fixes f3c6a8ae601abf2d8476d3f899283cc9a1001f7d
+	drm/amd/pm: report energy accumulator for smu 13.0.0
+drm drm-next f5c6fdfa1f4460c5714cd4996c6aa280d25399ca
+	Merge tag 'drm-intel-next-2026-09-03' of https://gitlab.freedesktop.org/drm/i915/kernel into drm-next
+drm-misc drm-misc-next-fixes 271e90eb5f9ff34951647e5ed33c1775eebcca50
+	drm: use drm_warn() in validate_blend_mode_for_alpha_formats()
+drm-rust drm-rust-next-fixes 4c9ba407018e8deb06dbc643112bac8f40404f95
+	gpu: nova-core: falcon: use I/O projection to check transfer bounds
+drm-intel drm-intel-next-fixes 65b92bc671db7c222f8de1146c88e40fe8764d95
+	Merge tag 'drm-xe-next-fixes-2026-08-13' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes 1ff8d3e3165fd077faa4259fd232bdddcd30249f
+	Merge tag 'drm-xe-next-fixes-2026-08-20' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-misc drm-misc-next 45c7da8b15f6716f43143214eeb350d97623a608
+	drm/panel-edp: Add BOE NV140FHM-T0A
+drm-rust drm-rust-next 73e5616f3d197c1af5a04a481fe0f13aa3913bd1
+	rust: dma_fence: gate abstractions on CONFIG_DMA_SHARED_BUFFER
+drm-intel drm-intel-next 3aef9c94c02b3e66cfacd70492b6604947010d35
+	drm/i915: Perform full wedge on display reset
+drm-intel drm-intel-gt-next 18ec6327d3456f5d8a9b55832d376935d2eb3577
+	drm/i915/selftest: Fix a typo in alloc_workqueue call
+drm-xe drm-xe-next 628f92b28bf4c371c10207daf6fc4caee0c0db2e
+	drm/xe/shrinker: Take a runtime PM ref before shrinking non-system memory
+drm-amdgpu drm-amdgpu-next 9f725dd80ae781ac046420e0e53ffe5b3bcfa44b
+	rust/drm/gem: initialize callbacks with ..pin_init::zeroed()
+drm-intel topic/core-for-CI 3cf6ff1708aeb3154fa0117b430031abfe7f7ff0
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI b275cb3f07a7ab3ef3bd419db86bd42fa95dcedb
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
