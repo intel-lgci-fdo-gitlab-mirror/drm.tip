@@ -1,0 +1,42 @@
+drm drm-fixes fd73f4a6659897191fa0d40695fe370925dd3780
+	Linux 7.3-rc3
+drm-misc drm-misc-fixes 073a30d75f309812ed61af134f24ffef4107b13a
+	drm/vc4: Use managed KMS polling to fix UAF on unbind
+drm-rust drm-rust-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-intel drm-intel-fixes fd73f4a6659897191fa0d40695fe370925dd3780
+	Linux 7.3-rc3
+drm-xe drm-xe-fixes 985862be16c7e4da808c51f393d631fb60c0be5c
+	drm/xe/shrinker: Take a runtime PM ref before shrinking non-system memory
+drm-amdgpu drm-amdgpu-fixes f3c6a8ae601abf2d8476d3f899283cc9a1001f7d
+	drm/amd/pm: report energy accumulator for smu 13.0.0
+drm drm-next 14d6074f52d3af2b27565e6957b92dceeb8b00da
+	Merge tag 'drm-misc-next-2026-09-10' of https://gitlab.freedesktop.org/drm/misc/kernel into drm-next
+drm-misc drm-misc-next-fixes 271e90eb5f9ff34951647e5ed33c1775eebcca50
+	drm: use drm_warn() in validate_blend_mode_for_alpha_formats()
+drm-rust drm-rust-next-fixes 4c9ba407018e8deb06dbc643112bac8f40404f95
+	gpu: nova-core: falcon: use I/O projection to check transfer bounds
+drm-intel drm-intel-next-fixes 65b92bc671db7c222f8de1146c88e40fe8764d95
+	Merge tag 'drm-xe-next-fixes-2026-08-13' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes 1ff8d3e3165fd077faa4259fd232bdddcd30249f
+	Merge tag 'drm-xe-next-fixes-2026-08-20' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-misc drm-misc-next eff5a355919641c29ffae99a15cbe59b74551e8f
+	drm/sysfs: Remove drm_class_device_(un)register()
+drm-rust drm-rust-next 66a2c223b620d844fe26c6bd4844d2a6a8c9dffc
+	Documentation: nova: Fix bracket
+drm-intel drm-intel-next b2e3ca048aafa348ee069abc84d6ae3ec4b41b9d
+	Merge drm/drm-next into drm-intel-next
+drm-intel drm-intel-gt-next a9fab05df43215f62e9c79cf21aee434eac543ea
+	drm/i915/selftests: Wait longer for request to start
+drm-xe drm-xe-next 9c8ed392385177546fdd65e4463e292f0f647c6c
+	drm/xe/pf: Add _locked variant of the fair sched config function
+drm-amdgpu drm-amdgpu-next 9f725dd80ae781ac046420e0e53ffe5b3bcfa44b
+	rust/drm/gem: initialize callbacks with ..pin_init::zeroed()
+drm-intel topic/core-for-CI 3cf6ff1708aeb3154fa0117b430031abfe7f7ff0
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI b275cb3f07a7ab3ef3bd419db86bd42fa95dcedb
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
