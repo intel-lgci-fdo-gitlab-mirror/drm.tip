@@ -1,0 +1,42 @@
+drm drm-fixes fd73f4a6659897191fa0d40695fe370925dd3780
+	Linux 7.3-rc3
+drm-misc drm-misc-fixes 6c62dfd2820f0c32b0083668edbe0baca6e10b92
+	drm/verisilicon: remove ARGB formats from primary plane
+drm-rust drm-rust-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-intel drm-intel-fixes a26204be587c57bd5c54fa513be26c4fd7bf252d
+	Revert "drm/i915/display: Clear SEL_FETCH_PLANE_CTL on plane disable"
+drm-xe drm-xe-fixes f0e9f963a3d209d7dc7ddd61116118ab5da2797d
+	drm/xe/i2c: Disable IRQ on unbind
+drm-amdgpu drm-amdgpu-fixes f3c6a8ae601abf2d8476d3f899283cc9a1001f7d
+	drm/amd/pm: report energy accumulator for smu 13.0.0
+drm drm-next 14d6074f52d3af2b27565e6957b92dceeb8b00da
+	Merge tag 'drm-misc-next-2026-09-10' of https://gitlab.freedesktop.org/drm/misc/kernel into drm-next
+drm-misc drm-misc-next-fixes 271e90eb5f9ff34951647e5ed33c1775eebcca50
+	drm: use drm_warn() in validate_blend_mode_for_alpha_formats()
+drm-rust drm-rust-next-fixes 4c9ba407018e8deb06dbc643112bac8f40404f95
+	gpu: nova-core: falcon: use I/O projection to check transfer bounds
+drm-intel drm-intel-next-fixes 65b92bc671db7c222f8de1146c88e40fe8764d95
+	Merge tag 'drm-xe-next-fixes-2026-08-13' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes 1ff8d3e3165fd077faa4259fd232bdddcd30249f
+	Merge tag 'drm-xe-next-fixes-2026-08-20' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-misc drm-misc-next acb05c825e393b0584adb5472bfbb17c8033a99f
+	drm/tve200: remove unused includes
+drm-rust drm-rust-next 66a2c223b620d844fe26c6bd4844d2a6a8c9dffc
+	Documentation: nova: Fix bracket
+drm-intel drm-intel-next 4ffdb772716e4279d63dfaaadf965da73e799aeb
+	drm/i915/dp: use EXPORT_SYMBOL_IF_KUNIT() for kunit helpers
+drm-intel drm-intel-gt-next a9fab05df43215f62e9c79cf21aee434eac543ea
+	drm/i915/selftests: Wait longer for request to start
+drm-xe drm-xe-next baafc300cd079a5210c1e70e5ea3d93518e40b38
+	drm/xe/nvm: add system controller region
+drm-amdgpu drm-amdgpu-next 9f725dd80ae781ac046420e0e53ffe5b3bcfa44b
+	rust/drm/gem: initialize callbacks with ..pin_init::zeroed()
+drm-intel topic/core-for-CI 3cf6ff1708aeb3154fa0117b430031abfe7f7ff0
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI b275cb3f07a7ab3ef3bd419db86bd42fa95dcedb
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
