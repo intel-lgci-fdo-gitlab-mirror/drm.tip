@@ -1666,7 +1666,7 @@ static void dm_test_crtc_reset_state_replaces_existing(struct kunit *test)
 	old->stream = stream;
 	crtc->state = &old->base;
 
-	amdgpu_dm_crtc_reset_state(crtc);
+	amdgpu_dm_crtc_create_state(crtc);
 
 	/* Old state was destroyed (stream ref dropped) and a new one installed. */
 	KUNIT_EXPECT_EQ(test, kref_read(&stream->refcount), 1);
@@ -2643,6 +2643,7 @@ static struct kunit_case amdgpu_dm_crtc_tests[] = {
 	KUNIT_CASE(dm_test_crtc_destroy_cleans_up_and_frees),
 	/* amdgpu_dm_crtc_create_state */
 	KUNIT_CASE(dm_test_crtc_create_state_allocates_state),
+	KUNIT_CASE(dm_test_crtc_reset_state_replaces_existing),
 	/* amdgpu_dm_crtc_destroy_state */
 	KUNIT_CASE(dm_test_crtc_destroy_state_no_stream),
 	KUNIT_CASE(dm_test_crtc_destroy_state_releases_stream),
