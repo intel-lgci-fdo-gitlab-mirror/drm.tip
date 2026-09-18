@@ -1,0 +1,42 @@
+drm drm-fixes 71f370e9ee1bdfe1f916547089d93b5265a918e7
+	Merge tag 'drm-misc-fixes-2026-09-17' of https://gitlab.freedesktop.org/drm/misc/kernel into drm-fixes
+drm-misc drm-misc-fixes 1717fcc5be575d4768279148ae9465a8b13d4339
+	drm/nouveau/disp: don't reject HDMI config on cards without SCDC
+drm-rust drm-rust-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-intel drm-intel-fixes a26204be587c57bd5c54fa513be26c4fd7bf252d
+	Revert "drm/i915/display: Clear SEL_FETCH_PLANE_CTL on plane disable"
+drm-xe drm-xe-fixes f0e9f963a3d209d7dc7ddd61116118ab5da2797d
+	drm/xe/i2c: Disable IRQ on unbind
+drm-amdgpu drm-amdgpu-fixes 2ac2fe765ef475f409616ac0b57c4a3922749b0f
+	drm/amd/display: fix MALL hysteresis timer underflow at high refresh rates
+drm drm-next 2446a767ffacee0d247db932621cd4b165ad721a
+	Merge tag 'amd-drm-next-7.4-2026-09-10' of https://gitlab.freedesktop.org/drm/amdgpu/kernel into drm-next
+drm-misc drm-misc-next-fixes 271e90eb5f9ff34951647e5ed33c1775eebcca50
+	drm: use drm_warn() in validate_blend_mode_for_alpha_formats()
+drm-rust drm-rust-next-fixes 4c9ba407018e8deb06dbc643112bac8f40404f95
+	gpu: nova-core: falcon: use I/O projection to check transfer bounds
+drm-intel drm-intel-next-fixes 65b92bc671db7c222f8de1146c88e40fe8764d95
+	Merge tag 'drm-xe-next-fixes-2026-08-13' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes 1ff8d3e3165fd077faa4259fd232bdddcd30249f
+	Merge tag 'drm-xe-next-fixes-2026-08-20' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-misc drm-misc-next 3afbeb6b99ddbe082a238a659b7e7a7239f49e0e
+	ARM: dts: bcm2835: Add the V3D reset line
+drm-rust drm-rust-next 66a2c223b620d844fe26c6bd4844d2a6a8c9dffc
+	Documentation: nova: Fix bracket
+drm-intel drm-intel-next b452f1fe719c47e06fef219757c50be3e71a20c6
+	drm/i915/display: Dump DIP Transmission lines
+drm-intel drm-intel-gt-next 5113479556025093bf8133bb2dcaa33be2d50921
+	drm/i915: fix incorrect RCU teardown order
+drm-xe drm-xe-next 320662381ca243a3364663e917a7447afaf618fa
+	drm/xe: Poll GT for C6 before D3
+drm-amdgpu drm-amdgpu-next cf48bd0a46279f4607956cb17c71bda96ee802e3
+	drm/amdgpu: Use memset32 for SDMA padding
+drm-intel topic/core-for-CI 3cf6ff1708aeb3154fa0117b430031abfe7f7ff0
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI b275cb3f07a7ab3ef3bd419db86bd42fa95dcedb
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
