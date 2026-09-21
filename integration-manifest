@@ -1,0 +1,42 @@
+drm drm-fixes 93f51579e7df248780214094418f205253383cc5
+	Linux 7.3-rc4
+drm-misc drm-misc-fixes ada667890773e033d2f40dc94176e3beb930b516
+	drm/bridge: samsung-dsim: fix TE GPIO lifetime for host attach
+drm-rust drm-rust-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-intel drm-intel-fixes 93f51579e7df248780214094418f205253383cc5
+	Linux 7.3-rc4
+drm-xe drm-xe-fixes 24a22fb3c731474b68e986af6804db450fb88617
+	drm/xe/vm: nuke PTs only after unlinking contested VMAs
+drm-amdgpu drm-amdgpu-fixes 2ac2fe765ef475f409616ac0b57c4a3922749b0f
+	drm/amd/display: fix MALL hysteresis timer underflow at high refresh rates
+drm drm-next 2446a767ffacee0d247db932621cd4b165ad721a
+	Merge tag 'amd-drm-next-7.4-2026-09-10' of https://gitlab.freedesktop.org/drm/amdgpu/kernel into drm-next
+drm-misc drm-misc-next-fixes 271e90eb5f9ff34951647e5ed33c1775eebcca50
+	drm: use drm_warn() in validate_blend_mode_for_alpha_formats()
+drm-rust drm-rust-next-fixes 4c9ba407018e8deb06dbc643112bac8f40404f95
+	gpu: nova-core: falcon: use I/O projection to check transfer bounds
+drm-intel drm-intel-next-fixes 65b92bc671db7c222f8de1146c88e40fe8764d95
+	Merge tag 'drm-xe-next-fixes-2026-08-13' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes 1ff8d3e3165fd077faa4259fd232bdddcd30249f
+	Merge tag 'drm-xe-next-fixes-2026-08-20' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-misc drm-misc-next 8ef59ee794076e2b58cff357b12de2ba5d441271
+	drm/v3d: Restrict v3d_perfmon_stop_locked() to v3d_perfmon.c
+drm-rust drm-rust-next 6bd5eaeb9827ca7ba953b68fb27948fdb3e40630
+	gpu: nova-core: declare unlimited DMA max segment size
+drm-intel drm-intel-next fd2e337ba66f6de39abad98a656fa6e5ff0c1609
+	drm/i915/dp: Handle VSC SDP revision 7 in unpack
+drm-intel drm-intel-gt-next 5113479556025093bf8133bb2dcaa33be2d50921
+	drm/i915: fix incorrect RCU teardown order
+drm-xe drm-xe-next 0e7ec97519448489a01af4a87453e1e6671aba8f
+	drm/xe/pf: Move locking to xe_sriov_pf_reprovision_default
+drm-amdgpu drm-amdgpu-next cf48bd0a46279f4607956cb17c71bda96ee802e3
+	drm/amdgpu: Use memset32 for SDMA padding
+drm-intel topic/core-for-CI 3cf6ff1708aeb3154fa0117b430031abfe7f7ff0
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI b275cb3f07a7ab3ef3bd419db86bd42fa95dcedb
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
