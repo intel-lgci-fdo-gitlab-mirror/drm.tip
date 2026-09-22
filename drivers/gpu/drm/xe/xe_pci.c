@@ -1379,6 +1379,8 @@ static int xe_pci_runtime_suspend(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct xe_device *xe = pdev_to_xe_device(pdev);
+	unsigned int flags;
+	bool pme_enabled;
 	int err, ret;
 
 	/*
