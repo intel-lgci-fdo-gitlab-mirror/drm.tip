@@ -54,6 +54,7 @@ struct pg_block_update;
 struct drr_params;
 struct dc_underflow_debug_data;
 struct dsc_optc_config;
+struct dscl_prog_data;
 struct vm_system_aperture_param;
 struct stream_encoder;
 struct hpo_dp_stream_encoder;
@@ -86,8 +87,7 @@ struct set_flip_control_gsl_params {
 };
 
 struct program_triplebuffer_params {
-	const struct dc *dc;
-	struct pipe_ctx *pipe_ctx;
+	struct hubp *hubp;
 	bool enableTripleBuffer;
 };
 
@@ -137,7 +137,7 @@ struct update_info_frame_params {
 };
 
 struct program_manual_trigger_params {
-	struct pipe_ctx *pipe_ctx;
+	struct timing_generator *tg;
 };
 
 struct send_dmcub_cmd_params {
@@ -155,11 +155,15 @@ struct lsdma_send_pio_copy_params {
 };
 
 struct setup_dpp_params {
-	struct pipe_ctx *pipe_ctx;
+	struct dpp *dpp;
+	enum surface_pixel_format format;
+	struct dc_csc_transform input_csc_color_matrix;
+	enum dc_color_space color_space;
 };
 
 struct program_bias_and_scale_params {
-	struct pipe_ctx *pipe_ctx;
+	struct dpp *dpp;
+	struct dc_bias_and_scale bias_and_scale;
 };
 
 struct set_output_transfer_func_params {
@@ -171,7 +175,8 @@ struct set_output_transfer_func_params {
 	const struct dc_stream_state *stream;
 };
 struct program_upsp_params {
-	struct pipe_ctx *pipe_ctx;
+	struct dpp *dpp;
+	const struct dscl_prog_data *dscl_prog_data;
 };
 
 struct update_visual_confirm_params {
@@ -247,16 +252,6 @@ struct hubp_wait_pipe_read_start_params {
 	struct hubp *hubp;
 };
 
-struct apply_update_flags_for_phantom_params {
-	struct pipe_ctx *pipe_ctx;
-};
-
-struct update_phantom_vp_position_params {
-	struct dc *dc;
-	struct pipe_ctx *pipe_ctx;
-	struct dc_state *context;
-};
-
 struct set_odm_combine_params {
 	struct timing_generator *tg;
 	int opp_inst[MAX_PIPES];
@@ -321,7 +316,8 @@ struct dsc_calculate_and_set_config_params {
 };
 
 struct dsc_enable_with_opp_params {
-	struct pipe_ctx *pipe_ctx;
+	struct display_stream_compressor *dsc;
+	int opp_inst;
 };
 
 struct program_tg_params {
@@ -420,8 +416,7 @@ struct opp_program_fmt_params {
 
 struct opp_program_bit_depth_reduction_params {
 	struct output_pixel_processor *opp;
-	bool use_default_params;
-	struct pipe_ctx *pipe_ctx;
+	struct bit_depth_reduction_params bit_depth_params;
 };
 
 struct opp_set_disp_pattern_generator_params {
@@ -879,7 +874,10 @@ struct dpp_set_cursor_attributes_params {
 
 struct set_cursor_position_params {
 	struct dc *dc;
-	struct pipe_ctx *pipe_ctx;
+	struct hubp *hubp;
+	struct dpp *dpp;
+	struct dc_cursor_position pos;
+	struct dc_cursor_mi_param param;
 };
 
 struct set_cursor_sdr_white_level_params {
@@ -1096,8 +1094,6 @@ union block_sequence_params {
 	struct control_cm_hist_params control_cm_hist_params;
 	struct program_cursor_update_now_params program_cursor_update_now_params;
 	struct hubp_wait_pipe_read_start_params hubp_wait_pipe_read_start_params;
-	struct apply_update_flags_for_phantom_params apply_update_flags_for_phantom_params;
-	struct update_phantom_vp_position_params update_phantom_vp_position_params;
 	struct set_odm_combine_params set_odm_combine_params;
 	struct set_odm_bypass_params set_odm_bypass_params;
 	struct opp_pipe_clock_control_params opp_pipe_clock_control_params;
@@ -1276,8 +1272,6 @@ enum block_sequence_func {
 	DPP_PROGRAM_CM_HIST,
 	PROGRAM_CURSOR_UPDATE_NOW,
 	HUBP_WAIT_PIPE_READ_START,
-	HWS_APPLY_UPDATE_FLAGS_FOR_PHANTOM,
-	HWS_UPDATE_PHANTOM_VP_POSITION,
 	OPTC_SET_ODM_COMBINE,
 	OPTC_SET_ODM_BYPASS,
 	OPP_PIPE_CLOCK_CONTROL,
@@ -1475,8 +1469,7 @@ struct hw_sequencer_funcs {
 	void (*edp_backlight_control)(
 			struct dc_link *link,
 			bool enable);
-	void (*program_triplebuffer)(const struct dc *dc,
-		struct pipe_ctx *pipe_ctx, bool enableTripleBuffer);
+	void (*program_triplebuffer)(struct hubp *hubp, bool enableTripleBuffer);
 	void (*update_pending_status)(struct pipe_ctx *pipe_ctx);
 	void (*update_dsc_pg)(struct dc *dc, struct dc_state *context, bool safe_to_disable);
 	void (*clear_surface_dcc_and_tiling)(struct pipe_ctx *pipe_ctx, struct dc_plane_state *plane_state, bool clear_tiling);
@@ -1549,7 +1542,11 @@ struct hw_sequencer_funcs {
 	bool (*dmdata_status_done)(struct pipe_ctx *pipe_ctx);
 
 	/* Cursor Related */
-	void (*set_cursor_position)(struct pipe_ctx *pipe);
+	void (*set_cursor_position)(struct hubp *hubp, struct dpp *dpp,
+			const struct dc_cursor_position *pos,
+			const struct dc_cursor_mi_param *param);
+	/* Fallback for DCE */
+	void (*set_cursor_position_legacy)(struct pipe_ctx *pipe);
 	void (*set_cursor_attribute)(struct pipe_ctx *pipe);
 	void (*set_cursor_sdr_white_level)(struct pipe_ctx *pipe);
 	void (*abort_cursor_offload_update)(struct dmub_srv *dmub, struct dpp *dpp,
@@ -1883,6 +1880,8 @@ void hwss_process_outstanding_hw_updates(struct dc *dc,
 void hwss_send_dmcub_cmd(union block_sequence_params *params);
 void hwss_lsdma_send_pio_copy(union block_sequence_params *params);
 
+void hwss_program_triplebuffer(union block_sequence_params *params);
+
 void hwss_program_manual_trigger(union block_sequence_params *params);
 
 void hwss_setup_dpp(union block_sequence_params *params);
@@ -2160,6 +2159,8 @@ void hwss_dpp_set_cursor_attributes(union block_sequence_params *params);
 
 void hwss_set_cursor_position(union block_sequence_params *params);
 
+void hwss_program_cursor_position(struct dc *dc, struct pipe_ctx *pipe_ctx);
+
 void hwss_set_cursor_sdr_white_level(union block_sequence_params *params);
 
 void hwss_program_gamut_remap(struct pipe_ctx *pipe_ctx);
@@ -2200,7 +2201,7 @@ void hwss_add_hubp_set_flip_control_gsl(struct block_sequence_state *seq_state,
 		struct hubp *hubp, bool flip_immediate);
 
 void hwss_add_hubp_program_triplebuffer(struct block_sequence_state *seq_state,
-		struct dc *dc, struct pipe_ctx *pipe_ctx, bool enableTripleBuffer);
+		struct hubp *hubp, bool enableTripleBuffer);
 
 void hwss_add_hubp_update_plane_addr(struct block_sequence_state *seq_state,
 		struct dc *dc, struct pipe_ctx *pipe_ctx);
@@ -2212,10 +2213,11 @@ void hwss_add_dpp_program_gamut_remap(struct block_sequence_state *seq_state,
 		struct pipe_ctx *pipe_ctx);
 
 void hwss_add_dpp_program_bias_and_scale(struct block_sequence_state *seq_state,
-		struct pipe_ctx *pipe_ctx);
+		struct dpp *dpp,
+		struct dc_plane_state *plane_state);
 
 void hwss_add_optc_program_manual_trigger(struct block_sequence_state *seq_state,
-		struct pipe_ctx *pipe_ctx);
+		struct timing_generator *tg);
 
 void hwss_add_dpp_set_output_transfer_func(struct block_sequence_state *seq_state,
 		struct dc *dc, struct pipe_ctx *pipe_ctx);
@@ -2245,12 +2247,6 @@ void hwss_add_lsdma_send_pio_copy(struct block_sequence_state *seq_state,
 		uint32_t byte_count, uint32_t overlap_disable);
 void hwss_add_hubp_wait_pipe_read_start(struct block_sequence_state *seq_state,
 		struct hubp *hubp);
-
-void hwss_add_hws_apply_update_flags_for_phantom(struct block_sequence_state *seq_state,
-		struct pipe_ctx *pipe_ctx);
-
-void hwss_add_hws_update_phantom_vp_position(struct block_sequence_state *seq_state,
-		struct dc *dc, struct dc_state *context, struct pipe_ctx *pipe_ctx);
 
 void hwss_add_optc_set_odm_combine(struct block_sequence_state *seq_state,
 		struct timing_generator *tg, int opp_inst[MAX_PIPES], int opp_head_count,
@@ -2599,7 +2595,8 @@ void hwss_add_hubp_program_surface_config(struct block_sequence_state *seq_state
 		int compat_level);
 
 void hwss_add_dpp_setup_dpp(struct block_sequence_state *seq_state,
-		struct pipe_ctx *pipe_ctx);
+		struct dpp *dpp,
+		struct dc_plane_state *plane_state);
 
 void hwss_add_dpp_set_cursor_matrix(struct block_sequence_state *seq_state,
 		struct dpp *dpp,
@@ -2627,6 +2624,10 @@ void hwss_add_mpc_insert_plane(struct block_sequence_state *seq_state,
 void hwss_add_dpp_set_scaler(struct block_sequence_state *seq_state,
 		struct dpp *dpp,
 		const struct scaler_data *scl_data);
+
+void hwss_add_dpp_program_upsp(struct block_sequence_state *seq_state,
+		struct dpp *dpp,
+		const struct dscl_prog_data *dscl_prog_data);
 
 void hwss_add_hubp_mem_program_viewport(struct block_sequence_state *seq_state,
 		struct hubp *hubp,
