@@ -1,0 +1,42 @@
+drm drm-fixes 93f51579e7df248780214094418f205253383cc5
+	Linux 7.3-rc4
+drm-misc drm-misc-fixes 72b782097e534ab48152dd25aaba40dda5f25f9e
+	accel/ivpu: Use separate flag for job timeout
+drm-rust drm-rust-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-intel drm-intel-fixes d2da6696e0c4e60414706e607029d0bb0330c67e
+	drm/i915: fix incorrect RCU teardown order
+drm-xe drm-xe-fixes cc319238e3f6668f867beb381ce93727c69b7317
+	drm/xe: Add wa_14025941587 to xe2, xe3 and xe3p platforms
+drm-amdgpu drm-amdgpu-fixes 2ac2fe765ef475f409616ac0b57c4a3922749b0f
+	drm/amd/display: fix MALL hysteresis timer underflow at high refresh rates
+drm drm-next b0a3a811634aa7422f8a92196db47a06a70bda16
+	Backmerge tag 'v7.3-rc4' into drm-next
+drm-misc drm-misc-next-fixes 271e90eb5f9ff34951647e5ed33c1775eebcca50
+	drm: use drm_warn() in validate_blend_mode_for_alpha_formats()
+drm-rust drm-rust-next-fixes 4c9ba407018e8deb06dbc643112bac8f40404f95
+	gpu: nova-core: falcon: use I/O projection to check transfer bounds
+drm-intel drm-intel-next-fixes 65b92bc671db7c222f8de1146c88e40fe8764d95
+	Merge tag 'drm-xe-next-fixes-2026-08-13' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes 1ff8d3e3165fd077faa4259fd232bdddcd30249f
+	Merge tag 'drm-xe-next-fixes-2026-08-20' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-misc drm-misc-next 6e375de99d0c420169481fcd36064177ab55b09d
+	drm/v3d: Skip perfmon serialization while a global perfmon is set
+drm-rust drm-rust-next 896ed083362758b33c49a1b5e5a3423c5814d87e
+	drm/tyr: reduce size of doorbell array
+drm-intel drm-intel-next a24f49a328477ef8520ec1d803c99adece6c6fb2
+	drm/i915/psr: log DPCD access errors
+drm-intel drm-intel-gt-next 5113479556025093bf8133bb2dcaa33be2d50921
+	drm/i915: fix incorrect RCU teardown order
+drm-xe drm-xe-next 8453cb0c4b88ed04702f8371c3da46df9448fddc
+	drm/xe/sysctrl: Allow per-command mailbox response timeout
+drm-amdgpu drm-amdgpu-next 21711b6e66bb7b41b1aec67b2d99aafe768c8fcb
+	drm/amd/display: Bump frame warning limit for clang builds of dml
+drm-intel topic/core-for-CI 3cf6ff1708aeb3154fa0117b430031abfe7f7ff0
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI b275cb3f07a7ab3ef3bd419db86bd42fa95dcedb
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
