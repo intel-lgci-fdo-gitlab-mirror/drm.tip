@@ -30,7 +30,6 @@
 #include "amdgpu_virt_ras_cmd.h"
 #include "amdgpu_ras_process.h"
 #include "amdgpu_ras_eeprom_i2c.h"
-#include "amdgpu_ras_mp1_v13_0.h"
 #include "amdgpu_ras_mp1.h"
 #include "amdgpu_ras_nbio_v7_9.h"
 #include "amdgpu_ras_bert.h"
@@ -158,8 +157,6 @@ static int amdgpu_ras_mgr_init_mp1_config(struct amdgpu_device *adev,
 	case IP_VERSION(13, 0, 6):
 	case IP_VERSION(13, 0, 14):
 	case IP_VERSION(13, 0, 12):
-		mp1_cfg->mp1_sys_fn = &amdgpu_ras_mp1_sys_func_v13_0;
-		break;
 	case IP_VERSION(15, 0, 8):
 		mp1_cfg->mp1_sys_fn = &amdgpu_ras_mp1_sys_func;
 		break;
@@ -328,7 +325,8 @@ int amdgpu_ras_mgr_sw_init(struct amdgpu_device *adev, struct ras_module_param *
 		return 0;
 	else if (amdgpu_ip_version(adev, MP0_HWIP, 0) == IP_VERSION(13, 0, 14) ||
 	    amdgpu_ip_version(adev, MP0_HWIP, 0) == IP_VERSION(13, 0, 12) ||
-	    amdgpu_ip_version(adev, MP0_HWIP, 0) == IP_VERSION(13, 0, 6))
+	    amdgpu_ip_version(adev, MP0_HWIP, 0) == IP_VERSION(13, 0, 6) ||
+	    amdgpu_ip_version(adev, MP0_HWIP, 0) == IP_VERSION(15, 0, 8))
 		con->uniras_enabled = true;
 	else
 		return 0;
