@@ -394,14 +394,12 @@ void dcn20_disable_vga(
 }
 
 void dcn20_program_triple_buffer(
-	const struct dc *dc,
-	struct pipe_ctx *pipe_ctx,
+	struct hubp *hubp,
 	bool enable_triple_buffer)
 {
-	(void)dc;
-	if (pipe_ctx->plane_res.hubp && pipe_ctx->plane_res.hubp->funcs) {
-		pipe_ctx->plane_res.hubp->funcs->hubp_enable_tripleBuffer(
-			pipe_ctx->plane_res.hubp,
+	if (hubp && hubp->funcs) {
+		hubp->funcs->hubp_enable_tripleBuffer(
+			hubp,
 			enable_triple_buffer);
 	}
 }
@@ -1848,7 +1846,7 @@ void dcn20_update_dchubp_dpp(
 		}
 
 		dc->hwss.set_cursor_attribute(pipe_ctx);
-		dc->hwss.set_cursor_position(pipe_ctx);
+		hwss_program_cursor_position(dc, pipe_ctx);
 
 		if (dc->hwss.set_cursor_sdr_white_level)
 			dc->hwss.set_cursor_sdr_white_level(pipe_ctx);
@@ -2110,7 +2108,7 @@ void dcn20_program_front_end_for_ctx(
 				ASSERT(!pipe->plane_state->triplebuffer_flips);
 				/*turn off triple buffer for full update*/
 				dc->hwss.program_triplebuffer(
-					dc, pipe, pipe->plane_state->triplebuffer_flips);
+					pipe->plane_res.hubp, pipe->plane_state->triplebuffer_flips);
 			}
 		}
 	}
