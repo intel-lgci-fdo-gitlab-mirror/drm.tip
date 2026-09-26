@@ -1,0 +1,42 @@
+drm drm-fixes a9ed3aa9b87ee41e8ab3ff471b1331c154767e45
+	Merge tag 'drm-misc-fixes-2026-09-24' of https://gitlab.freedesktop.org/drm/misc/kernel into drm-fixes
+drm-misc drm-misc-fixes 94cf5971b1d04c6382437387c4dc3836cc7a1437
+	drm/vc4: drain the hangcheck timer and works on V3D unbind
+drm-rust drm-rust-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-intel drm-intel-fixes d2da6696e0c4e60414706e607029d0bb0330c67e
+	drm/i915: fix incorrect RCU teardown order
+drm-xe drm-xe-fixes cc319238e3f6668f867beb381ce93727c69b7317
+	drm/xe: Add wa_14025941587 to xe2, xe3 and xe3p platforms
+drm-amdgpu drm-amdgpu-fixes 15814c01ac57643edf1662a076d2961332f277a5
+	drm/amd/display: Bump frame warning limit for all builds of dml
+drm drm-next b0a3a811634aa7422f8a92196db47a06a70bda16
+	Backmerge tag 'v7.3-rc4' into drm-next
+drm-misc drm-misc-next-fixes 271e90eb5f9ff34951647e5ed33c1775eebcca50
+	drm: use drm_warn() in validate_blend_mode_for_alpha_formats()
+drm-rust drm-rust-next-fixes 4c9ba407018e8deb06dbc643112bac8f40404f95
+	gpu: nova-core: falcon: use I/O projection to check transfer bounds
+drm-intel drm-intel-next-fixes 65b92bc671db7c222f8de1146c88e40fe8764d95
+	Merge tag 'drm-xe-next-fixes-2026-08-13' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes 1ff8d3e3165fd077faa4259fd232bdddcd30249f
+	Merge tag 'drm-xe-next-fixes-2026-08-20' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-misc drm-misc-next 98c7fc4219b93f953ee85c07fb6c8256046aba73
+	drm/sched: Remove forgotten header
+drm-rust drm-rust-next 896ed083362758b33c49a1b5e5a3423c5814d87e
+	drm/tyr: reduce size of doorbell array
+drm-intel drm-intel-next a8c17ccf9eb85c2b60376bb6ab98d75f897073b9
+	drm/i915: Use sleeping selftests for igt_atomic on PREEMPT_RT
+drm-intel drm-intel-gt-next 5113479556025093bf8133bb2dcaa33be2d50921
+	drm/i915: fix incorrect RCU teardown order
+drm-xe drm-xe-next 0755b7d25bec4618b6cfc5a7d66ae077e8b19a61
+	drm/xe/ptl: Add a new PTL PCI ID
+drm-amdgpu drm-amdgpu-next 76b9706e7fa1a6e374703170128b1be2f590cda7
+	drm/amd/display: Bump frame warning limit for all builds of dml
+drm-intel topic/core-for-CI 3cf6ff1708aeb3154fa0117b430031abfe7f7ff0
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI b275cb3f07a7ab3ef3bd419db86bd42fa95dcedb
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
