@@ -1,0 +1,44 @@
+drm drm-fixes 72d3fcf802c45d00b300f25b848a93c3a2bd7c7e
+	Linux 7.3-rc5
+drm-misc drm-misc-fixes bca45af5998a05f34b13a2ef11e639bac9c62643
+	drm/vc4: Use kvmalloc_objs() for the BO cache size list
+drm-rust drm-rust-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-intel drm-intel-fixes c034e8a46e4cb703018fe7e10fe5a3a974d6a7c3
+	drm/i915/vrr: Disable DC balance by default
+drm-xe drm-xe-fixes 72207463f7a4a6818a88f4ef57802b42da534301
+	drm/xe/pf: Keep VF LMEM BAR size low if no VFs enabled
+drm-amdgpu drm-amdgpu-fixes 15814c01ac57643edf1662a076d2961332f277a5
+	drm/amd/display: Bump frame warning limit for all builds of dml
+drm drm-next 1114bcf748db582a4ca7dcf4efb245b7eef224c7
+	Merge tag 'exynos-drm-next-for-v7.4' of git://git.kernel.org/pub/scm/linux/kernel/git/daeinki/drm-exynos into drm-next
+drm-misc drm-misc-next-fixes 271e90eb5f9ff34951647e5ed33c1775eebcca50
+	drm: use drm_warn() in validate_blend_mode_for_alpha_formats()
+drm-rust drm-rust-next-fixes 4c9ba407018e8deb06dbc643112bac8f40404f95
+	gpu: nova-core: falcon: use I/O projection to check transfer bounds
+drm-intel drm-intel-next-fixes 65b92bc671db7c222f8de1146c88e40fe8764d95
+	Merge tag 'drm-xe-next-fixes-2026-08-13' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes 1ff8d3e3165fd077faa4259fd232bdddcd30249f
+	Merge tag 'drm-xe-next-fixes-2026-08-20' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-misc drm-misc-next 7c4bda20eb0f150315d19f1b51058820e75d3f3d
+	drm: renesas: rz-du: Add support for RZ/G3L LVDS encoder
+drm-rust drm-rust-next c9ca2e379463751e267cb2bf1f7cad0b8be1cfe6
+	gpu: nova-core: restore the "Probe Nova Core GPU driver" debug print
+drm-intel drm-intel-next 2c1bb96681bea17c2ffbd134816961615292a159
+	drm/intel: rename I915_GTT_VIEW_* enumerations to INTEL_GTT_VIEW_*
+drm-intel drm-intel-gt-next ca4a6deadad15b91ee083afe445fa6bdbfb68206
+	drm/i915/gt: Unmask interrupts only when ACTIVE is true
+drm-xe drm-xe-next 70dab9ee7d620e6018a64798aed065d14e9baed1
+	drm/xe/mmio: Fix xe_mmio_wait32() to honor delay/sleep maximums
+drm-amdgpu drm-amdgpu-next 76b9706e7fa1a6e374703170128b1be2f590cda7
+	drm/amd/display: Bump frame warning limit for all builds of dml
+drm-intel topic/core-for-CI 3cf6ff1708aeb3154fa0117b430031abfe7f7ff0
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI b275cb3f07a7ab3ef3bd419db86bd42fa95dcedb
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
+drm topic/pci-vgaarb-rework 93d41424caf7569ab50092a922477e2a881232b4
+	PCI/VGA: pass a data pointer to be used in the decode callback (v2)
