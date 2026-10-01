@@ -1,0 +1,44 @@
+drm drm-fixes a9ed3aa9b87ee41e8ab3ff471b1331c154767e45
+	Merge tag 'drm-misc-fixes-2026-09-24' of https://gitlab.freedesktop.org/drm/misc/kernel into drm-fixes
+drm-misc drm-misc-fixes 4d0e2704118511e37790641d591454354e7c0d6c
+	nouveau: check gsp->rm as well as gsp pointer before gcx ready
+drm-rust drm-rust-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-intel drm-intel-fixes c034e8a46e4cb703018fe7e10fe5a3a974d6a7c3
+	drm/i915/vrr: Disable DC balance by default
+drm-xe drm-xe-fixes 72207463f7a4a6818a88f4ef57802b42da534301
+	drm/xe/pf: Keep VF LMEM BAR size low if no VFs enabled
+drm-amdgpu drm-amdgpu-fixes 15814c01ac57643edf1662a076d2961332f277a5
+	drm/amd/display: Bump frame warning limit for all builds of dml
+drm drm-next 1114bcf748db582a4ca7dcf4efb245b7eef224c7
+	Merge tag 'exynos-drm-next-for-v7.4' of git://git.kernel.org/pub/scm/linux/kernel/git/daeinki/drm-exynos into drm-next
+drm-misc drm-misc-next-fixes 271e90eb5f9ff34951647e5ed33c1775eebcca50
+	drm: use drm_warn() in validate_blend_mode_for_alpha_formats()
+drm-rust drm-rust-next-fixes 4c9ba407018e8deb06dbc643112bac8f40404f95
+	gpu: nova-core: falcon: use I/O projection to check transfer bounds
+drm-intel drm-intel-next-fixes 65b92bc671db7c222f8de1146c88e40fe8764d95
+	Merge tag 'drm-xe-next-fixes-2026-08-13' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes 1ff8d3e3165fd077faa4259fd232bdddcd30249f
+	Merge tag 'drm-xe-next-fixes-2026-08-20' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-misc drm-misc-next 1628e34ee666fbd8bf974c52613cf7c8f957986a
+	drm: Rename drm_utils.h to drm_panel_quirks.h
+drm-rust drm-rust-next c9ca2e379463751e267cb2bf1f7cad0b8be1cfe6
+	gpu: nova-core: restore the "Probe Nova Core GPU driver" debug print
+drm-intel drm-intel-next 4e8bc6b5bbe6305e530e2f024cf983506d72f657
+	drm/i915: Use %p for pointer formatting
+drm-intel drm-intel-gt-next ca4a6deadad15b91ee083afe445fa6bdbfb68206
+	drm/i915/gt: Unmask interrupts only when ACTIVE is true
+drm-xe drm-xe-next b425337ececda2bc3f5e7024ae1b265dfcfe2598
+	drm/xe/guc: Rewind the LRC ring head when replaying a ULLS job
+drm-amdgpu drm-amdgpu-next 76b9706e7fa1a6e374703170128b1be2f590cda7
+	drm/amd/display: Bump frame warning limit for all builds of dml
+drm-intel topic/core-for-CI 3cf6ff1708aeb3154fa0117b430031abfe7f7ff0
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI b275cb3f07a7ab3ef3bd419db86bd42fa95dcedb
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
+drm topic/pci-vgaarb-rework 93d41424caf7569ab50092a922477e2a881232b4
+	PCI/VGA: pass a data pointer to be used in the decode callback (v2)
