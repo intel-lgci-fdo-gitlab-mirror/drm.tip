@@ -19,6 +19,7 @@
 #include "abi/guc_klvs_abi.h"
 #include "xe_assert.h"
 #include "xe_bo.h"
+#include "xe_cpu_bind.h"
 #include "xe_devcoredump.h"
 #include "xe_device.h"
 #include "xe_exec_queue.h"
@@ -42,6 +43,7 @@
 #include "xe_mocs.h"
 #include "xe_module.h"
 #include "xe_pm.h"
+#include "xe_pt.h"
 #include "xe_ring_ops_types.h"
 #include "xe_sched_job.h"
 #include "xe_sleep.h"
@@ -1188,9 +1190,15 @@ static void submit_exec_queue(struct xe_exec_queue *q, struct xe_sched_job *job)
 	xe_gt_assert(guc_to_gt(guc), exec_queue_registered(q));
 
 	if (!job->restore_replay || job->last_replay) {
+		/*
+		 * A chained ULLS job relies on its predecessor's postamble to
+		 * publish its ring tail. After a reset the context comes back
+		 * disabled with that postamble gone, so publish it here.
+		 */
 		if (xe_exec_queue_is_parallel(q))
 			wq_item_append(q);
-		else
+		else if (!xe_sched_job_ulls_is_chained(job) ||
+			 !exec_queue_enabled(q))
 			xe_lrc_set_ring_tail(lrc, lrc->ring.tail);
 		job->last_replay = false;
 	}
@@ -1207,6 +1215,9 @@ static void submit_exec_queue(struct xe_exec_queue *q, struct xe_sched_job *job)
 	if (exec_queue_suspended(q))
 		return;
 
+	if (xe_sched_job_ulls_is_chained(job))
+		xe_lrc_set_ulls_semaphore(lrc, xe_sched_job_lrc_seqno(job));
+
 	if (!exec_queue_enabled(q)) {
 		action[len++] = XE_GUC_ACTION_SCHED_CONTEXT_MODE_SET;
 		action[len++] = q->guc->id;
@@ -1220,13 +1231,14 @@ static void submit_exec_queue(struct xe_exec_queue *q, struct xe_sched_job *job)
 		set_exec_queue_pending_enable(q);
 		set_exec_queue_enabled(q);
 		trace_xe_exec_queue_scheduling_enable(q);
-	} else {
+	} else if (!xe_sched_job_ulls_is_chained(job)) {
 		action[len++] = XE_GUC_ACTION_SCHED_CONTEXT;
 		action[len++] = q->guc->id;
 		trace_xe_exec_queue_submit(q);
 	}
 
-	xe_guc_ct_send(&guc->ct, action, len, g2h_len, num_g2h);
+	if (!xe_sched_job_ulls_is_chained(job) || num_g2h)
+		xe_guc_ct_send(&guc->ct, action, len, g2h_len, num_g2h);
 
 	if (extra_submit) {
 		len = 0;
@@ -1238,21 +1250,70 @@ static void submit_exec_queue(struct xe_exec_queue *q, struct xe_sched_job *job)
 	}
 }
 
+static bool is_pt_job(struct xe_sched_job *job)
+{
+	return job->is_pt_job;
+}
+
+static void run_pt_job(struct xe_device *xe, struct xe_sched_job *job,
+		       bool force_clear)
+{
+	struct xe_tile *tile;
+	int id;
+
+	for_each_tile(tile, xe, id) {
+		struct xe_pt_job_ops *pt_job_ops =
+			job->pt_update[0].pt_job_ops[id];
+
+		if (!pt_job_ops || !pt_job_ops->current_op)
+			continue;
+
+		xe_cpu_bind_update_pgtables_execute(job->pt_update[0].vm, tile,
+						    job->pt_update[0].ops,
+						    pt_job_ops->ops,
+						    pt_job_ops->current_op,
+						    force_clear);
+	}
+}
+
+static void put_pt_job(struct xe_device *xe, struct xe_sched_job *job)
+{
+	struct xe_tile *tile;
+	int id;
+
+	for_each_tile(tile, xe, id) {
+		struct xe_pt_job_ops *pt_job_ops =
+			job->pt_update[0].pt_job_ops[id];
+
+		xe_pt_job_ops_put(pt_job_ops);
+	}
+}
+
 static struct dma_fence *
 guc_exec_queue_run_job(struct drm_sched_job *drm_job)
 {
 	struct xe_sched_job *job = to_xe_sched_job(drm_job);
 	struct xe_exec_queue *q = job->q;
 	struct xe_guc *guc = exec_queue_to_guc(q);
-	bool killed_or_banned_or_wedged =
-		exec_queue_killed_or_banned_or_wedged(q);
+	bool killed_or_banned_or_wedged_or_error  =
+		exec_queue_killed_or_banned_or_wedged(q) ||
+		xe_sched_job_is_error(job);
 
 	xe_gt_assert(guc_to_gt(guc), !(exec_queue_destroyed(q) || exec_queue_pending_disable(q)) ||
 		     exec_queue_banned(q) || exec_queue_suspended(q));
 
 	trace_xe_sched_job_run(job);
 
-	if (!killed_or_banned_or_wedged && !xe_sched_job_is_error(job)) {
+	if (is_pt_job(job)) {
+		xe_gt_assert(guc_to_gt(guc), !exec_queue_registered(q));
+
+		run_pt_job(guc_to_xe(guc), job,
+			   killed_or_banned_or_wedged_or_error);
+		put_pt_job(guc_to_xe(guc), job);
+		dma_fence_put(job->fence);	/* Drop ref from xe_sched_job_arm */
+
+		return NULL;
+	} else if (!killed_or_banned_or_wedged_or_error) {
 		if (xe_exec_queue_is_multi_queue_secondary(q)) {
 			struct xe_exec_queue *primary = xe_exec_queue_multi_queue_primary(q);
 
@@ -1874,15 +1935,10 @@ static void __guc_exec_queue_process_msg_set_sched_props(struct xe_sched_msg *ms
 	kfree(msg);
 }
 
-static void __suspend_fence_signal(struct xe_exec_queue *q)
+static void suspend_wait_wake(struct xe_exec_queue *q)
 {
 	struct xe_guc *guc = exec_queue_to_guc(q);
 	struct xe_device *xe = guc_to_xe(guc);
-
-	if (!q->guc->suspend_pending)
-		return;
-
-	WRITE_ONCE(q->guc->suspend_pending, false);
 
 	/*
 	 * We use a GuC shared wait queue for VFs because the VF resfix start
@@ -1894,6 +1950,15 @@ static void __suspend_fence_signal(struct xe_exec_queue *q)
 		wake_up_all(&guc->ct.wq);
 	else
 		wake_up(&q->guc->suspend_wait);
+}
+
+static void __suspend_fence_signal(struct xe_exec_queue *q)
+{
+	if (!q->guc->suspend_pending)
+		return;
+
+	WRITE_ONCE(q->guc->suspend_pending, false);
+	suspend_wait_wake(q);
 }
 
 static void suspend_fence_signal(struct xe_exec_queue *q)
@@ -2049,6 +2114,7 @@ static int guc_exec_queue_init(struct xe_exec_queue *q)
 	struct xe_guc_exec_queue *ge;
 	long timeout;
 	int err, i;
+	int max_jobs = (xe_lrc_ring_size() / MAX_JOB_SIZE_BYTES);
 
 	xe_gt_assert(guc_to_gt(guc), xe_device_uc_enabled(guc_to_xe(guc)));
 
@@ -2088,8 +2154,11 @@ static int guc_exec_queue_init(struct xe_exec_queue *q)
 		submit_wq = primary->guc->sched.base.submit_wq;
 	}
 
+	if (q->vm && q->vm->flags & XE_VM_FLAG_MIGRATION)
+		max_jobs = min(max_jobs, LRC_MIGRATION_ULLS_SEMAPHORE_COUNT - 1);
+
 	err = xe_sched_init(&ge->sched, &drm_sched_ops, &xe_sched_ops,
-			    submit_wq, xe_lrc_ring_size() / MAX_JOB_SIZE_BYTES, 64,
+			    submit_wq, max_jobs, 64,
 			    timeout, guc_to_gt(guc)->ordered_wq, NULL,
 			    ge->name, gt_to_xe(q->gt)->drm.dev);
 	if (err)
@@ -2145,7 +2214,13 @@ static void guc_exec_queue_kill(struct xe_exec_queue *q)
 {
 	trace_xe_exec_queue_kill(q);
 	set_exec_queue_killed(q);
-	__suspend_fence_signal(q);
+	/*
+	 * Do not signal the suspend fence here, the queue may still be running
+	 * on the hardware. Only wake any suspend waiter so it observes the
+	 * killed state instead of waiting out the full timeout, suspend_pending
+	 * stays set until the queue is torn down.
+	 */
+	suspend_wait_wake(q);
 	xe_guc_exec_queue_trigger_cleanup(q);
 }
 
@@ -2334,7 +2409,12 @@ static bool __guc_exec_queue_resume(struct xe_exec_queue *q)
 	bool last;
 
 	xe_sched_msg_lock(sched);
-	xe_gt_assert(guc_to_gt(guc), !ge->suspend_pending);
+	/*
+	 * A killed, banned or wedged queue keeps suspend_pending set until it
+	 * is torn down, so only assert the flag is clear otherwise.
+	 */
+	xe_gt_assert(guc_to_gt(guc), !ge->suspend_pending ||
+		     exec_queue_killed_or_banned_or_wedged(q));
 	xe_gt_assert(guc_to_gt(guc), ge->suspend_count > 0);
 	last = (--ge->suspend_count == 0);
 	if (last) {
@@ -2404,8 +2484,10 @@ static void guc_exec_queue_suspend_timeout_ban(struct xe_exec_queue *q)
 	/*
 	 * The GuC failed to respond to the suspend within the timeout. This is
 	 * not recoverable for this context, so ban it and tear it down via
-	 * cleanup rather than leave it suspended forever. __suspend_fence_signal
-	 * clears suspend_pending and wakes any waiter.
+	 * cleanup rather than leave it suspended forever. The suspend fence is
+	 * not signalled here, the queue may still be running on the hardware,
+	 * so suspend_pending stays set until teardown. The waiter that timed
+	 * out is the caller, so no wake up is needed either.
 	 *
 	 * @q is the primary here; it owns the group's GuC context, so a failure
 	 * to suspend it wedges the whole group. Ban and tear down the entire
@@ -2413,11 +2495,9 @@ static void guc_exec_queue_suspend_timeout_ban(struct xe_exec_queue *q)
 	 */
 	if (xe_exec_queue_is_multi_queue(q)) {
 		set_exec_queue_group_banned(q);
-		__suspend_fence_signal(q);
 		xe_guc_exec_queue_group_trigger_cleanup(q);
 	} else {
 		set_exec_queue_banned(q);
-		__suspend_fence_signal(q);
 		xe_guc_exec_queue_trigger_cleanup(q);
 	}
 }
@@ -2440,9 +2520,9 @@ static int guc_exec_queue_wait_suspend_done(struct xe_exec_queue *q, bool blocki
 	int ret;
 
 	/*
-	 * Likely don't need to check exec_queue_killed() as we clear
-	 * suspend_pending upon kill but to be paranoid but races in which
-	 * suspend_pending is set after kill also check kill here.
+	 * A kill does not clear suspend_pending, the queue may still be running
+	 * on the hardware, so exec_queue_killed() is what ends the wait in that
+	 * case and the queue is torn down asynchronously.
 	 */
 #define WAIT_COND \
 	(!READ_ONCE(q->guc->suspend_pending) ||	exec_queue_killed(q) || \
@@ -2651,10 +2731,12 @@ static void guc_exec_queue_stop(struct xe_guc *guc, struct xe_exec_queue *q)
 		if (exec_queue_destroyed(q))
 			do_destroy = true;
 	}
+	xe_sched_msg_lock(sched);
 	if (q->guc->suspend_pending) {
 		set_exec_queue_suspended(q);
 		suspend_fence_signal(q);
 	}
+	xe_sched_msg_unlock(sched);
 	atomic_and(EXEC_QUEUE_STATE_WEDGED | EXEC_QUEUE_STATE_BANNED |
 		   EXEC_QUEUE_STATE_KILLED | EXEC_QUEUE_STATE_DESTROYED |
 		   EXEC_QUEUE_STATE_SUSPENDED,
@@ -2993,6 +3075,15 @@ static void guc_exec_queue_start(struct xe_exec_queue *q)
 				 * increasing as jobs are written out.
 				 */
 				q->lrc[i]->ring.tail = job->ptrs[i].head;
+				/*
+				 * A ULLS job's slot can have been consumed by
+				 * the CS without the job running, leaving the
+				 * saved head past it. Rewind so the re-emitted
+				 * job is ahead of the head, not behind it.
+				 */
+				if (xe_sched_job_is_ulls(job))
+					xe_lrc_set_ring_head(q->lrc[i],
+							     job->ptrs[i].head);
 				xe_lrc_set_ring_tail(q->lrc[i],
 						     xe_lrc_ring_head(q->lrc[i]));
 			}
@@ -3259,13 +3350,20 @@ static void handle_sched_done(struct xe_guc *guc, struct xe_exec_queue *q,
 		smp_wmb();
 		wake_up_all(&guc->ct.wq);
 	} else {
+		bool was_pending;
+
 		xe_gt_assert(guc_to_gt(guc), runnable_state == 0);
 		xe_gt_assert(guc_to_gt(guc), exec_queue_pending_disable(q));
 
-		if (q->guc->suspend_pending) {
+		xe_sched_msg_lock(&q->guc->sched);
+		was_pending = q->guc->suspend_pending;
+		if (was_pending) {
 			clear_exec_queue_pending_disable(q);
 			suspend_fence_signal(q);
-		} else {
+		}
+		xe_sched_msg_unlock(&q->guc->sched);
+
+		if (!was_pending) {
 			if (exec_queue_banned(q)) {
 				smp_wmb();
 				wake_up_all(&guc->ct.wq);
@@ -3686,6 +3784,7 @@ xe_guc_exec_queue_snapshot_capture(struct xe_exec_queue *q)
 	snapshot->logical_mask = q->logical_mask;
 	snapshot->width = q->width;
 	snapshot->refcount = kref_read(&q->refcount);
+	snapshot->jobcount = atomic_read(&q->job_cnt);
 	snapshot->sched_timeout = sched->base.timeout;
 	snapshot->sched_props.timeslice_us = q->sched_props.timeslice_us;
 	snapshot->sched_props.preempt_timeout_us =
@@ -3758,6 +3857,7 @@ xe_guc_exec_queue_snapshot_print(struct xe_guc_submit_exec_queue_snapshot *snaps
 	drm_printf(p, "\tLogical mask: 0x%x\n", snapshot->logical_mask);
 	drm_printf(p, "\tWidth: %d\n", snapshot->width);
 	drm_printf(p, "\tRef: %d\n", snapshot->refcount);
+	drm_printf(p, "\tJob count: %u\n", snapshot->jobcount);
 	drm_printf(p, "\tTimeout: %ld (ms)\n", snapshot->sched_timeout);
 	drm_printf(p, "\tTimeslice: %u (us)\n",
 		   snapshot->sched_props.timeslice_us);
