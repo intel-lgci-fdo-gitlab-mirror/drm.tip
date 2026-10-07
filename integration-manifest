@@ -1,0 +1,44 @@
+drm drm-fixes 5da1129613f27b5fdf7f3a47235e0fae71fa99ef
+	Merge tag 'drm-misc-fixes-2026-10-01' of https://gitlab.freedesktop.org/drm/misc/kernel into drm-fixes
+drm-misc drm-misc-fixes 71ec70ea26e399eb8371fe9d2d5bf5dab09570fb
+	drm/gud: don't keep a connector without a CRTC as connector_state
+drm-rust drm-rust-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-intel drm-intel-fixes 5346b1cec6afa4f9b4b49a9f84e3cfef95a3f7bb
+	drm/i915/gt: Unmask interrupts only when ACTIVE is true
+drm-xe drm-xe-fixes f0a4447789ef28ba1aded2db19543d69c640b5e5
+	drm/xe/sysctrl: Fix mailbox header handling
+drm-amdgpu drm-amdgpu-fixes a22e5e4f2ebbdbb962cc3233094d189c4dfaa051
+	drm/amdgpu: reset VI ASIC on MacBookPro14,3
+drm drm-next 1b15fa434b4b49cdf276fc0bc88264605661fdf6
+	Merge tag 'drm-misc-next-2026-10-02' of https://gitlab.freedesktop.org/drm/misc/kernel into drm-next
+drm-misc drm-misc-next-fixes 271e90eb5f9ff34951647e5ed33c1775eebcca50
+	drm: use drm_warn() in validate_blend_mode_for_alpha_formats()
+drm-rust drm-rust-next-fixes 4c9ba407018e8deb06dbc643112bac8f40404f95
+	gpu: nova-core: falcon: use I/O projection to check transfer bounds
+drm-intel drm-intel-next-fixes 1b15fa434b4b49cdf276fc0bc88264605661fdf6
+	Merge tag 'drm-misc-next-2026-10-02' of https://gitlab.freedesktop.org/drm/misc/kernel into drm-next
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes 1ff8d3e3165fd077faa4259fd232bdddcd30249f
+	Merge tag 'drm-xe-next-fixes-2026-08-20' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-misc drm-misc-next 5d7b464a4f517d1db533b1b231f42ddcf4e1dff4
+	accel/amdxdna: document trusted mailbox ring geometry and drop the power-of-two check
+drm-rust drm-rust-next c9ca2e379463751e267cb2bf1f7cad0b8be1cfe6
+	gpu: nova-core: restore the "Probe Nova Core GPU driver" debug print
+drm-intel drm-intel-next 2c1bb96681bea17c2ffbd134816961615292a159
+	drm/intel: rename I915_GTT_VIEW_* enumerations to INTEL_GTT_VIEW_*
+drm-intel drm-intel-gt-next ca4a6deadad15b91ee083afe445fa6bdbfb68206
+	drm/i915/gt: Unmask interrupts only when ACTIVE is true
+drm-xe drm-xe-next ea5b438eff857e92cb0eace759f969cb7a436326
+	drm/xe: Keep VRAM fault injection within the usable range
+drm-amdgpu drm-amdgpu-next 41505ac433cc4c5179deee8860d197b04f6d1c1d
+	Revert "drm/amd/display: Attach blend mode property for alpha planes"
+drm-intel topic/core-for-CI 3cf6ff1708aeb3154fa0117b430031abfe7f7ff0
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI b275cb3f07a7ab3ef3bd419db86bd42fa95dcedb
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
+drm topic/pci-vgaarb-rework 93d41424caf7569ab50092a922477e2a881232b4
+	PCI/VGA: pass a data pointer to be used in the decode callback (v2)
