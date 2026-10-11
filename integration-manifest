@@ -1,0 +1,44 @@
+drm drm-fixes c61e23ed14359e6289c08e55940dd3401fe27db0
+	Merge tag 'drm-misc-fixes-2026-10-09' of https://gitlab.freedesktop.org/drm/misc/kernel into drm-fixes
+drm-misc drm-misc-fixes e415915c5258ec7da3d783fba5e9983d03a76d07
+	Revert "drm/virtio: Add pixel blend mode property to cursor plane"
+drm-rust drm-rust-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-intel drm-intel-fixes 5346b1cec6afa4f9b4b49a9f84e3cfef95a3f7bb
+	drm/i915/gt: Unmask interrupts only when ACTIVE is true
+drm-xe drm-xe-fixes 611857adc9e7b0ee1239a0baf38498922ca5a12e
+	drm/xe/i2c: cancel the client work on remove
+drm-amdgpu drm-amdgpu-fixes c7f44ec5c4ec760e74351f1843dcb8322f67cbf6
+	drm/amdgpu: make Mac FB workaround generic
+drm drm-next f2bf20011b95401f63e573d54134544c452c4117
+	Merge tag 'drm-intel-next-2026-10-02' of https://gitlab.freedesktop.org/drm/i915/kernel into drm-next
+drm-misc drm-misc-next-fixes 1b15fa434b4b49cdf276fc0bc88264605661fdf6
+	Merge tag 'drm-misc-next-2026-10-02' of https://gitlab.freedesktop.org/drm/misc/kernel into drm-next
+drm-rust drm-rust-next-fixes d511064b2e732b7152a542d589d07a4814c1b674
+	rust: drm: Remove unused flags argument from Registration::new()
+drm-intel drm-intel-next-fixes 1b15fa434b4b49cdf276fc0bc88264605661fdf6
+	Merge tag 'drm-misc-next-2026-10-02' of https://gitlab.freedesktop.org/drm/misc/kernel into drm-next
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes 1ff8d3e3165fd077faa4259fd232bdddcd30249f
+	Merge tag 'drm-xe-next-fixes-2026-08-20' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-misc drm-misc-next f569473c1393c0a0f2d9061a4c34cb3f7cefc8fe
+	drm/nouveau: prevent NULL deref of gr in GETPARAM_GRAPH_UNITS
+drm-rust drm-rust-next 5a1b7121a6c4db6c0239d3ac3fd1c2bb33a40025
+	gpu: nova-core: firmware: fwsec: use KVVec::zeroed() to zero-pad buffer
+drm-intel drm-intel-next babb118f91befd2cab3b90443adf8efeff93dd2c
+	drm/{i915, xe}: make intel_dmc_suspend() part of display suspend/shutdown calls
+drm-intel drm-intel-gt-next ca4a6deadad15b91ee083afe445fa6bdbfb68206
+	drm/i915/gt: Unmask interrupts only when ACTIVE is true
+drm-xe drm-xe-next 0b3aec1e9b6f71840f579f202c978777629b9e3f
+	drm/xe/sysctrl: Add mailbox control state to error messages
+drm-amdgpu drm-amdgpu-next c54e4d10507722398dc90cf3c532e50b86cf425a
+	drm/amdgpu: make Mac FB workaround generic
+drm-intel topic/core-for-CI 3cf6ff1708aeb3154fa0117b430031abfe7f7ff0
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI b275cb3f07a7ab3ef3bd419db86bd42fa95dcedb
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
+drm topic/pci-vgaarb-rework 93d41424caf7569ab50092a922477e2a881232b4
+	PCI/VGA: pass a data pointer to be used in the decode callback (v2)
