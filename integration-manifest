@@ -1,0 +1,44 @@
+drm drm-fixes f91a4ac69629e1479745e82100863157e6967ec0
+	Merge tag 'amd-drm-fixes-7.3-2026-10-15' of https://gitlab.freedesktop.org/drm/amdgpu/kernel into drm-fixes
+drm-misc drm-misc-fixes 3706caf4da279686b9b95a253eb1d39b1fa12192
+	drm/panic: Accept a trailing newline in panic_screen
+drm-rust drm-rust-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-intel drm-intel-fixes c03c1a14507dfaf8b856c2608f9ac216021fc222
+	Linux 7.3
+drm-xe drm-xe-fixes d2ce8fcd778ee6d92748c92d23a56d4416c29d86
+	drm/xe: Bump LRU for external objects on exec and rebind
+drm-amdgpu drm-amdgpu-fixes 752480ad62964edf0254e151110d3e53a7cb37de
+	drm/amdgpu/sdma3: Work around POLL_REGMEM / FENCE hang
+drm drm-next a56b45995b1e6b9ee671485b1fe68b0c7f754a67
+	Merge tag 'drm-rust-next-2026-10-11' of https://gitlab.freedesktop.org/drm/rust/kernel into drm-next
+drm-misc drm-misc-next-fixes 9a96e169c9267af918d28fb291df948d83112807
+	drm/panthor: Move cache-flush after UPDATE(UNMAPPED)
+drm-rust drm-rust-next-fixes d511064b2e732b7152a542d589d07a4814c1b674
+	rust: drm: Remove unused flags argument from Registration::new()
+drm-intel drm-intel-next-fixes 1b15fa434b4b49cdf276fc0bc88264605661fdf6
+	Merge tag 'drm-misc-next-2026-10-02' of https://gitlab.freedesktop.org/drm/misc/kernel into drm-next
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes 1ff8d3e3165fd077faa4259fd232bdddcd30249f
+	Merge tag 'drm-xe-next-fixes-2026-08-20' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-misc drm-misc-next 2313367894b1f0b9713622c96a36e4098c4bd549
+	accel: ethosu: Fix kernel-doc for ethosu_gem_cmdstream_create()
+drm-rust drm-rust-next 3497a403264b094ebd61b8b755165d56e7d9dc37
+	rust: DmaFence: Remove static lifetime
+drm-intel drm-intel-next a1465b59bf4eaf101d3328634df4a6c445617d15
+	drm/xe: Remove unused uncore wrappers
+drm-intel drm-intel-gt-next ca4a6deadad15b91ee083afe445fa6bdbfb68206
+	drm/i915/gt: Unmask interrupts only when ACTIVE is true
+drm-xe drm-xe-next 11f8678d6a702ab9d6abb2f50c45e82a56974068
+	drm/xe/gsc: Fix NVL-S GSC compatibility number
+drm-amdgpu drm-amdgpu-next f9fcae49dfef21ef69cb38c0e5f118b8648ca4ac
+	drm/amdgpu: return copy errors from AMDGPU_INFO_UQ_FW_AREAS
+drm-intel topic/core-for-CI 3cf6ff1708aeb3154fa0117b430031abfe7f7ff0
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI b275cb3f07a7ab3ef3bd419db86bd42fa95dcedb
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
+drm topic/pci-vgaarb-rework 93d41424caf7569ab50092a922477e2a881232b4
+	PCI/VGA: pass a data pointer to be used in the decode callback (v2)
