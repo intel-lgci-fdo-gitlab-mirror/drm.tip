@@ -456,9 +456,9 @@ static void xe_ttm_tt_account_add(struct xe_device *xe, struct ttm_tt *tt)
 	struct xe_ttm_tt *xe_tt = container_of(tt, struct xe_ttm_tt, ttm);
 
 	if (xe_tt->purgeable)
-		xe_shrinker_mod_pages(xe->mem.shrinker, 0, tt->num_pages);
+		xe_shrinker_mod_pages(xe->mem.shrinker, 0, tt->num_pages, 1);
 	else
-		xe_shrinker_mod_pages(xe->mem.shrinker, tt->num_pages, 0);
+		xe_shrinker_mod_pages(xe->mem.shrinker, tt->num_pages, 0, 1);
 }
 
 static void xe_ttm_tt_account_subtract(struct xe_device *xe, struct ttm_tt *tt)
@@ -466,9 +466,103 @@ static void xe_ttm_tt_account_subtract(struct xe_device *xe, struct ttm_tt *tt)
 	struct xe_ttm_tt *xe_tt = container_of(tt, struct xe_ttm_tt, ttm);
 
 	if (xe_tt->purgeable)
-		xe_shrinker_mod_pages(xe->mem.shrinker, 0, -(long)tt->num_pages);
+		xe_shrinker_mod_pages(xe->mem.shrinker, 0, -(long)tt->num_pages, -1);
 	else
-		xe_shrinker_mod_pages(xe->mem.shrinker, -(long)tt->num_pages, 0);
+		xe_shrinker_mod_pages(xe->mem.shrinker, -(long)tt->num_pages, 0, -1);
+}
+
+static bool xe_ttm_bo_is_imported(struct ttm_buffer_object *tbo)
+{
+	dma_resv_assert_held(tbo->base.resv);
+
+	return tbo->ttm &&
+		(tbo->ttm->page_flags & (TTM_TT_FLAG_EXTERNAL | TTM_TT_FLAG_EXTERNAL_MAPPABLE)) ==
+		TTM_TT_FLAG_EXTERNAL;
+}
+
+/*
+ * Account @bo's pages as pinned for the shrinker. Removes @bo's pages
+ * from the shrinker's shrinkable / purgeable counts on the transition
+ * from unpinned to pinned. Must be called with @bo's dma-resv held,
+ * after &ttm_buffer_object.pin_count has been incremented by
+ * ttm_bo_pin(). Safe to call unconditionally regardless of which pin
+ * path (kernel, external, framebuffer, backup object, ...) is pinning
+ * @bo, since it only acts on the true 0->1 pin_count transition.
+ *
+ * Imported bos (xe_ttm_bo_is_imported()) are excluded: for those,
+ * xe_ttm_tt_populate() never actually populates the tt or calls
+ * xe_ttm_tt_account_add(), but TTM core's ttm_tt_populate() still
+ * unconditionally marks the tt as populated on driver-hook success.
+ * Relying on ttm_tt_is_populated() for these would subtract pages that
+ * were never added, underflowing the shrinker's counts.
+ */
+static void xe_bo_account_pin(struct xe_bo *bo)
+{
+	struct xe_device *xe = xe_bo_device(bo);
+
+	if (bo->ttm.pin_count == 1 && bo->ttm.ttm && ttm_tt_is_populated(bo->ttm.ttm) &&
+	    !xe_ttm_bo_is_imported(&bo->ttm))
+		xe_ttm_tt_account_subtract(xe, bo->ttm.ttm);
+}
+
+/*
+ * Counterpart to xe_bo_account_pin(). Must be called with @bo's dma-resv
+ * held, before &ttm_buffer_object.pin_count is decremented by
+ * ttm_bo_unpin(), so that the check against the true 1->0 transition sees
+ * the pin count that is about to be released. See xe_bo_account_pin() for
+ * why imported bos are excluded.
+ *
+ * On the true last unpin, also removes @bo from whichever pinned-bo list
+ * (external or kernel_bo_present) it may currently be linked on, since a
+ * bo's final unpin can happen through a pin path (e.g. framebuffer,
+ * backup object) that has no notion of, or ownership over, that list.
+ * This is safe and list-agnostic: list_del_init() only needs the node
+ * itself, not knowledge of which list it is threaded through, and is a
+ * no-op if @bo is not linked.
+ */
+static void xe_bo_account_unpin(struct xe_bo *bo)
+{
+	struct xe_device *xe = xe_bo_device(bo);
+	bool last_unpin = bo->ttm.pin_count == 1;
+
+	if (last_unpin && !list_empty(&bo->pinned_link)) {
+		spin_lock(&xe->pinned.lock);
+		list_del_init(&bo->pinned_link);
+		spin_unlock(&xe->pinned.lock);
+	}
+
+	if (last_unpin && bo->ttm.ttm && ttm_tt_is_populated(bo->ttm.ttm) &&
+	    !xe_ttm_bo_is_imported(&bo->ttm))
+		xe_ttm_tt_account_add(xe, bo->ttm.ttm);
+}
+
+/**
+ * xe_bo_pin_account() - Pin a bo and account its pages for the shrinker
+ * @bo: The buffer object to pin.
+ *
+ * Pins @bo via ttm_bo_pin() and updates the shrinker's shrinkable /
+ * purgeable page accounting to match. Must be called with @bo's dma-resv
+ * held. Safe to call regardless of which pin path (kernel, external,
+ * framebuffer, backup object, ...) is pinning @bo.
+ */
+void xe_bo_pin_account(struct xe_bo *bo)
+{
+	ttm_bo_pin(&bo->ttm);
+	xe_bo_account_pin(bo);
+}
+
+/**
+ * xe_bo_unpin_account() - Unpin a bo and account its pages for the shrinker
+ * @bo: The buffer object to unpin.
+ *
+ * Counterpart to xe_bo_pin_account(). Updates the shrinker's shrinkable /
+ * purgeable page accounting to match, then unpins @bo via ttm_bo_unpin().
+ * Must be called with @bo's dma-resv held.
+ */
+void xe_bo_unpin_account(struct xe_bo *bo)
+{
+	xe_bo_account_unpin(bo);
+	ttm_bo_unpin(&bo->ttm);
 }
 
 static bool xe_ttm_bo_is_imported(struct ttm_buffer_object *tbo)
@@ -984,11 +1078,11 @@ static void xe_bo_set_purgeable_shrinker(struct xe_bo *bo,
 	if (!xe_tt->purgeable && new_state == XE_MADV_PURGEABLE_DONTNEED) {
 		xe_tt->purgeable = true;
 		/* Transfer pages from shrinkable to purgeable count */
-		xe_shrinker_mod_pages(xe->mem.shrinker, -tt_pages, tt_pages);
+		xe_shrinker_mod_pages(xe->mem.shrinker, -tt_pages, tt_pages, 0);
 	} else if (xe_tt->purgeable && new_state == XE_MADV_PURGEABLE_WILLNEED) {
 		xe_tt->purgeable = false;
 		/* Transfer pages from purgeable to shrinkable count */
-		xe_shrinker_mod_pages(xe->mem.shrinker, tt_pages, -tt_pages);
+		xe_shrinker_mod_pages(xe->mem.shrinker, tt_pages, -tt_pages, 0);
 	}
 }
 
