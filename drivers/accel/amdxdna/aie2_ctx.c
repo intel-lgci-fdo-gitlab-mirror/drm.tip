@@ -1161,19 +1161,24 @@ again:
 		return -EFAULT;
 	}
 
+	mutex_lock(&mapp->lock);
 	ret = hmm_range_fault_unlocked_timeout(&mapp->range, timeout);
-	if (ret)
+	if (ret) {
+		mutex_unlock(&mapp->lock);
 		goto put_mm;
+	}
 
 	down_write(&xdna->notifier_lock);
 	if (mmu_interval_read_retry(&mapp->notifier, mapp->range.notifier_seq)) {
 		up_write(&xdna->notifier_lock);
+		mutex_unlock(&mapp->lock);
 		amdxdna_umap_put(mapp);
 		mmput(mm);
 		goto again;
 	}
 	mapp->invalid = false;
 	up_write(&xdna->notifier_lock);
+	mutex_unlock(&mapp->lock);
 	amdxdna_umap_put(mapp);
 	mmput(mm);
 	goto again;
@@ -1286,16 +1291,12 @@ up_sem:
 void aie2_hmm_invalidate(struct amdxdna_gem_obj *abo,
 			 unsigned long cur_seq)
 {
-	struct amdxdna_dev *xdna = to_xdna_dev(to_gobj(abo)->dev);
-	struct drm_gem_object *gobj = to_gobj(abo);
-	long ret;
-
-	ret = dma_resv_wait_timeout(gobj->resv, DMA_RESV_USAGE_BOOKKEEP,
-				    true, MAX_SCHEDULE_TIMEOUT);
-	if (!ret)
-		XDNA_ERR(xdna, "Failed to wait for bo, ret %ld", ret);
-	else if (ret == -ERESTARTSYS)
-		XDNA_DBG(xdna, "Wait for bo interrupted by signal");
+	/*
+	 * The pages must not be released while the device may still access
+	 * them, so this wait must be neither interruptible nor time limited.
+	 */
+	dma_resv_wait_timeout(to_gobj(abo)->resv, DMA_RESV_USAGE_BOOKKEEP,
+			      false, MAX_SCHEDULE_TIMEOUT);
 }
 
 int aie2_hwctx_heap_expand(struct amdxdna_hwctx *hwctx,
