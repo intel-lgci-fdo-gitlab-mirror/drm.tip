@@ -6,6 +6,7 @@
 #include <linux/hwmon-sysfs.h>
 #include <linux/hwmon.h>
 #include <linux/jiffies.h>
+#include <linux/overflow.h>
 #include <linux/types.h>
 #include <linux/units.h>
 
@@ -1322,8 +1323,8 @@ static int xe_hwmon_temperature_decode(u32 reg_val, long *temperature)
 		value = 0;
 	}
 
-	/* Ensure the magnitude fits in long, which is 32-bit on some arches. */
-	if (value > LONG_MAX)
+	/* Ensure the decoded value fits in a long. */
+	if (overflows_type(value, *temperature))
 		return -ERANGE;
 
 	if (reg_val & IEEE754_SIGN)
