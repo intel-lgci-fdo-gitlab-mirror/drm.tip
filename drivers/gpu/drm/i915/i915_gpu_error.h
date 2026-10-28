@@ -225,7 +225,7 @@ struct i915_gpu_error {
 	atomic_t reset_count;
 
 	/** Number of times an engine has been reset */
-	atomic_t reset_engine_count[MAX_ENGINE_CLASS];
+	atomic_t reset_engine_count[MAX_ENGINE_CLASS + 1];
 };
 
 struct drm_i915_error_state_buf {
