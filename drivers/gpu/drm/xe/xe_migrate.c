@@ -2611,6 +2611,7 @@ int xe_migrate_access_memory(struct xe_migrate *m, struct xe_bo *bo,
 		struct dma_fence *__fence;
 		u64 vram_addr = vram_region_gpu_offset(bo->ttm.resource) +
 			cursor.start;
+		unsigned long sram_offset = (unsigned long)buf & ~PAGE_MASK;
 		int current_bytes;
 
 		if (cursor.size > MAX_PREEMPTDISABLE_TRANSFER)
@@ -2618,6 +2619,9 @@ int xe_migrate_access_memory(struct xe_migrate *m, struct xe_bo *bo,
 					      MAX_PREEMPTDISABLE_TRANSFER);
 		else
 			current_bytes = min_t(int, bytes_left, cursor.size);
+
+		current_bytes = min_t(int, current_bytes,
+				      MAX_PREEMPTDISABLE_TRANSFER - sram_offset);
 
 		{
 			/*
@@ -2676,8 +2680,7 @@ int xe_migrate_access_memory(struct xe_migrate *m, struct xe_bo *bo,
 			}
 		}
 
-		__fence = xe_migrate_vram(m, current_bytes,
-					  (unsigned long)buf & ~PAGE_MASK,
+		__fence = xe_migrate_vram(m, current_bytes, sram_offset,
 					  &pagemap_addr[current_page],
 					  vram_addr, NULL, write ?
 					  XE_MIGRATE_COPY_TO_VRAM :
