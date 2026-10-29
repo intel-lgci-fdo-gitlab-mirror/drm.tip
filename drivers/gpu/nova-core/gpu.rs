@@ -53,6 +53,7 @@ use crate::{
         GpuMm,
         VramAddress, //
     },
+    timer::Timer,
     vgpu::VgpuManager, //
 };
 
@@ -331,6 +332,8 @@ struct GspResources<'gpu> {
     // TODO: use different resource types for each boot method, and make the relevant Gsp methods
     // generic against them.
     fsp: Option<Fsp<'gpu>>,
+    /// Timer instance - contains offset
+    timer: Timer,
     /// vGPU state detected before GSP boot.
     vgpu: VgpuManager,
     /// GSP runtime data.
@@ -496,6 +499,8 @@ impl<'gpu> Gpu<'gpu> {
                 sec2_falcon: Falcon::new(dev, spec.chipset, bar)?,
 
                 fsp: Fsp::try_new(dev, bar, spec.chipset)?,
+
+                timer: Timer::new(bar, spec.chipset)?,
 
                 vgpu: VgpuManager::new(pdev, spec.chipset, fsp.as_mut()),
 
