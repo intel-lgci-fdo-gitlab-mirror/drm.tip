@@ -776,6 +776,7 @@ static void xe_validate_ccs_kunit(struct kunit *test)
 #define ACCESS_MEM_BO_SIZE		SZ_512K
 #define ACCESS_MEM_NUM_CELLS		(ACCESS_MEM_BO_SIZE / sizeof(u32))
 #define ACCESS_MEM_UNALIGNED_OFFSET	0x215ee
+#define ACCESS_MEM_BOUNCE_LEN		SZ_16K
 
 /*
  * Verify byte-by-byte that data read from the BO matches expected cell pattern.
@@ -848,12 +849,22 @@ static bool verify_access_memory_read(struct kunit *test, u8 *buf,
 	return true;
 }
 
+/* Bounce buffering without MEM_COPY is slow, keep those accesses short */
+static u32 access_memory_test_len(struct xe_migrate *m, u32 len)
+{
+	if (!tile_to_xe(m->tile)->info.has_mem_copy_instr)
+		return min(len, ACCESS_MEM_BOUNCE_LEN);
+
+	return len;
+}
+
 static void access_memory_test_unaligned_bo_offset(struct kunit *test,
 						   struct xe_migrate *m,
 						   struct xe_bo *bo, u8 *buf,
 						   u32 unaligned_offset)
 {
-	u32 partial_size = ACCESS_MEM_BO_SIZE - unaligned_offset;
+	u32 partial_size = access_memory_test_len(m, ACCESS_MEM_BO_SIZE -
+						     unaligned_offset);
 	int ret;
 
 	memset(buf, 0, ACCESS_MEM_BO_SIZE);
@@ -880,7 +891,8 @@ static void access_memory_test_unaligned_dst(struct kunit *test,
 					     struct xe_bo *bo, u8 *buf,
 					     u32 unaligned_offset)
 {
-	u32 partial_size = ACCESS_MEM_BO_SIZE - unaligned_offset;
+	u32 partial_size = access_memory_test_len(m, ACCESS_MEM_BO_SIZE -
+						     unaligned_offset);
 	int ret;
 
 	memset(buf, 0, ACCESS_MEM_BO_SIZE);
@@ -908,7 +920,8 @@ static void access_memory_test_unaligned_dst_aligned_size(struct kunit *test,
 							  u8 *buf,
 							  u32 unaligned_offset)
 {
-	u32 partial_size = round_down(ACCESS_MEM_BO_SIZE - unaligned_offset, 4);
+	u32 partial_size = round_down(access_memory_test_len(m, ACCESS_MEM_BO_SIZE -
+								unaligned_offset), 4);
 	int ret;
 
 	memset(buf, 0, ACCESS_MEM_BO_SIZE);
