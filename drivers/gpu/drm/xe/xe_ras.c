@@ -346,9 +346,9 @@ static int handle_page_offline(struct xe_device *xe, u64 page_address, bool noti
 	switch (ret) {
 	case 0:
 		action = XE_RAS_PAGE_ACTION_REMOVE;
-		xe_log_err(xe, DEVICE_MEMORY, ret,
-			   "Poison detected at physical address 0x%llx, page soft-offlined\n",
-			   page_address);
+		xe_log_info(xe, DEVICE_MEMORY,
+			    "Poison detected at physical address 0x%llx, page soft-offlined\n",
+			    page_address);
 		break;
 	case -EIO:
 		xe_log_err(xe, DEVICE_MEMORY, ret,
