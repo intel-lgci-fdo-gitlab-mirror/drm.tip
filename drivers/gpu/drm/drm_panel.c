@@ -104,8 +104,20 @@ static int panel_bridge_attach(struct drm_bridge *bridge,
 	drm_connector_attach_encoder(connector, encoder);
 
 	if (bridge->dev->registered) {
-		if (connector->funcs->reset)
+		if (connector->funcs->atomic_create_state) {
+			struct drm_connector_state *conn_state;
+
+			conn_state = connector->funcs->atomic_create_state(connector);
+			if (IS_ERR(conn_state)) {
+				drm_connector_cleanup(connector);
+				return PTR_ERR(conn_state);
+			}
+
+			connector->state = conn_state;
+		} else if (connector->funcs->reset) {
 			connector->funcs->reset(connector);
+		}
+
 		drm_connector_register(connector);
 	}
 
