@@ -40,6 +40,7 @@
 #include "intel_fb.h"
 #include "intel_fbc.h"
 #include "intel_fbdev.h"
+#include "intel_gmbus.h"
 #include "intel_hdcp.h"
 #include "intel_hdmi.h"
 #include "intel_hotplug.h"
@@ -96,7 +97,7 @@ static int i915_sr_status(struct seq_file *m, void *unused)
 
 	if (DISPLAY_VER(display) >= 9)
 		/* no global SR status; inspect per-plane WM */;
-	else if (HAS_PCH_SPLIT(display))
+	else if (!HAS_GMCH(display))
 		sr_enabled = intel_de_read(display, WM1_LP_ILK) & WM_LP_ENABLE;
 	else if (display->platform.i965gm || display->platform.g4x ||
 		 display->platform.i945g || display->platform.i945gm)
@@ -1327,6 +1328,7 @@ void intel_connector_debugfs_add(struct intel_connector *connector)
 	if (!root)
 		return;
 
+	intel_gmbus_connector_debugfs_add(connector);
 	intel_drrs_connector_debugfs_add(connector);
 	intel_hdcp_connector_debugfs_add(connector);
 	intel_pps_connector_debugfs_add(connector);
@@ -1352,9 +1354,8 @@ void intel_connector_debugfs_add(struct intel_connector *connector)
 				    connector, &i915_dsc_fractional_bpp_fops);
 	}
 
-	if ((connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
-	     connector_type == DRM_MODE_CONNECTOR_eDP) &&
-	    intel_dp_has_joiner(intel_attached_dp(connector))) {
+	if (connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
+	    connector_type == DRM_MODE_CONNECTOR_eDP) {
 		debugfs_create_file("i915_joiner_force_enable", 0644, root,
 				    connector, &i915_joiner_fops);
 	}
