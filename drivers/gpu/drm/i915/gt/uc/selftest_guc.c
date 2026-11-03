@@ -333,6 +333,7 @@ static int intel_guc_fast_request(void *arg)
 	ret = igt_spinner_init(&spin, engine->gt);
 	if (ret) {
 		gt_err(gt, "Failed to create spinner: %pe\n", ERR_PTR(ret));
+		intel_context_put(ce);
 		goto err_pm;
 	}
 	spinning = true;

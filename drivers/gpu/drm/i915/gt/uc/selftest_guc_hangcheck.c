@@ -65,12 +65,14 @@ static int intel_hang_guc(void *arg)
 	ret = intel_engine_set_heartbeat(engine, BEAT_INTERVAL);
 	if (ret) {
 		gt_err(gt, "Failed to boost heartbeat interval: %pe\n", ERR_PTR(ret));
+		intel_context_put(ce);
 		goto err;
 	}
 
 	ret = igt_spinner_init(&spin, engine->gt);
 	if (ret) {
 		gt_err(gt, "Failed to create spinner: %pe\n", ERR_PTR(ret));
+		intel_context_put(ce);
 		goto err;
 	}
 
