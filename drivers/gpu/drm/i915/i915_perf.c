@@ -1541,6 +1541,7 @@ static int oa_get_render_ctx_id(struct i915_perf_stream *stream)
 		ret = set_oa_ctx_ctrl_offset(ce);
 		if (ret) {
 			intel_context_unpin(ce);
+			stream->pinned_ctx = NULL;
 			drm_err(&stream->perf->i915->drm,
 				"Enabling perf query failed for %s\n",
 				stream->engine->name);
@@ -1594,6 +1595,12 @@ static int oa_get_render_ctx_id(struct i915_perf_stream *stream)
 
 	default:
 		MISSING_CASE(GRAPHICS_VER(ce->engine->i915));
+	}
+
+	if (ret) {
+		intel_context_unpin(ce);
+		stream->pinned_ctx = NULL;
+		return ret;
 	}
 
 	ce->tag = stream->specific_ctx_id;
