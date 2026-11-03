@@ -234,12 +234,15 @@ nv50_backlight_init(struct nouveau_backlight *bl,
 		    const struct backlight_ops **ops)
 {
 	struct nouveau_drm *drm = nouveau_drm(nv_encoder->base.base.dev);
+	int brightness;
+
+	brightness = nvif_outp_bl_get(&nv_encoder->outp);
 
 	/*
 	 * Note when this runs the connectors have not been probed yet,
 	 * so nv_conn->base.status is not set yet.
 	 */
-	if (nvif_outp_bl_get(&nv_encoder->outp) < 0 ||
+	if (brightness < 0 ||
 	    drm_helper_probe_detect(&nv_conn->base, NULL, false) != connector_status_connected)
 		return -ENODEV;
 
@@ -284,11 +287,25 @@ nv50_backlight_init(struct nouveau_backlight *bl,
 
 	*ops = &nv50_bl_ops;
 	props->max_brightness = 100;
+	props->brightness = brightness;
 	return 0;
 }
 
-int
-nouveau_backlight_init(struct drm_connector *connector)
+/*
+ * LUMINANCE is an atomic connector property. Pre-NV50 hardware and
+ * nouveau.atomic=0 don't expose atomic modesetting to userspace (even though
+ * NV50+ still commits atomically internally), so keep the backlight class
+ * device there.
+ */
+static bool
+nouveau_backlight_use_luminance(struct drm_device *dev)
+{
+	return IS_ENABLED(CONFIG_DRM_LUMINANCE) &&
+	       drm_core_check_feature(dev, DRIVER_ATOMIC);
+}
+
+static int
+nouveau_backlight_create(struct drm_connector *connector)
 {
 	struct nouveau_drm *drm = nouveau_drm(connector->dev);
 	struct nouveau_backlight *bl;
@@ -317,6 +334,8 @@ nouveau_backlight_init(struct drm_connector *connector)
 	bl = kzalloc_obj(*bl);
 	if (!bl)
 		return -ENOMEM;
+	bl->id = -1;
+	bl->encoder = nv_encoder;
 
 	switch (device->info.family) {
 	case NV_DEVICE_INFO_V0_CURIE:
@@ -349,26 +368,36 @@ nouveau_backlight_init(struct drm_connector *connector)
 		goto fail_alloc;
 	}
 
-	if (!nouveau_get_backlight_name(backlight_name, bl)) {
-		NV_ERROR(drm, "Failed to retrieve a unique name for the backlight interface\n");
-		goto fail_alloc;
-	}
-
 	props.type = BACKLIGHT_RAW;
-	bl->dev = backlight_device_register(backlight_name, connector->kdev,
-					    nv_encoder, ops, &props);
-	if (IS_ERR(bl->dev)) {
-		if (bl->id >= 0)
-			ida_free(&bl_ida, bl->id);
-		ret = PTR_ERR(bl->dev);
-		goto fail_alloc;
+	if (nouveau_backlight_use_luminance(connector->dev)) {
+		ret = drm_connector_attach_luminance_property(connector, 0, props.max_brightness,
+							      props.brightness);
+		if (ret)
+			goto fail_alloc;
+	} else {
+		if (!nouveau_get_backlight_name(backlight_name, bl)) {
+			NV_ERROR(drm,
+				 "Failed to retrieve a unique name for the backlight interface\n");
+			goto fail_alloc;
+		}
+
+		bl->dev = backlight_device_register(backlight_name, connector->kdev,
+						    nv_encoder, ops, &props);
+		if (IS_ERR(bl->dev)) {
+			if (bl->id >= 0)
+				ida_free(&bl_ida, bl->id);
+			ret = PTR_ERR(bl->dev);
+			goto fail_alloc;
+		}
 	}
 
 	nouveau_connector(connector)->backlight = bl;
-	if (!bl->dev->props.brightness)
-		bl->dev->props.brightness =
-			bl->dev->ops->get_brightness(bl->dev);
-	backlight_update_status(bl->dev);
+	if (bl->dev) {
+		if (!bl->dev->props.brightness)
+			bl->dev->props.brightness =
+				bl->dev->ops->get_brightness(bl->dev);
+		backlight_update_status(bl->dev);
+	}
 
 	return 0;
 
@@ -384,8 +413,40 @@ fail_alloc:
 	return ret;
 }
 
-void
-nouveau_backlight_fini(struct drm_connector *connector)
+/* Called from .late_register, the backlight class device needs connector->kdev */
+int
+nouveau_backlight_init(struct drm_connector *connector)
+{
+	if (nouveau_backlight_use_luminance(connector->dev))
+		return 0;
+
+	return nouveau_backlight_create(connector);
+}
+
+/* Called before drm_dev_register(), the LUMINANCE property must exist by then */
+int
+nouveau_backlight_luminance_init(struct drm_device *dev)
+{
+	struct drm_connector_list_iter conn_iter;
+	struct drm_connector *connector;
+	int ret = 0;
+
+	if (!nouveau_backlight_use_luminance(dev))
+		return 0;
+
+	drm_connector_list_iter_begin(dev, &conn_iter);
+	nouveau_for_each_non_mst_connector_iter(connector, &conn_iter) {
+		ret = nouveau_backlight_create(connector);
+		if (ret)
+			break;
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	return ret;
+}
+
+static void
+nouveau_backlight_free(struct drm_connector *connector)
 {
 	struct nouveau_connector *nv_conn = nouveau_connector(connector);
 	struct nouveau_backlight *bl = nv_conn->backlight;
@@ -401,6 +462,23 @@ nouveau_backlight_fini(struct drm_connector *connector)
 	kfree(bl);
 }
 
+/* Called from .early_unregister */
+void
+nouveau_backlight_fini(struct drm_connector *connector)
+{
+	/* LUMINANCE state is needed by commits until the connector is destroyed */
+	if (nouveau_backlight_use_luminance(connector->dev))
+		return;
+
+	nouveau_backlight_free(connector);
+}
+
+void
+nouveau_backlight_destroy(struct drm_connector *connector)
+{
+	nouveau_backlight_free(connector);
+}
+
 void
 nouveau_backlight_ctor(void)
 {
@@ -411,4 +489,36 @@ void
 nouveau_backlight_dtor(void)
 {
 	ida_destroy(&bl_ida);
+}
+
+void
+nouveau_backlight_set_luminance(const struct drm_connector_state *conn_state)
+{
+	struct nouveau_connector *nv_connector = nouveau_connector(conn_state->connector);
+	struct nouveau_backlight *bl = nv_connector->backlight;
+	unsigned int luminance = conn_state->luminance;
+
+	if (!bl)
+		return;
+
+	if (bl->uses_dpcd)
+		drm_edp_backlight_set_level(&nv_connector->aux, &bl->edp_info,
+					    luminance);
+	else
+		nvif_outp_bl_set(&bl->encoder->outp, luminance);
+}
+
+void
+nouveau_backlight_disable_luminance(const struct drm_connector_state *conn_state)
+{
+	struct nouveau_connector *nv_connector = nouveau_connector(conn_state->connector);
+	struct nouveau_backlight *bl = nv_connector->backlight;
+
+	if (!bl)
+		return;
+
+	if (bl->uses_dpcd)
+		drm_edp_backlight_disable(&nv_connector->aux, &bl->edp_info);
+	else
+		nvif_outp_bl_set(&bl->encoder->outp, 0);
 }

@@ -1755,6 +1755,7 @@ nv50_sor_atomic_enable(struct drm_encoder *encoder, struct drm_atomic_commit *st
 	struct nouveau_connector *nv_connector;
 #ifdef CONFIG_DRM_NOUVEAU_BACKLIGHT
 	struct nouveau_backlight *backlight;
+	u16 level;
 #endif
 	struct nvbios *bios = &drm->vbios;
 	bool lvds_dual = false, lvds_8bpc = false, hda = false;
@@ -1836,9 +1837,14 @@ nv50_sor_atomic_enable(struct drm_encoder *encoder, struct drm_atomic_commit *st
 
 #ifdef CONFIG_DRM_NOUVEAU_BACKLIGHT
 		backlight = nv_connector->backlight;
-		if (backlight && backlight->uses_dpcd)
+		if (backlight && backlight->uses_dpcd) {
+			if (backlight->dev)
+				level = backlight->dev->props.brightness;
+			else
+				level = nv_connector->base.state->luminance;
 			drm_edp_backlight_enable(&nv_connector->aux, &backlight->edp_info,
-						 backlight->dev->props.brightness);
+						 level);
+		}
 #endif
 
 		break;
@@ -2188,6 +2194,7 @@ nv50_disp_atomic_commit_tail(struct drm_atomic_commit *state)
 	drm_dp_mst_atomic_wait_for_dependencies(state);
 	drm_atomic_helper_update_legacy_modeset_state(dev, state);
 	drm_atomic_helper_calc_timestamping_constants(state);
+	drm_atomic_helper_commit_luminance_disables(state);
 
 	if (atom->lock_core)
 		mutex_lock(&disp->mutex);
@@ -2369,6 +2376,8 @@ nv50_disp_atomic_commit_tail(struct drm_atomic_commit *state)
 
 	if (atom->lock_core)
 		mutex_unlock(&disp->mutex);
+
+	drm_atomic_helper_commit_luminance_enables(state);
 
 	list_for_each_entry_safe(outp, outt, &atom->outp, head) {
 		list_del(&outp->head);
