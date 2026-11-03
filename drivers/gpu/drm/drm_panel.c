@@ -64,9 +64,18 @@ static int panel_bridge_connector_get_modes(struct drm_connector *connector)
 	return drm_panel_get_modes(panel, connector);
 }
 
+static void
+panel_bridge_connector_set_luminance(const struct drm_connector_state *conn_state)
+{
+	struct drm_panel *panel = drm_connector_to_panel(conn_state->connector);
+
+	drm_panel_set_luminance(panel, conn_state->luminance);
+}
+
 static const struct drm_connector_helper_funcs
 panel_bridge_connector_helper_funcs = {
 	.get_modes = panel_bridge_connector_get_modes,
+	.set_luminance = panel_bridge_connector_set_luminance,
 };
 
 static const struct drm_connector_funcs panel_bridge_connector_funcs = {
@@ -100,6 +109,12 @@ static int panel_bridge_attach(struct drm_bridge *bridge,
 	}
 
 	drm_panel_bridge_set_orientation(connector, bridge);
+
+	ret = drm_panel_attach_luminance_property(panel, connector);
+	if (ret) {
+		drm_connector_cleanup(connector);
+		return ret;
+	}
 
 	drm_connector_attach_encoder(connector, encoder);
 
@@ -168,6 +183,19 @@ static void panel_bridge_atomic_enable(struct drm_bridge *bridge,
 	old_crtc_state = drm_atomic_get_old_crtc_state(atomic_state, crtc);
 	if (old_crtc_state && old_crtc_state->self_refresh_active)
 		return;
+
+	/*
+	 * Program the committed luminance before drm_panel_enable() turns the
+	 * backlight on, so the panel does not light up at a stale level.
+	 */
+	if (panel->connector.luminance_property) {
+		const struct drm_connector_state *conn_state =
+			drm_atomic_get_new_connector_state(atomic_state,
+							   &panel->connector);
+
+		if (conn_state)
+			drm_panel_set_luminance(panel, conn_state->luminance);
+	}
 
 	drm_panel_enable(panel);
 }
@@ -872,6 +900,71 @@ exit:
 	mutex_unlock(&panel->follower_lock);
 }
 EXPORT_SYMBOL(drm_panel_disable);
+
+/**
+ * drm_panel_attach_luminance_property - expose a panel backlight through DRM
+ * @panel: panel whose backlight is controlled
+ * @connector: connector on which to expose the property
+ *
+ * The backlight class device remains the internal hardware backend. When the
+ * luminance UAPI is enabled, userspace controls that backend through the DRM
+ * connector property instead.
+ *
+ * Return: 0 on success or a negative error code
+ */
+int drm_panel_attach_luminance_property(struct drm_panel *panel,
+					struct drm_connector *connector)
+{
+	struct backlight_device *backlight;
+
+	if (!IS_ENABLED(CONFIG_DRM_LUMINANCE) || !panel)
+		return 0;
+
+	backlight = panel->backlight;
+	if (!backlight)
+		return 0;
+
+	/* Properties can't be created once the device is visible to userspace */
+	if (connector->dev->registered) {
+		drm_dbg_kms(connector->dev,
+			    "[CONNECTOR:%d:%s] registered, not exposing luminance\n",
+			    connector->base.id, connector->name);
+		return 0;
+	}
+
+	return drm_connector_attach_luminance_property(connector, 0,
+					backlight->props.max_brightness,
+					backlight->props.brightness);
+}
+EXPORT_SYMBOL(drm_panel_attach_luminance_property);
+
+/**
+ * drm_panel_set_luminance - set a panel backlight's relative luminance
+ * @panel: panel whose backlight is controlled
+ * @luminance: relative luminance level
+ *
+ * Updates the backlight brightness without changing its power state, under
+ * the same lock as brightness changes made through sysfs. Turning
+ * the backlight on and off is left to drm_panel_enable() and
+ * drm_panel_disable(), so a level set while the panel is disabled is applied
+ * when the panel is enabled again.
+ */
+void drm_panel_set_luminance(struct drm_panel *panel, unsigned int luminance)
+{
+	struct backlight_device *backlight;
+
+	if (!panel || !panel->backlight)
+		return;
+
+	backlight = panel->backlight;
+	guard(mutex)(&backlight->ops_lock);
+	if (!backlight->ops || luminance > backlight->props.max_brightness)
+		return;
+
+	backlight->props.brightness = luminance;
+	backlight_update_status(backlight);
+}
+EXPORT_SYMBOL(drm_panel_set_luminance);
 
 /**
  * drm_panel_get_modes - probe the available display modes of a panel
