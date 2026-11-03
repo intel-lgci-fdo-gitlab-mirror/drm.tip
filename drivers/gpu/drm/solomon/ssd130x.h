@@ -100,6 +100,8 @@ struct ssd130x_device {
 	u32 prechargep2;
 
 	struct backlight_device *bl_dev;
+	/* Controller is powered and initialized, set from atomic commits */
+	bool enabled;
 	struct pwm_device *pwm;
 	struct gpio_desc *reset;
 	struct regulator *vcc_reg;
