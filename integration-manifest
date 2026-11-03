@@ -1,0 +1,44 @@
+drm drm-fixes 6628e7d4c6b25c8d18f1345e3a20d21829aae7e4
+	Linux 7.4-rc1
+drm-misc drm-misc-fixes b4b2778d5e175b166e4a27e5df5d61da468ad004
+	drm/panel: visionox-r66451: Wait longer after the panel reset
+drm-rust drm-rust-fixes 6628e7d4c6b25c8d18f1345e3a20d21829aae7e4
+	Linux 7.4-rc1
+drm-intel drm-intel-fixes 01aa63eade529680cb28fce40f2357bf392a249f
+	drm/i915/vrr: Fix intel_vrr_dcb_vmin_vblank_start()
+drm-xe drm-xe-fixes d2ce8fcd778ee6d92748c92d23a56d4416c29d86
+	drm/xe: Bump LRU for external objects on exec and rebind
+drm-amdgpu drm-amdgpu-fixes 752480ad62964edf0254e151110d3e53a7cb37de
+	drm/amdgpu/sdma3: Work around POLL_REGMEM / FENCE hang
+drm drm-next 6628e7d4c6b25c8d18f1345e3a20d21829aae7e4
+	Linux 7.4-rc1
+drm-misc drm-misc-next-fixes 9a96e169c9267af918d28fb291df948d83112807
+	drm/panthor: Move cache-flush after UPDATE(UNMAPPED)
+drm-rust drm-rust-next-fixes d511064b2e732b7152a542d589d07a4814c1b674
+	rust: drm: Remove unused flags argument from Registration::new()
+drm-intel drm-intel-next-fixes 6628e7d4c6b25c8d18f1345e3a20d21829aae7e4
+	Linux 7.4-rc1
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes fbb201890156e04b062c4488d1b500de52367684
+	drm/amd/display: refresh cached HDMI FreeSync state
+drm-misc drm-misc-next ea74b623855291e60835c0f7fa7a29673332ad41
+	dt-bindings: ili9881c: add compatible string for Mingjun MJ070BI30IA2
+drm-rust drm-rust-next 1c221646e5e5f8a1d2f29cc8250b5785433bda37
+	gpu: nova-core: gsp: cmdq: reduce sleep delta in wait_for_msg
+drm-intel drm-intel-next 1689fa5c5e4d878587841e778df1c1495f4b0d18
+	drm/i915/dp: only complain about a busy AUX engine when it's unexpected
+drm-intel drm-intel-gt-next 4e9db08db75f55c920986ac929cfd82a4ee99f41
+	drm/i915/gem: Reset err for each fence entry
+drm-xe drm-xe-next 8159948f64242edb93fb27df62de2a2b02d6ec6a
+	Merge drm/drm-next into drm-xe-next
+drm-amdgpu drm-amdgpu-next a24121023a434cb9b2b4db964d3fbbb4547d5e4c
+	drm/radeon: retry UVD v1 init on failure after resume
+drm-intel topic/core-for-CI 0630e7e76969b135f2a8fffea73c941c61f35c90
+	Revert "io_uring/sqpoll: don't attach to a thread that is canceling"
+drm-xe topic/xe-for-CI b275cb3f07a7ab3ef3bd419db86bd42fa95dcedb
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
+drm topic/pci-vgaarb-rework 93d41424caf7569ab50092a922477e2a881232b4
+	PCI/VGA: pass a data pointer to be used in the decode callback (v2)
