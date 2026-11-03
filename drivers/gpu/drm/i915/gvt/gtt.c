@@ -2403,6 +2403,7 @@ err:
 int intel_vgpu_init_gtt(struct intel_vgpu *vgpu)
 {
 	struct intel_vgpu_gtt *gtt = &vgpu->gtt;
+	int ret;
 
 	INIT_RADIX_TREE(&gtt->spt_tree, GFP_KERNEL);
 
@@ -2420,7 +2421,13 @@ int intel_vgpu_init_gtt(struct intel_vgpu *vgpu)
 
 	INIT_LIST_HEAD(&gtt->ggtt_mm->ggtt_mm.partial_pte_list);
 
-	return create_scratch_page_tree(vgpu);
+	ret = create_scratch_page_tree(vgpu);
+	if (ret) {
+		intel_vgpu_destroy_mm(gtt->ggtt_mm);
+		gtt->ggtt_mm = NULL;
+	}
+
+	return ret;
 }
 
 void intel_vgpu_destroy_all_ppgtt_mm(struct intel_vgpu *vgpu)
