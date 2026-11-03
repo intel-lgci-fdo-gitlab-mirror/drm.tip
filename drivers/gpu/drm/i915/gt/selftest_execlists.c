@@ -2734,7 +2734,7 @@ static int create_gang(struct intel_engine_cs *engine,
 	cs = i915_gem_object_pin_map_unlocked(obj, I915_MAP_WC);
 	if (IS_ERR(cs)) {
 		err = PTR_ERR(cs);
-		goto err_obj;
+		goto err_unpin;
 	}
 
 	/* Semaphore target: spin until zero */
@@ -2764,7 +2764,7 @@ static int create_gang(struct intel_engine_cs *engine,
 	rq = intel_context_create_request(ce);
 	if (IS_ERR(rq)) {
 		err = PTR_ERR(rq);
-		goto err_obj;
+		goto err_unpin;
 	}
 
 	rq->batch = i915_vma_get(vma);
@@ -2789,6 +2789,8 @@ static int create_gang(struct intel_engine_cs *engine,
 err_rq:
 	i915_vma_put(rq->batch);
 	i915_request_put(rq);
+err_unpin:
+	i915_vma_unpin(vma);
 err_obj:
 	i915_gem_object_put(obj);
 err_ce:
@@ -3032,6 +3034,7 @@ static int live_preempt_gang(void *arg)
 				err = -ETIME;
 			}
 
+			i915_vma_unpin(rq->batch);
 			i915_vma_put(rq->batch);
 			i915_request_put(rq);
 			rq = n;
