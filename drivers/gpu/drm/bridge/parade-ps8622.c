@@ -45,6 +45,8 @@ struct ps8622_bridge {
 	struct drm_bridge *panel_bridge;
 	struct regulator *v12;
 	struct backlight_device *bl;
+	u8 brightness;
+	bool internal_pwm;
 
 	struct gpio_desc *gpio_slp;
 	struct gpio_desc *gpio_rst;
@@ -268,7 +270,7 @@ static int ps8622_send_config(struct ps8622_bridge *ps8622)
 		goto error;
 
 
-	if (ps8622->bl) {
+	if (ps8622->internal_pwm) {
 		/* DPCD720, internal PWM */
 		err = ps8622_set(cl, 0x01, 0xa5, 0xa0);
 		if (err)
@@ -276,7 +278,7 @@ static int ps8622_send_config(struct ps8622_bridge *ps8622)
 
 		/* FFh for 100% brightness, 0h for 0% brightness */
 		err = ps8622_set(cl, 0x01, 0xa7,
-				ps8622->bl->props.brightness);
+				ps8622->brightness);
 		if (err)
 			goto error;
 	} else {
@@ -324,12 +326,28 @@ static int ps8622_backlight_update(struct backlight_device *bl)
 	struct ps8622_bridge *ps8622 = dev_get_drvdata(&bl->dev);
 	int ret, brightness = backlight_get_brightness(bl);
 
+	ps8622->brightness = brightness;
+
 	if (!ps8622->enabled)
 		return -EINVAL;
 
 	ret = ps8622_set(ps8622->client, 0x01, 0xa7, brightness);
 
 	return ret;
+}
+
+static void ps8622_set_luminance(struct drm_bridge *bridge,
+				 unsigned int luminance)
+{
+	struct ps8622_bridge *ps8622 = bridge_to_ps8622(bridge);
+
+	ps8622->brightness = luminance;
+
+	/* Applied by ps8622_send_config() on the next pre_enable */
+	if (!ps8622->enabled)
+		return;
+
+	ps8622_set(ps8622->client, 0x01, 0xa7, luminance);
 }
 
 static const struct backlight_ops ps8622_backlight_ops = {
@@ -340,10 +358,21 @@ static void ps8622_pre_enable(struct drm_bridge *bridge,
 			      struct drm_atomic_commit *commit)
 {
 	struct ps8622_bridge *ps8622 = bridge_to_ps8622(bridge);
+	struct drm_connector *connector;
 	int ret;
 
 	if (ps8622->enabled)
 		return;
+
+	/* Program the committed luminance from ps8622_send_config() */
+	connector = drm_atomic_get_new_connector_for_encoder(commit, bridge->encoder);
+	if (connector && connector->luminance_property) {
+		const struct drm_connector_state *conn_state =
+			drm_atomic_get_new_connector_state(commit, connector);
+
+		if (conn_state)
+			ps8622->brightness = conn_state->luminance;
+	}
 
 	gpiod_set_value(ps8622->gpio_rst, 0);
 
@@ -438,6 +467,7 @@ static const struct drm_bridge_funcs ps8622_bridge_funcs = {
 	.atomic_disable = ps8622_disable,
 	.atomic_post_disable = ps8622_post_disable,
 	.attach = ps8622_attach,
+	.set_luminance = ps8622_set_luminance,
 };
 
 static const struct of_device_id ps8622_devices[] = {
@@ -502,18 +532,28 @@ static int ps8622_probe(struct i2c_client *client)
 		ps8622->lane_count = ps8622->max_lane_count;
 	}
 
-	if (!of_property_read_bool(dev->of_node, "use-external-pwm")) {
-		ps8622->bl = backlight_device_register("ps8622-backlight",
-				dev, ps8622, &ps8622_backlight_ops,
-				NULL);
-		if (IS_ERR(ps8622->bl)) {
-			DRM_ERROR("failed to register backlight\n");
-			ret = PTR_ERR(ps8622->bl);
-			ps8622->bl = NULL;
-			return ret;
+	ps8622->brightness = PS8622_MAX_BRIGHTNESS;
+	ps8622->internal_pwm = !of_property_read_bool(dev->of_node,
+						      "use-external-pwm");
+	if (ps8622->internal_pwm) {
+		if (IS_ENABLED(CONFIG_DRM_LUMINANCE)) {
+			ps8622->bridge.ops |= DRM_BRIDGE_OP_LUMINANCE;
+			ps8622->bridge.luminance_max = PS8622_MAX_BRIGHTNESS;
+			ps8622->bridge.luminance = ps8622->brightness;
+		} else {
+			ps8622->bl = backlight_device_register("ps8622-backlight",
+							       dev, ps8622,
+							       &ps8622_backlight_ops,
+							       NULL);
+			if (IS_ERR(ps8622->bl)) {
+				DRM_ERROR("failed to register backlight\n");
+				ret = PTR_ERR(ps8622->bl);
+				ps8622->bl = NULL;
+				return ret;
+			}
+			ps8622->bl->props.max_brightness = PS8622_MAX_BRIGHTNESS;
+			ps8622->bl->props.brightness = ps8622->brightness;
 		}
-		ps8622->bl->props.max_brightness = PS8622_MAX_BRIGHTNESS;
-		ps8622->bl->props.brightness = PS8622_MAX_BRIGHTNESS;
 	}
 
 	ps8622->bridge.type = DRM_MODE_CONNECTOR_LVDS;
