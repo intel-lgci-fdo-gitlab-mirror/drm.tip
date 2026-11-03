@@ -1782,18 +1782,13 @@ static struct i915_request *garbage(struct intel_context *ce,
 			    LRC_STATE_OFFSET);
 
 	rq = intel_context_create_request(ce);
-	if (IS_ERR(rq)) {
-		err = PTR_ERR(rq);
-		goto err_unpin;
-	}
+	intel_context_unpin(ce);
+	if (IS_ERR(rq))
+		return rq;
 
 	i915_request_get(rq);
 	i915_request_add(rq);
 	return rq;
-
-err_unpin:
-	intel_context_unpin(ce);
-	return ERR_PTR(err);
 }
 
 static int __lrc_garbage(struct intel_engine_cs *engine, struct rnd_state *prng)
