@@ -33,6 +33,7 @@ struct dc_stream_state;
 struct device;
 struct device_attribute;
 struct drm_connector;
+struct drm_connector_state;
 struct attribute_group;
 
 #define AMDGPU_DM_DEFAULT_MIN_BACKLIGHT 12
@@ -47,6 +48,8 @@ void amdgpu_dm_backlight_set_level(struct amdgpu_display_manager *dm,
 void amdgpu_dm_register_backlight_device(struct amdgpu_dm_connector *aconnector);
 void amdgpu_dm_setup_backlight_device(struct amdgpu_display_manager *dm,
 			    struct amdgpu_dm_connector *aconnector);
+void amdgpu_dm_set_luminance(const struct drm_connector_state *state);
+void amdgpu_dm_backlight_restore(struct amdgpu_display_manager *dm);
 void amdgpu_dm_update_connector_ext_caps(struct amdgpu_dm_connector *aconnector);
 bool amdgpu_dm_should_create_sysfs(struct amdgpu_dm_connector *aconnector);
 
