@@ -860,7 +860,7 @@ int xe_pm_runtime_get_ioctl(struct xe_device *xe)
 		return -ELOOP;
 
 	xe_rpm_might_enter_cb(xe);
-	return pm_runtime_get_sync(xe->drm.dev);
+	return pm_runtime_resume_and_get(xe->drm.dev);
 }
 
 /**
