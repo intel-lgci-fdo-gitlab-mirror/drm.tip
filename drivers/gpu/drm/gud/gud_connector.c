@@ -292,10 +292,19 @@ static int gud_connector_atomic_check(struct drm_connector *connector,
 	struct drm_connector_state *old_state;
 
 	new_state = drm_atomic_get_new_connector_state(state, connector);
+	old_state = drm_atomic_get_old_connector_state(state, connector);
+
+	/*
+	 * LUMINANCE is sent to the device as tv.brightness in the same commit,
+	 * the brightness change below then triggers GUD_REQ_SET_STATE_CHECK.
+	 */
+	if (connector->luminance_property &&
+	    old_state->luminance != new_state->luminance)
+		new_state->tv.brightness = new_state->luminance;
+
 	if (!new_state->crtc)
 		return 0;
 
-	old_state = drm_atomic_get_old_connector_state(state, connector);
 	new_crtc_state = drm_atomic_get_new_crtc_state(state, new_state->crtc);
 
 	if (old_state->tv.margins.left != new_state->tv.margins.left ||
@@ -324,7 +333,7 @@ static int gud_connector_late_register(struct drm_connector *connector)
 {
 	struct gud_connector *gconn = to_gud_connector(connector);
 
-	if (gconn->initial_brightness < 0)
+	if (IS_ENABLED(CONFIG_DRM_LUMINANCE) || gconn->initial_brightness < 0)
 		return 0;
 
 	return gud_connector_backlight_register(gconn);
@@ -697,6 +706,13 @@ static int gud_connector_create(struct gud_device *gdrm, unsigned int index,
 	if (ret) {
 		gud_conn_err(connector, "Failed to add properties", ret);
 		return ret;
+	}
+
+	if (IS_ENABLED(CONFIG_DRM_LUMINANCE) && gconn->initial_brightness >= 0) {
+		ret = drm_connector_attach_luminance_property(connector, 0, 100,
+							      gconn->initial_brightness);
+		if (ret)
+			return ret;
 	}
 
 	gconn->encoder.possible_crtcs = drm_crtc_mask(&gdrm->crtc);
