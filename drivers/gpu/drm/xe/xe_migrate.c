@@ -779,6 +779,18 @@ static void xe_migrate_ulls_exit(struct work_struct *work)
 }
 
 /**
+ * xe_migrate_reinit() - Re-initialize a migrate context
+ * @m: The migration context
+ *
+ * Returns: 0 on success, negative error code otherwise.
+ */
+int xe_migrate_reinit(struct xe_migrate *m)
+{
+	xe_migrate_prepare_vm(m->tile, m, m->q->vm, NULL);
+	return xe_exec_queue_reinit(m->q);
+}
+
+/**
  * xe_migrate_init() - Initialize a migrate context
  * @m: The migration context
  *
