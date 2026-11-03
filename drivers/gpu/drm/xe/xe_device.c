@@ -45,6 +45,7 @@
 #include "xe_guc.h"
 #include "xe_guc_pc.h"
 #include "xe_hw_engine_group.h"
+#include "xe_hw_error.h"
 #include "xe_hwmon.h"
 #include "xe_i2c.h"
 #include "xe_irq.h"
@@ -1118,6 +1119,8 @@ err_unregister_display:
 
 void xe_device_remove(struct xe_device *xe)
 {
+	xe_hw_error_work_disable(xe);
+
 	xe_display_unregister(xe);
 
 	drm_dev_unplug(&xe->drm);

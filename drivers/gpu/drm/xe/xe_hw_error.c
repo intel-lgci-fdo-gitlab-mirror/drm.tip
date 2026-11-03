@@ -538,6 +538,24 @@ static void process_hw_errors(struct xe_device *xe)
 }
 
 /**
+ * xe_hw_error_work_disable - Disable hw error work
+ * @xe: xe device instance
+ *
+ * This function disables work for hardware error handling for all tiles.
+ */
+void xe_hw_error_work_disable(struct xe_device *xe)
+{
+	struct xe_tile *tile;
+	u8 id;
+
+	if (!IS_DGFX(xe) || IS_SRIOV_VF(xe))
+		return;
+
+	for_each_tile(tile, xe, id)
+		disable_work_sync(&tile->hw_error_work);
+}
+
+/**
  * xe_hw_error_init - Initialize hw errors
  * @xe: xe device instance
  *
@@ -546,12 +564,14 @@ static void process_hw_errors(struct xe_device *xe)
  */
 void xe_hw_error_init(struct xe_device *xe)
 {
-	struct xe_tile *tile = xe_device_get_root_tile(xe);
+	struct xe_tile *tile;
+	u8 id;
 
 	if (!IS_DGFX(xe) || IS_SRIOV_VF(xe))
 		return;
 
-	INIT_WORK(&tile->hw_error_work, hw_error_work);
+	for_each_tile(tile, xe, id)
+		INIT_WORK(&tile->hw_error_work, hw_error_work);
 
 	process_hw_errors(xe);
 }
