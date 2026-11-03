@@ -1976,10 +1976,7 @@ static int dm_resume(struct amdgpu_ip_block *ip_block)
 		mutex_unlock(&dm->dc_lock);
 
 		/* set the backlight after a reset */
-		for (i = 0; i < dm->num_of_edps; i++) {
-			if (dm->backlight_dev[i])
-				amdgpu_dm_backlight_set_level(dm, i, dm->brightness[i]);
-		}
+		amdgpu_dm_backlight_restore(dm);
 
 		return 0;
 	}
@@ -4802,12 +4799,8 @@ static void amdgpu_dm_commit_streams(struct drm_atomic_commit *state,
 	 * level. (the dm->brightness is the correct panel level)
 	 * So we set the backlight level with dm->brightness value after set mode
 	 */
-	if (set_backlight_level) {
-		for (i = 0; i < dm->num_of_edps; i++) {
-			if (dm->backlight_dev[i])
-				amdgpu_dm_backlight_set_level(dm, i, dm->brightness[i]);
-		}
-	}
+	if (set_backlight_level)
+		amdgpu_dm_backlight_restore(dm);
 }
 
 STATIC_IFN_KUNIT void
@@ -5412,6 +5405,9 @@ static void amdgpu_dm_atomic_commit_tail(struct drm_atomic_commit *state)
 
 	/* Update audio instances for each connector. */
 	amdgpu_dm_commit_audio(dev, state);
+
+	/* Apply connector luminance after the display pipeline is enabled. */
+	drm_atomic_helper_commit_luminance_enables(state);
 
 	/* restore the backlight level */
 	for (i = 0; i < dm->num_of_edps; i++) {

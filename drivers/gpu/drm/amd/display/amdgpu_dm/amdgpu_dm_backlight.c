@@ -41,6 +41,7 @@
 #include <linux/backlight.h>
 #include <linux/minmax.h>
 #include <linux/power_supply.h>
+#include <drm/drm_connector.h>
 #include <drm/drm_edid.h>
 #include <drm/drm_panel_quirks.h>
 
@@ -296,13 +297,17 @@ struct dc_stream_state *dm_find_stream_with_link(
 	struct amdgpu_display_manager *dm,
 	struct dc_link *link)
 {
-	struct dc_state *cur_dc_state = dm->dc->current_state;
+	struct dc_state *cur_dc_state;
 	struct dc_stream_state *stream = NULL;
 	int i;
 
+	if (!dm || !dm->dc || !dm->dc->current_state || !link)
+		return NULL;
+
+	cur_dc_state = dm->dc->current_state;
 	for (i = 0; i < cur_dc_state->stream_count; i++) {
 		stream = cur_dc_state->streams[i];
-		if (stream->link == link)
+		if (stream && stream->link == link)
 			return stream;
 	}
 
@@ -356,7 +361,7 @@ void amdgpu_dm_backlight_set_level(struct amdgpu_display_manager *dm,
 
 	dm->brightness[bl_idx] = user_brightness;
 	/* update scratch register */
-	if (bl_idx == 0)
+	if (bl_idx == 0 && dm->adev && dm->adev->rmmio && dm->adev->bios_scratch_reg_offset)
 		amdgpu_atombios_scratch_regs_set_backlight_level(dm->adev, dm->brightness[bl_idx]);
 
 	link = (struct dc_link *)dm->backlight_link[bl_idx];
@@ -657,6 +662,10 @@ void amdgpu_dm_setup_backlight_device(struct amdgpu_display_manager *dm,
 {
 	struct dc_link *link = aconnector->dc_link;
 	int bl_idx = dm->num_of_edps;
+	struct backlight_properties props = { 0 };
+	struct amdgpu_dm_backlight_caps *caps;
+	struct drm_connector *connector = &aconnector->base;
+	int ret;
 
 	if (!(link->connector_signal & (SIGNAL_TYPE_EDP | SIGNAL_TYPE_LVDS)) ||
 	    link->type == dc_connection_none)
@@ -675,6 +684,30 @@ void amdgpu_dm_setup_backlight_device(struct amdgpu_display_manager *dm,
 
 	amdgpu_dm_update_connector_ext_caps(aconnector);
 
+	/*
+	 * The property must exist before the device is registered. If ACPI
+	 * video should handle the backlight, leave it to
+	 * amdgpu_dm_register_backlight_device() to register the fallback.
+	 */
+	if (IS_ENABLED(CONFIG_DRM_LUMINANCE) && acpi_video_backlight_use_native()) {
+		caps = &dm->backlight_caps[bl_idx];
+		amdgpu_dm_backlight_fill_props(caps, power_supply_is_system_supplied() > 0,
+					       !(amdgpu_dc_debug_mask &
+						 DC_DISABLE_CUSTOM_BRIGHTNESS_CURVE),
+					       &props);
+		/* Start from the level the hardware is actually at */
+		ret = amdgpu_dm_backlight_get_level(dm, bl_idx);
+		if (ret >= 0 && ret <= props.max_brightness)
+			props.brightness = ret;
+		ret = drm_connector_attach_luminance_property(connector, 0,
+							      props.max_brightness,
+							      props.brightness);
+		if (!drm_WARN_ON(adev_to_drm(dm->adev), ret)) {
+			dm->brightness[bl_idx] = props.brightness;
+			dm->luminance[bl_idx] = true;
+		}
+	}
+
 	/* Offer ABM property when user didn't turn off by module parameter.
 	 * OLED panels are included to support CACP (Content Adaptive
 	 * Contrast and Power) feature via set_abm_level.
@@ -685,6 +718,45 @@ void amdgpu_dm_setup_backlight_device(struct amdgpu_display_manager *dm,
 					   ABM_SYSFS_CONTROL);
 }
 EXPORT_IF_KUNIT(amdgpu_dm_setup_backlight_device);
+
+void amdgpu_dm_set_luminance(const struct drm_connector_state *state)
+{
+	struct amdgpu_dm_connector *aconnector =
+		to_amdgpu_dm_connector(state->connector);
+	struct amdgpu_display_manager *dm =
+		&drm_to_adev(state->connector->dev)->dm;
+
+	int bl_idx = aconnector->bl_idx;
+
+	if (bl_idx < 0)
+		return;
+
+	/* Skip if already applied, e.g. by amdgpu_dm_backlight_restore(). */
+	if (dm->brightness[bl_idx] == state->luminance &&
+	    dm->actual_brightness[bl_idx] == state->luminance)
+		return;
+
+	amdgpu_dm_backlight_set_level(dm, bl_idx, state->luminance);
+}
+
+/**
+ * amdgpu_dm_backlight_restore - reprogram the cached backlight levels
+ * @dm: display manager
+ *
+ * Display Core may reset the panel brightness when committing streams, so
+ * reapply the cached level of every panel whose backlight is controlled by
+ * the driver, either through a backlight class device or through the
+ * connector LUMINANCE property.
+ */
+void amdgpu_dm_backlight_restore(struct amdgpu_display_manager *dm)
+{
+	int i;
+
+	for (i = 0; i < dm->num_of_edps; i++) {
+		if (dm->backlight_dev[i] || dm->luminance[i])
+			amdgpu_dm_backlight_set_level(dm, i, dm->brightness[i]);
+	}
+}
 
 /**
  * DOC: panel power savings
