@@ -1369,6 +1369,11 @@ struct drm_connector_state {
 	 * @drm_atomic_helper_connector_hdmi_check().
 	 */
 	struct drm_connector_hdmi_state hdmi;
+
+	/**
+	 * @luminance: Relative panel luminance requested by userspace.
+	 */
+	unsigned int luminance;
 };
 
 struct drm_connector_hdmi_audio_funcs {
@@ -2714,6 +2719,13 @@ struct drm_connector {
 	 * @cec: CEC-related data.
 	 */
 	struct drm_connector_cec cec;
+
+	/**
+	 * @luminance_property: Optional atomic range property for relative panel
+	 * luminance. Drivers create it with
+	 * drm_connector_attach_luminance_property().
+	 */
+	struct drm_property *luminance_property;
 };
 
 #define obj_to_connector(x) container_of(x, struct drm_connector, base)
@@ -2980,6 +2992,10 @@ const char *drm_get_colorspace_name(enum drm_colorspace colorspace);
 
 int drm_connector_attach_color_format_property(struct drm_connector *connector,
 					       unsigned long supported_color_formats);
+int drm_connector_attach_luminance_property(struct drm_connector *connector,
+					    unsigned int min,
+					    unsigned int max,
+					    unsigned int value);
 
 /**
  * drm_for_each_connector_iter - connector_list iterator macro

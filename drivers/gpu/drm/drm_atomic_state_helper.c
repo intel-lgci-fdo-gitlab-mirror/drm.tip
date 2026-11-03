@@ -408,7 +408,14 @@ void
 __drm_atomic_helper_connector_state_init(struct drm_connector_state *conn_state,
 					 struct drm_connector *connector)
 {
+	u64 value;
+
 	conn_state->connector = connector;
+	if (connector->luminance_property &&
+	    !drm_object_property_get_default_value(&connector->base,
+						   connector->luminance_property,
+						   &value))
+		conn_state->luminance = value;
 }
 EXPORT_SYMBOL(__drm_atomic_helper_connector_state_init);
 

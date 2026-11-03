@@ -811,6 +811,47 @@ void drm_connector_attach_edid_property(struct drm_connector *connector)
 EXPORT_SYMBOL(drm_connector_attach_edid_property);
 
 /**
+ * drm_connector_attach_luminance_property - attach luminance property
+ * @connector: connector to attach the property to
+ * @min: minimum supported relative brightness
+ * @max: maximum supported relative brightness
+ * @value: initial relative brightness
+ *
+ * Creates the atomic ``LUMINANCE`` range property for @connector.
+ * Drivers should call this during connector initialization. The property's
+ * units are driver-defined; they do not represent absolute luminance.
+ *
+ * Returns:
+ * Zero on success, a negative errno otherwise.
+ */
+int drm_connector_attach_luminance_property(struct drm_connector *connector,
+					    unsigned int min,
+					    unsigned int max,
+					    unsigned int value)
+{
+	struct drm_property *property;
+
+	if (drm_WARN_ON(connector->dev, min > max || value < min || value > max))
+		return -EINVAL;
+
+	if (connector->luminance_property)
+		return 0;
+
+	property = drm_property_create_range(connector->dev, DRM_MODE_PROP_ATOMIC,
+					     "LUMINANCE", min, max);
+	if (!property)
+		return -ENOMEM;
+
+	connector->luminance_property = property;
+	drm_object_attach_property(&connector->base, property, value);
+	if (connector->state)
+		connector->state->luminance = value;
+
+	return 0;
+}
+EXPORT_SYMBOL(drm_connector_attach_luminance_property);
+
+/**
  * drm_connector_attach_encoder - attach a connector to an encoder
  * @connector: connector to attach
  * @encoder: encoder to attach @connector to
@@ -1681,6 +1722,22 @@ EXPORT_SYMBOL(drm_hdmi_connector_get_output_format_name);
  * 	Summarizing: Only set "DPMS" when the connector is known to be enabled,
  * 	assume that a successful SETCONFIG call also sets "DPMS" to on, and
  * 	never read back the value of "DPMS" because it can be incorrect.
+ * LUMINANCE:
+ *     Atomic range property for controlling a panel's relative luminance.
+ *     The unit and range are driver-defined and do not represent an absolute
+ *     luminance in cd/m^2. This name therefore also applies to emissive panels
+ *     that do not contain a separate backlight.
+ *
+ *     The property is independent of the connector's display-power state.
+ *     Changing it while the connector is inactive stores the new value without
+ *     turning the display on. The atomic helpers apply the stored value after
+ *     the display pipeline is enabled and invoke a separate driver callback
+ *     before disabling the pipeline; neither action changes the property value.
+ *
+ *     Drivers create the property with
+ *     drm_connector_attach_luminance_property() and implement the
+ *     corresponding &drm_connector_helper_funcs callbacks. Connectors that do
+ *     not support luminance control do not expose the property.
  * panel_type:
  * 	Immutable enum property to indicate the type of connected panel.
  * 	Possible values are "unknown" (default), "OLED", and "LCD".
