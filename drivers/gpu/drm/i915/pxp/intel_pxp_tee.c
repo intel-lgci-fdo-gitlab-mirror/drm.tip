@@ -186,6 +186,18 @@ static int i915_pxp_tee_component_bind(struct device *i915_kdev,
 		}
 	}
 
+	if (ret < 0) {
+		mutex_lock(&pxp->tee_mutex);
+		pxp->pxp_component = NULL;
+		mutex_unlock(&pxp->tee_mutex);
+
+		if (pxp->dev_link) {
+			device_link_del(pxp->dev_link);
+			pxp->dev_link = NULL;
+		}
+		return ret;
+	}
+
 	/* if we are suspended, the HW will be re-initialized on resume */
 	wakeref = intel_runtime_pm_get_if_in_use(&i915->runtime_pm);
 	if (!wakeref)
