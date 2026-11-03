@@ -627,7 +627,7 @@ static int ssd130x_init(struct ssd130x_device *ssd130x)
 static int ssd132x_init(struct ssd130x_device *ssd130x)
 {
 	const u8 cmds[] = {
-		2, SSD13XX_CONTRAST, 0x80,
+		2, SSD13XX_CONTRAST, ssd130x->contrast,
 		3, SSD132X_SET_COL_RANGE, 0x00, ssd130x->width / SSD132X_SEGMENT_WIDTH - 1,
 		3, SSD132X_SET_ROW_RANGE, 0x00, ssd130x->height - 1,
 		/*
@@ -694,6 +694,18 @@ static int ssd135x_set_contrast(struct ssd130x_device *ssd130x, u32 brightness)
 	u8 c = ssd130x_scale_contrast(SSD135X_DEFAULT_CONTRAST_C, brightness);
 
 	return ssd130x_write_cmd(ssd130x, 4, SSD135X_SET_CONTRAST, a, b, c);
+}
+
+static int ssd130x_set_contrast(struct ssd130x_device *ssd130x, u32 contrast)
+{
+	switch (ssd130x->device_info->family_id) {
+	case SSD133X_FAMILY:
+		return ssd133x_set_contrast(ssd130x, contrast);
+	case SSD135X_FAMILY:
+		return ssd135x_set_contrast(ssd130x, contrast);
+	default:
+		return ssd130x_write_cmd(ssd130x, 2, SSD13XX_CONTRAST, contrast);
+	}
 }
 
 static int ssd133x_init(struct ssd130x_device *ssd130x)
@@ -1836,6 +1848,23 @@ static const struct drm_crtc_funcs ssd130x_crtc_funcs = {
 	.atomic_destroy_state = ssd130x_crtc_destroy_state,
 };
 
+/*
+ * With DRM_LUMINANCE, initialize the controller with the committed connector
+ * luminance, which may have changed while the display was disabled.
+ */
+static void ssd130x_load_luminance(struct ssd130x_device *ssd130x,
+				   struct drm_atomic_commit *state)
+{
+	struct drm_connector_state *conn_state;
+
+	if (!IS_ENABLED(CONFIG_DRM_LUMINANCE))
+		return;
+
+	conn_state = drm_atomic_get_new_connector_state(state, &ssd130x->connector);
+	if (conn_state)
+		ssd130x->contrast = conn_state->luminance;
+}
+
 static void ssd130x_encoder_atomic_enable(struct drm_encoder *encoder,
 					  struct drm_atomic_commit *state)
 {
@@ -1847,11 +1876,15 @@ static void ssd130x_encoder_atomic_enable(struct drm_encoder *encoder,
 	if (ret)
 		return;
 
+	ssd130x_load_luminance(ssd130x, state);
+
 	ret = ssd130x_init(ssd130x);
 	if (ret)
 		goto power_off;
 
 	ssd130x_write_cmd(ssd130x, 1, SSD13XX_DISPLAY_ON);
+
+	ssd130x->enabled = true;
 
 	backlight_enable(ssd130x->bl_dev);
 
@@ -1873,11 +1906,15 @@ static void ssd132x_encoder_atomic_enable(struct drm_encoder *encoder,
 	if (ret)
 		return;
 
+	ssd130x_load_luminance(ssd130x, state);
+
 	ret = ssd132x_init(ssd130x);
 	if (ret)
 		goto power_off;
 
 	ssd130x_write_cmd(ssd130x, 1, SSD13XX_DISPLAY_ON);
+
+	ssd130x->enabled = true;
 
 	backlight_enable(ssd130x->bl_dev);
 
@@ -1898,11 +1935,15 @@ static void ssd133x_encoder_atomic_enable(struct drm_encoder *encoder,
 	if (ret)
 		return;
 
+	ssd130x_load_luminance(ssd130x, state);
+
 	ret = ssd133x_init(ssd130x);
 	if (ret)
 		goto power_off;
 
 	ssd130x_write_cmd(ssd130x, 1, SSD13XX_DISPLAY_ON);
+
+	ssd130x->enabled = true;
 
 	backlight_enable(ssd130x->bl_dev);
 
@@ -1923,11 +1964,15 @@ static void ssd135x_encoder_atomic_enable(struct drm_encoder *encoder,
 	if (ret)
 		return;
 
+	ssd130x_load_luminance(ssd130x, state);
+
 	ret = ssd135x_init(ssd130x);
 	if (ret)
 		goto power_off;
 
 	ssd130x_write_cmd(ssd130x, 1, SSD13XX_DISPLAY_ON);
+
+	ssd130x->enabled = true;
 
 	backlight_enable(ssd130x->bl_dev);
 
@@ -1944,6 +1989,8 @@ static void ssd130x_encoder_atomic_disable(struct drm_encoder *encoder,
 	struct ssd130x_device *ssd130x = drm_to_ssd130x(drm);
 
 	backlight_disable(ssd130x->bl_dev);
+
+	ssd130x->enabled = false;
 
 	ssd130x_write_cmd(ssd130x, 1, SSD13XX_DISPLAY_OFF);
 
@@ -1980,8 +2027,34 @@ static int ssd130x_connector_get_modes(struct drm_connector *connector)
 	return drm_connector_helper_get_modes_fixed(connector, &ssd130x->mode);
 }
 
+static void ssd130x_connector_set_luminance(const struct drm_connector_state *conn_state)
+{
+	struct ssd130x_device *ssd130x = drm_to_ssd130x(conn_state->connector->dev);
+
+	/*
+	 * The encoder enable already initialized the controller with the
+	 * committed luminance. Skip if it failed to power up the controller.
+	 */
+	if (!ssd130x->enabled || ssd130x->contrast == conn_state->luminance)
+		return;
+
+	ssd130x->contrast = conn_state->luminance;
+	ssd130x_set_contrast(ssd130x, ssd130x->contrast);
+}
+
+static void ssd130x_connector_disable_luminance(const struct drm_connector_state *conn_state)
+{
+	struct ssd130x_device *ssd130x = drm_to_ssd130x(conn_state->connector->dev);
+
+	/* Keep ssd130x->contrast, it is restored when the encoder is enabled */
+	if (ssd130x->enabled)
+		ssd130x_set_contrast(ssd130x, 0);
+}
+
 static const struct drm_connector_helper_funcs ssd130x_connector_helper_funcs = {
 	.get_modes = ssd130x_connector_get_modes,
+	.set_luminance = ssd130x_connector_set_luminance,
+	.disable_luminance = ssd130x_connector_disable_luminance,
 };
 
 static const struct drm_connector_funcs ssd130x_connector_funcs = {
@@ -2018,53 +2091,14 @@ static const struct drm_driver ssd130x_drm_driver = {
 static int ssd130x_update_bl(struct backlight_device *bdev)
 {
 	struct ssd130x_device *ssd130x = bl_get_data(bdev);
-	int brightness = backlight_get_brightness(bdev);
-	int ret;
-
-	ssd130x->contrast = brightness;
-
-	ret = ssd130x_write_cmd(ssd130x, 1, SSD13XX_CONTRAST);
-	if (ret < 0)
-		return ret;
-
-	ret = ssd130x_write_cmd(ssd130x, 1, ssd130x->contrast);
-	if (ret < 0)
-		return ret;
-
-	return 0;
-}
-
-static int ssd133x_update_bl(struct backlight_device *bdev)
-{
-	struct ssd130x_device *ssd130x = bl_get_data(bdev);
 
 	ssd130x->contrast = backlight_get_brightness(bdev);
 
-	return ssd133x_set_contrast(ssd130x, ssd130x->contrast);
+	return ssd130x_set_contrast(ssd130x, ssd130x->contrast);
 }
 
-static int ssd135x_update_bl(struct backlight_device *bdev)
-{
-	struct ssd130x_device *ssd130x = bl_get_data(bdev);
-
-	ssd130x->contrast = backlight_get_brightness(bdev);
-
-	return ssd135x_set_contrast(ssd130x, ssd130x->contrast);
-}
-
-static const struct backlight_ops ssd130xfb_bl_ops[] = {
-	[SSD130X_FAMILY] = {
-		.update_status	= ssd130x_update_bl,
-	},
-	[SSD132X_FAMILY] = {
-		.update_status	= ssd130x_update_bl,
-	},
-	[SSD133X_FAMILY] = {
-		.update_status	= ssd133x_update_bl,
-	},
-	[SSD135X_FAMILY] = {
-		.update_status	= ssd135x_update_bl,
-	},
+static const struct backlight_ops ssd130xfb_bl_ops = {
+	.update_status	= ssd130x_update_bl,
 };
 
 static void ssd130x_parse_properties(struct ssd130x_device *ssd130x)
@@ -2213,6 +2247,13 @@ static int ssd130x_init_modeset(struct ssd130x_device *ssd130x)
 	}
 
 	drm_connector_helper_add(connector, &ssd130x_connector_helper_funcs);
+	if (IS_ENABLED(CONFIG_DRM_LUMINANCE)) {
+		ret = drm_connector_attach_luminance_property(connector, 0,
+							      MAX_CONTRAST,
+							      ssd130x->contrast);
+		if (ret)
+			return ret;
+	}
 
 	ret = drm_connector_attach_encoder(connector, encoder);
 	if (ret) {
@@ -2270,16 +2311,18 @@ struct ssd130x_device *ssd130x_probe(struct device *dev, struct regmap *regmap)
 	if (ret)
 		return ERR_PTR(ret);
 
-	bl = devm_backlight_device_register(dev, dev_name(dev), dev, ssd130x,
-					    &ssd130xfb_bl_ops[ssd130x->device_info->family_id],
-					    NULL);
-	if (IS_ERR(bl))
-		return ERR_PTR(dev_err_probe(dev, PTR_ERR(bl),
-					     "Unable to register backlight device\n"));
+	if (!IS_ENABLED(CONFIG_DRM_LUMINANCE)) {
+		bl = devm_backlight_device_register(dev, dev_name(dev), dev,
+						    ssd130x, &ssd130xfb_bl_ops,
+						    NULL);
+		if (IS_ERR(bl))
+			return ERR_PTR(dev_err_probe(dev, PTR_ERR(bl),
+						     "Unable to register backlight device\n"));
 
-	bl->props.brightness = ssd130x->contrast;
-	bl->props.max_brightness = MAX_CONTRAST;
-	ssd130x->bl_dev = bl;
+		bl->props.brightness = ssd130x->contrast;
+		bl->props.max_brightness = MAX_CONTRAST;
+		ssd130x->bl_dev = bl;
+	}
 
 	ret = ssd130x_init_modeset(ssd130x);
 	if (ret)
