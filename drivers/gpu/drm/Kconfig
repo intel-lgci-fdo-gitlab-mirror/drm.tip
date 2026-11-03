@@ -33,6 +33,20 @@ endmenu
 
 if DRM
 
+config DRM_LUMINANCE
+	bool "DRM connector luminance support"
+	help
+	  Expose relative luminance as an atomic DRM connector property. Values
+	  are driver-defined levels rather than absolute luminance in cd/m^2.
+	  Drivers provide connector helper callbacks to program their hardware;
+	  the DRM core does not depend on a particular backend.
+
+	  Drivers migrated to this interface will use it instead of registering
+	  a legacy backlight class device. Leave this disabled to preserve the
+	  de-facto userspace ABI in /sys/class/backlight.
+
+	  If in doubt, say N.
+
 config DRM_MIPI_DBI
 	tristate
 	depends on DRM

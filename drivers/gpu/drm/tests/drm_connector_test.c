@@ -137,6 +137,33 @@ static void drm_test_drmm_connector_init_null_ddc(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, ret, 0);
 }
 
+static void drm_test_connector_attach_luminance_property(struct kunit *test)
+{
+	struct drm_connector_init_priv *priv = test->priv;
+	struct drm_connector *connector = &priv->connector;
+	struct drm_property *property;
+	u64 value;
+	int ret;
+
+	ret = drmm_connector_init(&priv->drm, connector, &dummy_funcs,
+				  DRM_MODE_CONNECTOR_eDP, NULL);
+	KUNIT_ASSERT_EQ(test, ret, 0);
+	KUNIT_ASSERT_NULL(test, connector->state);
+
+	ret = drm_connector_attach_luminance_property(connector, 10, 100, 50);
+	KUNIT_ASSERT_EQ(test, ret, 0);
+	property = connector->luminance_property;
+	KUNIT_ASSERT_NOT_NULL(test, property);
+
+	ret = drm_object_property_get_default_value(&connector->base, property, &value);
+	KUNIT_ASSERT_EQ(test, ret, 0);
+	KUNIT_EXPECT_EQ(test, value, (u64)50);
+
+	drm_atomic_helper_connector_reset(connector);
+	KUNIT_ASSERT_NOT_NULL(test, connector->state);
+	KUNIT_EXPECT_EQ(test, connector->state->luminance, 50u);
+}
+
 /*
  * Test that the registration of a connector succeeds for all possible
  * connector types.
@@ -190,6 +217,7 @@ KUNIT_ARRAY_PARAM(drm_connector_init_type_valid,
 static struct kunit_case drmm_connector_init_tests[] = {
 	KUNIT_CASE(drm_test_drmm_connector_init),
 	KUNIT_CASE(drm_test_drmm_connector_init_null_ddc),
+	KUNIT_CASE(drm_test_connector_attach_luminance_property),
 	KUNIT_CASE_PARAM(drm_test_drmm_connector_init_type_valid,
 			 drm_connector_init_type_valid_gen_params),
 	{ }

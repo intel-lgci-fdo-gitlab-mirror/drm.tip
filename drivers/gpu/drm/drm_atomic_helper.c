@@ -1375,12 +1375,62 @@ EXPORT_SYMBOL(drm_atomic_helper_commit_encoder_bridge_post_disable);
 static void
 disable_outputs(struct drm_device *dev, struct drm_atomic_commit *state)
 {
+	drm_atomic_helper_commit_luminance_disables(state);
+
 	drm_atomic_helper_commit_encoder_bridge_disable(dev, state);
 
 	drm_atomic_helper_commit_encoder_bridge_post_disable(dev, state);
 
 	drm_atomic_helper_commit_crtc_disable(dev, state);
 }
+
+/**
+ * drm_atomic_helper_commit_luminance_disables - disable panel emission
+ * @state: atomic state object being committed
+ *
+ * Invokes each connector driver's luminance disable callback before a
+ * display pipeline is disabled. The callback is not invoked when the pipeline
+ * enters self refresh, since the panel keeps displaying the last frame. The
+ * connector property's stored value is left untouched so it can be restored
+ * when the pipeline is enabled again.
+ */
+void drm_atomic_helper_commit_luminance_disables(struct drm_atomic_commit *state)
+{
+	struct drm_connector_state *old_conn_state, *new_conn_state;
+	struct drm_connector *connector;
+	int i;
+
+	for_each_oldnew_connector_in_state(state, connector, old_conn_state,
+					   new_conn_state, i) {
+		const struct drm_connector_helper_funcs *funcs;
+		struct drm_crtc_state *old_crtc_state, *new_crtc_state = NULL;
+
+		if (!connector->luminance_property || !old_conn_state->crtc)
+			continue;
+
+		old_crtc_state =
+			drm_atomic_get_old_crtc_state(state, old_conn_state->crtc);
+		if (new_conn_state->crtc)
+			new_crtc_state =
+				drm_atomic_get_new_crtc_state(state, new_conn_state->crtc);
+
+		if (!crtc_needs_disable(old_crtc_state, new_crtc_state) ||
+		    !drm_atomic_crtc_needs_modeset(old_conn_state->crtc->state))
+			continue;
+
+		/*
+		 * Keep the panel lit while entering self refresh, matching the
+		 * panel bridge which also leaves the panel enabled.
+		 */
+		if (new_crtc_state && new_crtc_state->self_refresh_active)
+			continue;
+
+		funcs = connector->helper_private;
+		if (funcs && funcs->disable_luminance)
+			funcs->disable_luminance(old_conn_state);
+	}
+}
+EXPORT_SYMBOL(drm_atomic_helper_commit_luminance_disables);
 
 /**
  * drm_atomic_helper_update_legacy_modeset_state - update legacy modeset state
@@ -1771,9 +1821,56 @@ void drm_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 
 	drm_atomic_helper_commit_encoder_bridge_enable(dev, state);
 
+	drm_atomic_helper_commit_luminance_enables(state);
+
 	drm_atomic_helper_commit_writebacks(dev, state);
 }
 EXPORT_SYMBOL(drm_atomic_helper_commit_modeset_enables);
+
+/**
+ * drm_atomic_helper_commit_luminance_enables - apply luminance
+ * @state: atomic state object being committed
+ *
+ * Invokes each connector driver's luminance callback after the display
+ * pipeline has been enabled by a modeset, and for commits changing the
+ * luminance while the connector remains active. Commits that don't change
+ * the luminance only invoke the callback for a modeset other than a self
+ * refresh exit, since the panel is kept lit during self refresh. Changes
+ * committed while the connector is inactive remain stored in atomic state
+ * until a later enable.
+ */
+void drm_atomic_helper_commit_luminance_enables(struct drm_atomic_commit *state)
+{
+	struct drm_connector_state *old_conn_state, *new_conn_state;
+	struct drm_connector *connector;
+	int i;
+
+	for_each_oldnew_connector_in_state(state, connector, old_conn_state,
+					   new_conn_state, i) {
+		const struct drm_connector_helper_funcs *funcs;
+		struct drm_crtc_state *old_crtc_state, *new_crtc_state;
+
+		if (!connector->luminance_property || !new_conn_state->crtc)
+			continue;
+
+		old_crtc_state =
+			drm_atomic_get_old_crtc_state(state, new_conn_state->crtc);
+		new_crtc_state =
+			drm_atomic_get_new_crtc_state(state, new_conn_state->crtc);
+		if (!new_crtc_state->active)
+			continue;
+
+		if (old_conn_state->luminance == new_conn_state->luminance &&
+		    (!drm_atomic_crtc_needs_modeset(new_crtc_state) ||
+		     old_crtc_state->self_refresh_active))
+			continue;
+
+		funcs = connector->helper_private;
+		if (funcs && funcs->set_luminance)
+			funcs->set_luminance(new_conn_state);
+	}
+}
+EXPORT_SYMBOL(drm_atomic_helper_commit_luminance_enables);
 
 /*
  * For atomic updates which touch just a single CRTC, calculate the time of the
@@ -4187,4 +4284,3 @@ drm_atomic_helper_bridge_get_hdmi_output_bus_fmts(struct drm_bridge *bridge,
 	return out_fmts;
 }
 EXPORT_SYMBOL(drm_atomic_helper_bridge_get_hdmi_output_bus_fmts);
-
