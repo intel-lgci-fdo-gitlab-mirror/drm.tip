@@ -50,6 +50,7 @@ struct nouveau_backlight {
 	struct backlight_device *dev;
 
 	struct drm_edp_backlight_info edp_info;
+	struct nouveau_encoder *encoder;
 	bool uses_dpcd : 1;
 
 	int id;
@@ -237,8 +238,12 @@ nouveau_conn_mode_clock_valid(const struct drm_display_mode *,
 #ifdef CONFIG_DRM_NOUVEAU_BACKLIGHT
 extern int nouveau_backlight_init(struct drm_connector *);
 extern void nouveau_backlight_fini(struct drm_connector *);
+int nouveau_backlight_luminance_init(struct drm_device *dev);
+void nouveau_backlight_destroy(struct drm_connector *connector);
 extern void nouveau_backlight_ctor(void);
 extern void nouveau_backlight_dtor(void);
+void nouveau_backlight_set_luminance(const struct drm_connector_state *conn_state);
+void nouveau_backlight_disable_luminance(const struct drm_connector_state *conn_state);
 #else
 static inline int
 nouveau_backlight_init(struct drm_connector *connector)
@@ -250,12 +255,30 @@ static inline void
 nouveau_backlight_fini(struct drm_connector *connector) {
 }
 
+static inline int
+nouveau_backlight_luminance_init(struct drm_device *dev)
+{
+	return 0;
+}
+
+static inline void
+nouveau_backlight_destroy(struct drm_connector *connector) {
+}
+
 static inline void
 nouveau_backlight_ctor(void) {
 }
 
 static inline void
 nouveau_backlight_dtor(void) {
+}
+
+static inline void
+nouveau_backlight_set_luminance(const struct drm_connector_state *conn_state) {
+}
+
+static inline void
+nouveau_backlight_disable_luminance(const struct drm_connector_state *conn_state) {
 }
 #endif
 

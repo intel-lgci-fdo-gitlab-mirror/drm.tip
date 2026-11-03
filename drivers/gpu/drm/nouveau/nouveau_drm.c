@@ -673,6 +673,10 @@ nouveau_drm_device_init(struct nouveau_drm *drm)
 		ret = nouveau_display_init(dev, false, false);
 		if (ret)
 			goto fail_dispinit;
+
+		ret = nouveau_backlight_luminance_init(dev);
+		if (ret)
+			goto fail_backlight;
 	}
 
 	nouveau_debugfs_init(drm);
@@ -697,6 +701,8 @@ nouveau_drm_device_init(struct nouveau_drm *drm)
 	}
 
 	return 0;
+fail_backlight:
+	nouveau_display_fini(dev, false, false);
 fail_dispinit:
 	nouveau_display_destroy(dev);
 fail_dispctor:
