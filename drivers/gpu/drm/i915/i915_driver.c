@@ -753,6 +753,7 @@ static const struct intel_display_parent_interface parent = {
 	.hdcp = &i915_display_hdcp_interface,
 	.initial_plane = &i915_display_initial_plane_interface,
 	.irq = &i915_display_irq_interface,
+	.mmio = &i915_display_mmio_interface,
 	.overlay = &i915_display_overlay_interface,
 	.panic = &i915_display_panic_interface,
 	.pc8 = &i915_display_pc8_interface,

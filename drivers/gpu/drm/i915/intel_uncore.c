@@ -26,6 +26,7 @@
 
 #include <drm/drm_managed.h>
 #include <drm/drm_print.h>
+#include <drm/intel/display_parent_interface.h>
 
 #include "display/intel_display_core.h"
 #include "gt/intel_engine_regs.h"
@@ -2922,6 +2923,85 @@ intel_uncore_forcewake_for_reg(struct intel_uncore *uncore,
 
 	return fw_domains;
 }
+
+static u8 i915_uncore_read8(struct drm_device *drm, u32 reg)
+{
+	return intel_uncore_read8(to_intel_uncore(drm), _MMIO(reg));
+}
+
+static void i915_uncore_write8(struct drm_device *drm, u32 reg, u8 val)
+{
+	intel_uncore_write8(to_intel_uncore(drm), _MMIO(reg), val);
+}
+
+static u16 i915_uncore_read16(struct drm_device *drm, u32 reg)
+{
+	return intel_uncore_read16(to_intel_uncore(drm), _MMIO(reg));
+}
+
+static void i915_uncore_write16(struct drm_device *drm, u32 reg, u16 val)
+{
+	intel_uncore_write16(to_intel_uncore(drm), _MMIO(reg), val);
+}
+
+static u32 i915_uncore_read32(struct drm_device *drm, u32 reg)
+{
+	return intel_uncore_read(to_intel_uncore(drm), _MMIO(reg));
+}
+
+static u32 i915_uncore_read32_fw(struct drm_device *drm, u32 reg)
+{
+	u32 val;
+
+	val = intel_uncore_read_fw(to_intel_uncore(drm), _MMIO(reg));
+	trace_i915_reg_rw(false, _MMIO(reg), val, sizeof(val), true);
+
+	return val;
+}
+
+static void i915_uncore_write32(struct drm_device *drm, u32 reg, u32 val)
+{
+	intel_uncore_write(to_intel_uncore(drm), _MMIO(reg), val);
+}
+
+static void i915_uncore_write32_fw(struct drm_device *drm, u32 reg, u32 val)
+{
+	trace_i915_reg_rw(true, _MMIO(reg), val, sizeof(val), true);
+	intel_uncore_write_fw(to_intel_uncore(drm), _MMIO(reg), val);
+}
+
+static void i915_uncore_lock(struct drm_device *drm)
+{
+	struct intel_uncore *uncore = to_intel_uncore(drm);
+
+	spin_lock(&uncore->lock);
+}
+
+static void i915_uncore_unlock(struct drm_device *drm)
+{
+	struct intel_uncore *uncore = to_intel_uncore(drm);
+
+	spin_unlock(&uncore->lock);
+}
+
+static void i915_uncore_arm_unclaimed_mmio_detection(struct drm_device *drm)
+{
+	intel_uncore_arm_unclaimed_mmio_detection(to_intel_uncore(drm));
+}
+
+const struct intel_display_mmio_interface i915_display_mmio_interface = {
+	.read8 = i915_uncore_read8,
+	.write8 = i915_uncore_write8,
+	.read16 = i915_uncore_read16,
+	.write16 = i915_uncore_write16,
+	.read32 = i915_uncore_read32,
+	.read32_fw = i915_uncore_read32_fw,
+	.write32 = i915_uncore_write32,
+	.write32_fw = i915_uncore_write32_fw,
+	.lock = i915_uncore_lock,
+	.unlock = i915_uncore_unlock,
+	.arm_unclaimed_mmio_detection = i915_uncore_arm_unclaimed_mmio_detection,
+};
 
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)
 #include "selftests/mock_uncore.c"

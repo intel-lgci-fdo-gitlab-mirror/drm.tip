@@ -294,15 +294,13 @@ static int __intel_get_crtc_scanline(struct intel_crtc *crtc)
 static void intel_vblank_section_enter(struct intel_display *display)
 	__acquires(uncore->lock)
 {
-	struct intel_uncore *uncore = to_intel_uncore(display->drm);
-	spin_lock(&uncore->lock);
+	display->parent->mmio->lock(display->drm);
 }
 
 static void intel_vblank_section_exit(struct intel_display *display)
 	__releases(uncore->lock)
 {
-	struct intel_uncore *uncore = to_intel_uncore(display->drm);
-	spin_unlock(&uncore->lock);
+	display->parent->mmio->unlock(display->drm);
 }
 #else
 static void intel_vblank_section_enter(struct intel_display *display)
