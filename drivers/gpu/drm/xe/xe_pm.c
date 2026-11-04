@@ -9,6 +9,8 @@
 #include <linux/pm_runtime.h>
 #include <linux/suspend.h>
 #include <linux/dmi.h>
+#include <linux/mm.h>
+#include <linux/swap.h>
 
 #include <drm/drm_managed.h>
 #include <drm/ttm/ttm_placement.h>
@@ -459,6 +461,24 @@ static int xe_pm_notifier_callback(struct notifier_block *nb,
 	case PM_SUSPEND_PREPARE:
 	{
 		struct xe_validation_ctx ctx;
+		struct ttm_resource_manager *man;
+		u64 vram_used = 0, sys_avail;
+		int i;
+
+		for (i = XE_PL_VRAM0; i <= XE_PL_VRAM1; ++i) {
+			man = ttm_manager_type(&xe->ttm, i);
+			if (man)
+				vram_used += ttm_resource_manager_usage(man);
+		}
+
+		/* Evicted user BOs may be swapped out by the shrinker */
+		sys_avail = (u64)(si_mem_available() + get_nr_swap_pages()) << PAGE_SHIFT;
+		if (vram_used > sys_avail) {
+			drm_warn(&xe->drm,
+				 "Used VRAM %llu MiB exceeds available system memory %llu MiB, refusing suspend/hibernate\n",
+				 vram_used / SZ_1M, sys_avail / SZ_1M);
+			return notifier_from_errno(-ENOMEM);
+		}
 
 		reinit_completion(&xe->pm_block);
 		xe_pm_block_begin_signalling();
