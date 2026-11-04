@@ -188,7 +188,7 @@ void ttm_tt_fini(struct ttm_tt *ttm)
 		fput(ttm->swap_storage);
 	ttm->swap_storage = NULL;
 
-	if (ttm_tt_is_backed_up(ttm))
+	if (ttm_tt_is_backed_up(ttm) || ttm_tt_is_partial(ttm))
 		ttm_pool_drop_backed_up(ttm);
 	if (ttm->backup) {
 		ttm_backup_fini(ttm->backup);
@@ -289,7 +289,18 @@ long ttm_tt_backup(struct ttm_device *bdev, struct ttm_tt *tt,
 	ret = ttm_pool_backup(&bdev->pool, tt, &flags);
 	if (ret > 0) {
 		tt->page_flags &= ~TTM_TT_FLAG_PRIV_POPULATED;
-		tt->page_flags |= TTM_TT_FLAG_BACKED_UP;
+		if (ret >= tt->remaining_pages)
+			tt->remaining_pages = 0;
+		else
+			tt->remaining_pages -= ret;
+
+		if (tt->remaining_pages) {
+			tt->page_flags &= ~TTM_TT_FLAG_BACKED_UP;
+			tt->page_flags |= TTM_TT_FLAG_PARTIAL;
+		} else {
+			tt->page_flags &= ~TTM_TT_FLAG_PARTIAL;
+			tt->page_flags |= TTM_TT_FLAG_BACKED_UP;
+		}
 	}
 
 	return ret;
@@ -300,10 +311,20 @@ int ttm_tt_restore(struct ttm_device *bdev, struct ttm_tt *tt,
 {
 	int ret = ttm_pool_restore_and_alloc(&bdev->pool, tt, ctx);
 
-	if (ret)
+	if (ret) {
+		/*
+		 * Let the shrinker reclaim pages made resident by the
+		 * failed restore. remaining_pages is recounted on backup.
+		 */
+		if (ttm_tt_is_backed_up(tt) &&
+		    ttm_pool_restore_has_resident(tt)) {
+			tt->page_flags &= ~TTM_TT_FLAG_BACKED_UP;
+			tt->page_flags |= TTM_TT_FLAG_PARTIAL;
+		}
 		return ret;
+	}
 
-	tt->page_flags &= ~TTM_TT_FLAG_BACKED_UP;
+	tt->page_flags &= ~(TTM_TT_FLAG_BACKED_UP | TTM_TT_FLAG_PARTIAL);
 
 	return 0;
 }
@@ -404,7 +425,12 @@ int ttm_tt_populate(struct ttm_device *bdev,
 		goto error;
 
 	ttm->page_flags |= TTM_TT_FLAG_PRIV_POPULATED;
-	ttm->page_flags &= ~TTM_TT_FLAG_BACKED_UP;
+	ttm->page_flags &= ~(TTM_TT_FLAG_BACKED_UP | TTM_TT_FLAG_PARTIAL);
+	/*
+	 * Only updated on success. If a restore fails, remaining_pages
+	 * goes stale until ttm_pool_restore_abort() recounts it.
+	 */
+	ttm->remaining_pages = ttm->num_pages;
 	if (unlikely(ttm->page_flags & TTM_TT_FLAG_SWAPPED)) {
 		ret = ttm_tt_swapin(ttm);
 		if (unlikely(ret != 0)) {

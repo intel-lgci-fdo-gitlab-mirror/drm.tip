@@ -583,6 +583,26 @@ static void update_global_total_pages(struct ttm_device *ttm_dev,
 #endif
 }
 
+/*
+ * Account for the change in resident pages of @tt after a shrink or purge
+ * attempt. Note that the resident page count may also increase if a
+ * previously interrupted restore was aborted.
+ */
+static void xe_ttm_tt_account_shrunk(struct ttm_device *ttm_dev,
+				     struct ttm_tt *tt, pgoff_t old_remaining)
+{
+	pgoff_t new_remaining = ttm_tt_remaining_pages(tt);
+	long shrunk = (long)old_remaining - (long)new_remaining;
+
+	if (!shrunk)
+		return;
+
+	/* A tt is counted in populated_tts while it has accounted pages. */
+	xe_ttm_tt_account_subtract(ttm_to_xe_device(ttm_dev), tt, shrunk,
+				   !!old_remaining - !!new_remaining);
+	update_global_total_pages(ttm_dev, -shrunk);
+}
+
 static struct ttm_tt *xe_ttm_tt_create(struct ttm_buffer_object *ttm_bo,
 				       u32 page_flags)
 {
@@ -676,20 +696,35 @@ static int xe_ttm_tt_populate(struct ttm_device *ttm_dev, struct ttm_tt *tt,
 	    !(tt->page_flags & TTM_TT_FLAG_EXTERNAL_MAPPABLE))
 		return 0;
 
-	if (ttm_tt_is_backed_up(tt) && !xe_tt->purgeable) {
+	/*
+	 * A purgeable backed-up tt was purged and holds neither pages nor
+	 * handles. Partial tts are never purgeable: madvise only marks
+	 * populated tts purgeable, and the shrinker purges those fully.
+	 */
+	if ((ttm_tt_is_backed_up(tt) || ttm_tt_is_partial(tt)) &&
+	    !xe_tt->purgeable) {
+		pgoff_t remaining = ttm_tt_remaining_pages(tt);
+		long backed_up_pages = tt->num_pages - remaining;
+
 		err = ttm_tt_restore(ttm_dev, tt, ctx);
+		if (!err) {
+			xe_tt->purgeable = false;
+			xe_ttm_tt_account_add(ttm_to_xe_device(ttm_dev), tt,
+					      backed_up_pages, !remaining);
+			update_global_total_pages(ttm_dev, backed_up_pages);
+		}
 	} else {
 		ttm_tt_clear_backed_up(tt);
 		err = ttm_pool_alloc(&ttm_dev->pool, tt, ctx);
+		if (!err) {
+			xe_tt->purgeable = false;
+			xe_ttm_tt_account_add(ttm_to_xe_device(ttm_dev), tt,
+					      tt->num_pages, 1);
+			update_global_total_pages(ttm_dev, tt->num_pages);
+		}
 	}
-	if (err)
-		return err;
 
-	xe_tt->purgeable = false;
-	xe_ttm_tt_account_add(ttm_to_xe_device(ttm_dev), tt, tt->num_pages, 1);
-	update_global_total_pages(ttm_dev, tt->num_pages);
-
-	return 0;
+	return err;
 }
 
 static void xe_ttm_tt_unpopulate(struct ttm_device *ttm_dev, struct ttm_tt *tt)
@@ -709,6 +744,15 @@ static void xe_ttm_tt_unpopulate(struct ttm_device *ttm_dev, struct ttm_tt *tt)
 
 static void xe_ttm_tt_destroy(struct ttm_device *ttm_dev, struct ttm_tt *tt)
 {
+	/* Resident pages of a partially backed-up tt are still accounted. */
+	if (ttm_tt_is_partial(tt)) {
+		long remaining = ttm_tt_remaining_pages(tt);
+
+		xe_ttm_tt_account_subtract(ttm_to_xe_device(ttm_dev), tt,
+					   remaining, !!remaining);
+		update_global_total_pages(ttm_dev, -remaining);
+	}
+
 	ttm_tt_fini(tt);
 	kfree(tt);
 }
@@ -1167,7 +1211,8 @@ static int xe_bo_move(struct ttm_buffer_object *ttm_bo, bool evict,
 		return ret;
 	}
 
-	tt_has_data = ttm && (ttm_tt_is_populated(ttm) || ttm_tt_is_swapped(ttm));
+	tt_has_data = ttm && (ttm_tt_is_populated(ttm) || ttm_tt_is_swapped(ttm) ||
+			      ttm_tt_is_partial(ttm));
 
 	move_lacks_source = !old_mem || (handle_system_ccs ? (!bo->ccs_cleared) :
 					 (!mem_type_is_vram(old_mem_type) && !tt_has_data));
@@ -1369,7 +1414,7 @@ static long xe_bo_shrink_purge(struct ttm_operation_ctx *ctx,
 			       unsigned long *scanned)
 {
 	struct xe_device *xe = ttm_to_xe_device(bo->bdev);
-	struct ttm_tt *tt = bo->ttm;
+	pgoff_t old_remaining;
 	long lret;
 
 	/* Fake move to system, without copying data. */
@@ -1388,16 +1433,14 @@ static long xe_bo_shrink_purge(struct ttm_operation_ctx *ctx,
 		ttm_bo_move_null(bo, new_resource);
 	}
 
-	*scanned += bo->ttm->num_pages;
+	old_remaining = ttm_tt_remaining_pages(bo->ttm);
+	*scanned += old_remaining;
 	lret = ttm_bo_shrink(ctx, bo, (struct ttm_bo_shrink_flags)
 			     {.purge = true,
 			      .writeback = false,
 			      .allow_move = false});
 
-	if (lret > 0) {
-		xe_ttm_tt_account_subtract(xe, bo->ttm, bo->ttm->num_pages, 1);
-		update_global_total_pages(bo->bdev, -(long)tt->num_pages);
-	}
+	xe_ttm_tt_account_shrunk(bo->bdev, bo->ttm, old_remaining);
 
 	return lret;
 }
@@ -1448,6 +1491,7 @@ long xe_bo_shrink(struct ttm_operation_ctx *ctx, struct ttm_buffer_object *bo,
 	struct ttm_place place = {.mem_type = bo->resource->mem_type};
 	struct xe_bo *xe_bo = ttm_to_xe_bo(bo);
 	struct xe_device *xe = ttm_to_xe_device(bo->bdev);
+	pgoff_t old_remaining;
 	bool needs_rpm;
 	long lret = 0L;
 
@@ -1478,7 +1522,8 @@ long xe_bo_shrink(struct ttm_operation_ctx *ctx, struct ttm_buffer_object *bo,
 	if (needs_rpm && !xe_pm_runtime_get_if_active(xe))
 		goto out_unref;
 
-	*scanned += tt->num_pages;
+	old_remaining = ttm_tt_remaining_pages(tt);
+	*scanned += old_remaining;
 	lret = ttm_bo_shrink(ctx, bo, (struct ttm_bo_shrink_flags)
 			     {.purge = false,
 			      .writeback = flags.writeback,
@@ -1486,10 +1531,7 @@ long xe_bo_shrink(struct ttm_operation_ctx *ctx, struct ttm_buffer_object *bo,
 	if (needs_rpm)
 		xe_pm_runtime_put(xe);
 
-	if (lret > 0) {
-		xe_ttm_tt_account_subtract(xe, tt, tt->num_pages, 1);
-		update_global_total_pages(bo->bdev, -(long)tt->num_pages);
-	}
+	xe_ttm_tt_account_shrunk(bo->bdev, tt, old_remaining);
 
 out_unref:
 	xe_bo_put(xe_bo);

@@ -1524,9 +1524,8 @@ int ttm_bo_populate(struct ttm_buffer_object *bo,
 
 	swapped = ttm_tt_is_swapped(tt);
 	ret = ttm_tt_populate(bdev, tt, ctx);
-	if (ret)
-		return ret;
 
+	/* A failed restore may leave the tt partial, hence evictable. */
 	if (swapped && !ttm_tt_is_swapped(tt) && !bo->pin_count &&
 	    bo->resource) {
 		spin_lock(&bdev->lru_lock);
@@ -1535,7 +1534,7 @@ int ttm_bo_populate(struct ttm_buffer_object *bo,
 		spin_unlock(&bdev->lru_lock);
 	}
 
-	return 0;
+	return ret;
 }
 EXPORT_SYMBOL(ttm_bo_populate);
 

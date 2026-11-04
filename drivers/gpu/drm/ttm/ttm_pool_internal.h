@@ -30,4 +30,6 @@ static inline unsigned int ttm_pool_beneficial_order(struct ttm_pool *pool)
  */
 bool ttm_backup_fault_inject_folio(void);
 
+bool ttm_pool_restore_has_resident(const struct ttm_tt *tt);
+
 #endif

@@ -88,7 +88,13 @@ struct ttm_tt {
 	 * used to assure pgprot always matches.
 	 *
 	 * TTM_TT_FLAG_BACKED_UP: TTM internal only. This is set if the
-	 * struct ttm_tt has been (possibly partially) backed up.
+	 * struct ttm_tt has been fully backed up.
+	 *
+	 * TTM_TT_FLAG_PARTIAL: TTM internal only. This is set if the
+	 * struct ttm_tt has been partially backed up, meaning some pages
+	 * have been swapped to the backup but some real pages remain.
+	 * Unlike BACKED_UP, a partial tt stays on the normal LRU and
+	 * can be targeted for continued backup.
 	 *
 	 * TTM_TT_FLAG_PRIV_POPULATED: TTM internal only. DO NOT USE. This is
 	 * set by TTM after ttm_tt_populate() has successfully returned, and is
@@ -101,11 +107,14 @@ struct ttm_tt {
 #define TTM_TT_FLAG_EXTERNAL_MAPPABLE	BIT(3)
 #define TTM_TT_FLAG_DECRYPTED		BIT(4)
 #define TTM_TT_FLAG_BACKED_UP	        BIT(5)
+#define TTM_TT_FLAG_PARTIAL		BIT(6)
 
-#define TTM_TT_FLAG_PRIV_POPULATED	BIT(6)
+#define TTM_TT_FLAG_PRIV_POPULATED	BIT(7)
 	uint32_t page_flags;
 	/** @num_pages: Number of pages in the page array. */
 	uint32_t num_pages;
+	/** @remaining_pages: Number of resident (non-backed-up) pages. */
+	pgoff_t remaining_pages;
 	/** @sg: for SG objects via dma-buf. */
 	struct sg_table *sg;
 	/** @dma_address: The DMA (bus) addresses of the pages. */
@@ -157,10 +166,10 @@ static inline bool ttm_tt_is_swapped(const struct ttm_tt *tt)
 }
 
 /**
- * ttm_tt_is_backed_up() - Whether the ttm_tt backed up
+ * ttm_tt_is_backed_up() - Whether the ttm_tt is fully backed up
  * @tt: The struct ttm_tt.
  *
- * Return: true if swapped or backed up, false otherwise.
+ * Return: true if fully backed up, false otherwise.
  */
 static inline bool ttm_tt_is_backed_up(const struct ttm_tt *tt)
 {
@@ -168,15 +177,37 @@ static inline bool ttm_tt_is_backed_up(const struct ttm_tt *tt)
 }
 
 /**
- * ttm_tt_clear_backed_up() - Clear the ttm_tt backed-up status
+ * ttm_tt_is_partial() - Whether the ttm_tt is partially backed up
  * @tt: The struct ttm_tt.
  *
- * Drivers can use this functionto clear the backed-up status,
+ * Return: true if partially backed up, false otherwise.
+ */
+static inline bool ttm_tt_is_partial(const struct ttm_tt *tt)
+{
+	return tt->page_flags & TTM_TT_FLAG_PARTIAL;
+}
+
+/**
+ * ttm_tt_remaining_pages() - Remaining non-backed-up pages
+ * @tt: The struct ttm_tt.
+ *
+ * Return: The number of pages that are still resident and not backed up.
+ */
+static inline pgoff_t ttm_tt_remaining_pages(const struct ttm_tt *tt)
+{
+	return tt->remaining_pages;
+}
+
+/**
+ * ttm_tt_clear_backed_up() - Clear the ttm_tt backed-up and partial status
+ * @tt: The struct ttm_tt.
+ *
+ * Drivers can use this function to clear the backed-up status,
  * for example before destroying or re-validating a purged tt.
  */
 static inline void ttm_tt_clear_backed_up(struct ttm_tt *tt)
 {
-	tt->page_flags &= ~TTM_TT_FLAG_BACKED_UP;
+	tt->page_flags &= ~(TTM_TT_FLAG_BACKED_UP | TTM_TT_FLAG_PARTIAL);
 }
 
 /**

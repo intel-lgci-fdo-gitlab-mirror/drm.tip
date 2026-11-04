@@ -1124,7 +1124,7 @@ long ttm_bo_shrink(struct ttm_operation_ctx *ctx, struct ttm_buffer_object *bo,
 			     {.purge = flags.purge,
 			      .writeback = flags.writeback});
 
-	if (lret > 0) {
+	if (lret > 0 && !ttm_tt_is_partial(bo->ttm)) {
 		spin_lock(&bdev->lru_lock);
 		ttm_resource_del_bulk_move_unevictable(bo->resource, bo);
 		ttm_resource_move_to_lru_tail(bo->resource);
@@ -1151,7 +1151,9 @@ EXPORT_SYMBOL(ttm_bo_shrink);
  */
 bool ttm_bo_shrink_suitable(struct ttm_buffer_object *bo, struct ttm_operation_ctx *ctx)
 {
-	return bo->ttm && ttm_tt_is_populated(bo->ttm) && !bo->pin_count &&
+	return bo->ttm &&
+		(ttm_tt_is_populated(bo->ttm) || ttm_tt_is_partial(bo->ttm)) &&
+		!bo->pin_count &&
 		(!ctx->no_wait_gpu ||
 		 dma_resv_test_signaled(bo->base.resv, DMA_RESV_USAGE_BOOKKEEP));
 }

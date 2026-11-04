@@ -628,7 +628,8 @@ static int ttm_pool_restore_commit(struct ttm_pool_tt_restore *restore,
 			 * using clever logic, but ATM we don't care, as
 			 * we prioritize releasing memory ASAP. Note that
 			 * here, the old retained page is always write-back
-			 * cached.
+			 * cached and not DMA-mapped. The commit below
+			 * installs the new page and its DMA address.
 			 */
 			ttm_pool_split_for_swap(restore->pool, p);
 			copy_highpage(restore->alloced_page + i, p);
@@ -895,7 +896,7 @@ int ttm_pool_alloc(struct ttm_pool *pool, struct ttm_tt *tt,
 {
 	struct ttm_pool_alloc_state alloc;
 
-	if (WARN_ON(ttm_tt_is_backed_up(tt)))
+	if (WARN_ON(ttm_tt_is_backed_up(tt) || ttm_tt_is_partial(tt)))
 		return -EINVAL;
 
 	ttm_pool_alloc_state_init(tt, &alloc);
@@ -924,7 +925,7 @@ int ttm_pool_restore_and_alloc(struct ttm_pool *pool, struct ttm_tt *tt,
 	struct ttm_pool_alloc_state alloc;
 	int ret;
 
-	if (WARN_ON(!ttm_tt_is_backed_up(tt)))
+	if (WARN_ON(!ttm_tt_is_backed_up(tt) && !ttm_tt_is_partial(tt)))
 		return -EINVAL;
 
 	if (!restore) {
@@ -968,6 +969,23 @@ int ttm_pool_restore_and_alloc(struct ttm_pool *pool, struct ttm_tt *tt,
 }
 
 /**
+ * ttm_pool_restore_has_resident() - Whether an interrupted restore has
+ * made pages resident
+ * @tt: The struct ttm_tt.
+ *
+ * Return: true if an interrupted restore of @tt has committed or
+ * restored pages that would be kept on ttm_pool_restore_abort().
+ */
+bool ttm_pool_restore_has_resident(const struct ttm_tt *tt)
+{
+	const struct ttm_pool_tt_restore *restore = tt->restore;
+
+	return restore && (restore->alloced_pages ||
+			   (ttm_pool_restore_valid(restore) &&
+			    restore->restored_pages));
+}
+
+/**
  * ttm_pool_free - Free the backing pages from a ttm_tt object
  *
  * @pool: Pool to give pages back to.
@@ -1000,7 +1018,7 @@ void ttm_pool_drop_backed_up(struct ttm_tt *tt)
 	struct ttm_pool_tt_restore *restore;
 	pgoff_t start_page = 0;
 
-	WARN_ON(!ttm_tt_is_backed_up(tt));
+	WARN_ON(!ttm_tt_is_backed_up(tt) && !ttm_tt_is_partial(tt));
 
 	restore = tt->restore;
 
@@ -1040,6 +1058,91 @@ void ttm_pool_drop_backed_up(struct ttm_tt *tt)
 }
 
 /**
+ * ttm_pool_restore_abort() - Abort an ongoing restore of a partial tt
+ * @tt: The struct ttm_tt with an active restore.
+ *
+ * Abort a partially completed restore, leaving the tt in a consistent
+ * state for a subsequent backup. The uncommitted in-flight page is
+ * DMA-unmapped and split; restored sub-pages are kept, unused ones freed.
+ * Non-cached committed pages are converted to write-back so the
+ * partial-backup invariant (all resident pages are cached) is maintained.
+ * Committed pages are left DMA-mapped for the backup path to handle.
+ * Since restored pages are now resident, &ttm_tt.remaining_pages is
+ * updated to reflect the number of resident pages.
+ */
+static void ttm_pool_restore_abort(struct ttm_tt *tt)
+{
+	struct ttm_pool_tt_restore *restore = tt->restore;
+	pgoff_t i, nr, mid;
+
+	if (!restore)
+		return;
+
+	/* Handle the uncommitted in-flight page. */
+	if (ttm_pool_restore_valid(restore)) {
+		struct page *page = restore->alloced_page;
+
+		nr = 1UL << restore->order;
+
+		if (tt->dma_address)
+			ttm_pool_unmap(restore->pool, restore->first_dma, nr);
+
+#ifdef CONFIG_X86
+		if (restore->page_caching != ttm_cached && !PageHighMem(page))
+			set_pages_wb(page, nr);
+#endif
+		ttm_pool_split_for_swap(restore->pool, page);
+
+		for (i = 0; i < restore->restored_pages; i++)
+			restore->snapshot_alloc.pages[i] = page + i;
+
+		/*
+		 * Clear stale DMA addresses for the in-flight sub-pages.
+		 * These pages were never committed via
+		 * ttm_pool_allocated_page_commit(), so tt->dma_address[]
+		 * contains stale values that the backup path would
+		 * incorrectly try to unmap. All @nr entries are stale,
+		 * including restored ones: commit is all-or-nothing per
+		 * compound, and the whole compound was unmapped above.
+		 */
+		if (tt->dma_address) {
+			pgoff_t off = restore->snapshot_alloc.pages -
+				      tt->pages;
+
+			memset(&tt->dma_address[off], 0,
+			       nr * sizeof(*tt->dma_address));
+		}
+
+		for (i = restore->restored_pages; i < nr; i++)
+			__free_pages_gpu_account(page + i, 0, false);
+	}
+
+	/*
+	 * Don't DMA-unmap committed restored pages here; their DMA
+	 * addresses are in tt->dma_address[] and the backup path
+	 * will unmap them.
+	 */
+
+	/* Convert non-cached committed pages to write-back. */
+	mid = restore->snapshot_alloc.caching_divide - tt->pages;
+#ifdef CONFIG_X86
+	if (mid > 0 && tt->caching != ttm_cached)
+		set_pages_array_wb(tt->pages, mid);
+#endif
+
+	kfree(restore);
+	tt->restore = NULL;
+
+	for (i = 0, nr = 0; i < tt->num_pages; i++) {
+		struct page *p = tt->pages[i];
+
+		if (p && !ttm_backup_page_ptr_is_handle(p))
+			nr++;
+	}
+	tt->remaining_pages = nr;
+}
+
+/**
  * ttm_pool_backup() - Back up or purge a struct ttm_tt
  * @pool: The pool used when allocating the struct ttm_tt.
  * @tt: The struct ttm_tt.
@@ -1071,9 +1174,12 @@ long ttm_pool_backup(struct ttm_pool *pool, struct ttm_tt *tt,
 	pgoff_t shrunken = 0;
 	pgoff_t i, j, num_pages, npages;
 	pgoff_t nr_backed;
+	bool partial = ttm_tt_is_partial(tt);
 
 	if (WARN_ON(ttm_tt_is_backed_up(tt)))
 		return -EINVAL;
+
+	ttm_pool_restore_abort(tt);
 
 	if ((!ttm_backup_bytes_avail() && !flags->purge) ||
 	    ttm_pool_uses_dma_alloc(pool) || ttm_tt_is_backed_up(tt))
@@ -1082,8 +1188,9 @@ long ttm_pool_backup(struct ttm_pool *pool, struct ttm_tt *tt,
 #ifdef CONFIG_X86
 	/* Anything returned to the system needs to be cached. Walk allocations
 	 * skipping NULL pages and issue set_pages_array_wb() per contiguous run.
+	 * Resident pages of a partial tt are already cached.
 	 */
-	if (tt->caching != ttm_cached) {
+	if (!partial && tt->caching != ttm_cached) {
 		pgoff_t run_start = 0, run_count = 0;
 
 		for (i = 0; i < tt->num_pages; i += num_pages) {
@@ -1119,9 +1226,18 @@ long ttm_pool_backup(struct ttm_pool *pool, struct ttm_tt *tt,
 
 			order = ttm_pool_page_order(pool, page);
 			num_pages = 1UL << order;
-			if (tt->dma_address)
+			if (tt->dma_address && tt->dma_address[i]) {
 				ttm_pool_unmap(pool, tt->dma_address[i],
 					       num_pages);
+				/*
+				 * Don't unmap again on partial re-entry.
+				 * Pages left resident are never re-mapped;
+				 * restore copies them into newly mapped
+				 * pages.
+				 */
+				memset(&tt->dma_address[i], 0,
+				       num_pages * sizeof(*tt->dma_address));
+			}
 			if (flags->purge) {
 				shrunken += num_pages;
 				page->private = 0;
