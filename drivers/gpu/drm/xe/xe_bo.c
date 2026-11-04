@@ -452,24 +452,26 @@ struct sg_table *xe_bo_sg(struct xe_bo *bo)
  * Account ttm pages against the device shrinker's shrinkable and
  * purgeable counts.
  */
-static void xe_ttm_tt_account_add(struct xe_device *xe, struct ttm_tt *tt)
+static void xe_ttm_tt_account_add(struct xe_device *xe, struct ttm_tt *tt,
+				  long num_pages, long tts)
 {
 	struct xe_ttm_tt *xe_tt = container_of(tt, struct xe_ttm_tt, ttm);
 
 	if (xe_tt->purgeable)
-		xe_shrinker_mod_pages(xe->mem.shrinker, 0, tt->num_pages, 1);
+		xe_shrinker_mod_pages(xe->mem.shrinker, 0, num_pages, tts);
 	else
-		xe_shrinker_mod_pages(xe->mem.shrinker, tt->num_pages, 0, 1);
+		xe_shrinker_mod_pages(xe->mem.shrinker, num_pages, 0, tts);
 }
 
-static void xe_ttm_tt_account_subtract(struct xe_device *xe, struct ttm_tt *tt)
+static void xe_ttm_tt_account_subtract(struct xe_device *xe, struct ttm_tt *tt,
+				       long num_pages, long tts)
 {
 	struct xe_ttm_tt *xe_tt = container_of(tt, struct xe_ttm_tt, ttm);
 
 	if (xe_tt->purgeable)
-		xe_shrinker_mod_pages(xe->mem.shrinker, 0, -(long)tt->num_pages, -1);
+		xe_shrinker_mod_pages(xe->mem.shrinker, 0, -num_pages, -tts);
 	else
-		xe_shrinker_mod_pages(xe->mem.shrinker, -(long)tt->num_pages, 0, -1);
+		xe_shrinker_mod_pages(xe->mem.shrinker, -num_pages, 0, -tts);
 }
 
 static bool xe_ttm_bo_is_imported(struct ttm_buffer_object *tbo)
@@ -503,7 +505,8 @@ static void xe_bo_account_pin(struct xe_bo *bo)
 
 	if (bo->ttm.pin_count == 1 && bo->ttm.ttm && ttm_tt_is_populated(bo->ttm.ttm) &&
 	    !xe_ttm_bo_is_imported(&bo->ttm))
-		xe_ttm_tt_account_subtract(xe, bo->ttm.ttm);
+		xe_ttm_tt_account_subtract(xe, bo->ttm.ttm,
+					   bo->ttm.ttm->num_pages, 1);
 }
 
 /*
@@ -534,7 +537,8 @@ static void xe_bo_account_unpin(struct xe_bo *bo)
 
 	if (last_unpin && bo->ttm.ttm && ttm_tt_is_populated(bo->ttm.ttm) &&
 	    !xe_ttm_bo_is_imported(&bo->ttm))
-		xe_ttm_tt_account_add(xe, bo->ttm.ttm);
+		xe_ttm_tt_account_add(xe, bo->ttm.ttm, bo->ttm.ttm->num_pages,
+				      1);
 }
 
 /**
@@ -682,7 +686,7 @@ static int xe_ttm_tt_populate(struct ttm_device *ttm_dev, struct ttm_tt *tt,
 		return err;
 
 	xe_tt->purgeable = false;
-	xe_ttm_tt_account_add(ttm_to_xe_device(ttm_dev), tt);
+	xe_ttm_tt_account_add(ttm_to_xe_device(ttm_dev), tt, tt->num_pages, 1);
 	update_global_total_pages(ttm_dev, tt->num_pages);
 
 	return 0;
@@ -699,7 +703,7 @@ static void xe_ttm_tt_unpopulate(struct ttm_device *ttm_dev, struct ttm_tt *tt)
 	xe_tt_unmap_sg(xe, tt);
 
 	ttm_pool_free(&ttm_dev->pool, tt);
-	xe_ttm_tt_account_subtract(xe, tt);
+	xe_ttm_tt_account_subtract(xe, tt, tt->num_pages, 1);
 	update_global_total_pages(ttm_dev, -(long)tt->num_pages);
 }
 
@@ -1391,7 +1395,7 @@ static long xe_bo_shrink_purge(struct ttm_operation_ctx *ctx,
 			      .allow_move = false});
 
 	if (lret > 0) {
-		xe_ttm_tt_account_subtract(xe, bo->ttm);
+		xe_ttm_tt_account_subtract(xe, bo->ttm, bo->ttm->num_pages, 1);
 		update_global_total_pages(bo->bdev, -(long)tt->num_pages);
 	}
 
@@ -1483,7 +1487,7 @@ long xe_bo_shrink(struct ttm_operation_ctx *ctx, struct ttm_buffer_object *bo,
 		xe_pm_runtime_put(xe);
 
 	if (lret > 0) {
-		xe_ttm_tt_account_subtract(xe, tt);
+		xe_ttm_tt_account_subtract(xe, tt, tt->num_pages, 1);
 		update_global_total_pages(bo->bdev, -(long)tt->num_pages);
 	}
 
