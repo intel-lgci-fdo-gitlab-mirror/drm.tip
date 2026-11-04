@@ -149,7 +149,6 @@ ttm_backup_backup_folio(struct file *backup, struct folio *folio,
 		to_nr = min_t(int, nr_pages - i,
 			      folio_next_index(to_folio) - (idx + i));
 
-		folio_mark_accessed(to_folio);
 		folio_lock(to_folio);
 		folio_mark_dirty(to_folio);
 
