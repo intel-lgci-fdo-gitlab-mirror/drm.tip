@@ -269,32 +269,29 @@ static int send_page_offline_cmd(struct xe_device *xe, u64 page_address,
 	request.action = action;
 
 	if (action == XE_RAS_PAGE_ACTION_OFFLINE)
-		xe_log_err(xe, DEVICE_MEMORY, 0, "Requesting firmware to offline page 0x%llx\n",
-			   page_address);
+		xe_info(xe, "Requesting firmware to offline page 0x%llx\n", page_address);
 	else
-		xe_log_err(xe, DEVICE_MEMORY, 0, "Requesting firmware to remove page 0x%llx from queue\n",
-			   page_address);
+		xe_info(xe, "Requesting firmware to remove page 0x%llx from queue\n", page_address);
 
 	xe_sysctrl_create_command(&command, XE_SYSCTRL_GROUP_GFSP, XE_SYSCTRL_CMD_PAGE_OFFLINE,
 				  &request, sizeof(request), &response, sizeof(response));
 
 	ret = xe_sysctrl_send_command(&xe->sc, &command, &rlen);
 	if (ret) {
-		xe_log_err(xe, SYSCTRL, ret, "failed to send page offline command\n");
+		xe_err(xe, "sysctrl: failed to send page offline command %d\n", ret);
 		return ret;
 	}
 
 	if (rlen != sizeof(response)) {
-		xe_log_err(xe, SYSCTRL, -EINVAL,
-			   "unexpected page offline response length %zu (expected %zu)\n",
-			   rlen, sizeof(response));
+		xe_err(xe, "sysctrl: unexpected page offline response length %zu (expected %zu)\n",
+		       rlen, sizeof(response));
 		return -EINVAL;
 	}
 
 	ret = ras_status_to_errno(response.status);
 	if (ret) {
-		xe_log_err(xe, SYSCTRL, ret, "page offline command failed with status %u\n",
-			   response.status);
+		xe_err(xe, "sysctrl: page offline command failed with status %#x\n",
+		       response.status);
 		return ret;
 	}
 
@@ -318,15 +315,14 @@ static int handle_page_offline(struct xe_device *xe, u64 page_address, bool noti
 	int ret;
 
 	if (!IS_ALIGNED(page_address, XE_PAGE_SIZE)) {
-		xe_log_err(xe, SYSCTRL, -EINVAL, "Unaligned physical page address: 0x%llx\n",
-			   page_address);
+		xe_err(xe, "Unaligned physical page address: 0x%llx\n", page_address);
 		return -EINVAL;
 	}
 
 	/* User policy set to disable page offlining */
 	if (xe_ras_get_disable_vram_page_offline(xe)) {
 		action = XE_RAS_PAGE_ACTION_REMOVE;
-		xe_log_err(xe, DEVICE_MEMORY, -EOPNOTSUPP, "User policy set to disable page offlining\n");
+		xe_info(xe, "User policy set to disable page offlining\n");
 		goto notify;
 	}
 
@@ -346,33 +342,24 @@ static int handle_page_offline(struct xe_device *xe, u64 page_address, bool noti
 	switch (ret) {
 	case 0:
 		action = XE_RAS_PAGE_ACTION_REMOVE;
-		xe_log_err(xe, DEVICE_MEMORY, ret,
-			   "Poison detected at physical address 0x%llx, page soft-offlined\n",
-			   page_address);
 		break;
 	case -EIO:
-		xe_log_err(xe, DEVICE_MEMORY, ret,
-			   "Poison detected at physical address 0x%llx, page belongs to critical BO and cannot be soft-offlined\n",
-			   page_address);
+		xe_err(xe, "Physical page address 0x%llx belongs to critical BO and cannot be soft-offlined\n",
+		       page_address);
 		return ret;
 	case -EEXIST:
 		if (xa_load(&state->offlined_pages, page_address >> XE_PTE_SHIFT))
 			action = XE_RAS_PAGE_ACTION_REMOVE;
 		else
 			action = XE_RAS_PAGE_ACTION_OFFLINE;
-
-		xe_log_err(xe, DEVICE_MEMORY, ret,
-			   "Double-bit ECC error detected at physical address 0x%llx, page soft-offlined\n",
-			   page_address);
 		break;
 	case -ENOMEM:
-		xe_log_err(xe, DEVICE_MEMORY, ret,
-			   "Poison detected at physical address 0x%llx, failed to soft-offline\n",
-			   page_address);
+		xe_err(xe, "Failed to soft-offline page at physical address 0x%llx\n",
+		       page_address);
 		return ret;
 	default:
-		xe_log_err(xe, DEVICE_MEMORY, ret, "Failed to handle address fault at physical address 0x%llx\n",
-			   page_address);
+		xe_err(xe, "Failed to handle address fault at physical address 0x%llx\n",
+		       page_address);
 		return 0;
 	}
 
@@ -433,15 +420,14 @@ static void process_offline_pages(struct xe_device *xe, u32 cmd, void *req, size
 
 		ret = xe_sysctrl_send_command(&xe->sc, &command, &rlen);
 		if (ret) {
-			xe_log_err(xe, SYSCTRL, ret, "failed to get page offline data, cmd=%#x\n",
-				   cmd);
+			xe_err(xe, "sysctrl: failed to get page offline data for cmd %#x, ret %d\n",
+			       cmd, ret);
 			return;
 		}
 
 		if (rlen != resp_size) {
-			xe_log_err(xe, SYSCTRL, -EINVAL,
-				   "unexpected page offline response length %zu (expected %zu), cmd=%#x\n",
-				   rlen, resp_size, cmd);
+			xe_err(xe, "sysctrl: unexpected page offline response length %zu (expected %zu) for cmd %#x\n",
+			       rlen, resp_size, cmd);
 			return;
 		}
 
@@ -471,9 +457,8 @@ static void process_offline_pages(struct xe_device *xe, u32 cmd, void *req, size
 			total_pages = common->total_pages;
 
 		if (count > total_pages) {
-			xe_log_err(xe, SYSCTRL, -EINVAL,
-				   "Pages returned exceed total pages %u, returned %u, cmd=%#x\n",
-				   total_pages, count, cmd);
+			xe_err(xe, "Pages returned exceed total pages %u, returned %u, cmd=%#x\n",
+			       total_pages, count, cmd);
 			return;
 		}
 	} while (common->additional_data);
