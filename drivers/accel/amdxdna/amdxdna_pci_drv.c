@@ -74,9 +74,10 @@ MODULE_FIRMWARE("amdnpu/17f2_15/cert_l.sbin");
  * 0.8: Support BO usage query
  * 0.9: Add new device type AMDXDNA_DEV_TYPE_PF
  * 0.10: Support AIE4 UMQ
+ * 1.0: Official release with AIE4 device support
  */
-#define AMDXDNA_DRIVER_MAJOR		0
-#define AMDXDNA_DRIVER_MINOR		10
+#define AMDXDNA_DRIVER_MAJOR		1
+#define AMDXDNA_DRIVER_MINOR		0
 
 /*
  * Bind the driver base on (vendor_id, device_id) pair and later use the
