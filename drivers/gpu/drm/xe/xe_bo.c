@@ -1437,7 +1437,6 @@ static long xe_bo_shrink_purge(struct ttm_operation_ctx *ctx,
 	*scanned += old_remaining;
 	lret = ttm_bo_shrink(ctx, bo, (struct ttm_bo_shrink_flags)
 			     {.purge = true,
-			      .writeback = false,
 			      .allow_move = false});
 
 	xe_ttm_tt_account_shrunk(bo->bdev, bo->ttm, old_remaining);
@@ -1526,8 +1525,9 @@ long xe_bo_shrink(struct ttm_operation_ctx *ctx, struct ttm_buffer_object *bo,
 	*scanned += old_remaining;
 	lret = ttm_bo_shrink(ctx, bo, (struct ttm_bo_shrink_flags)
 			     {.purge = false,
-			      .writeback = flags.writeback,
-			      .allow_move = true});
+			      .allow_move = true,
+			      .may_writeback = flags.may_writeback,
+			      .force_writeback = flags.force_writeback});
 	if (needs_rpm)
 		xe_pm_runtime_put(xe);
 

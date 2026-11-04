@@ -249,15 +249,20 @@ s64 ttm_lru_walk_for_evict(struct ttm_lru_walk *walk, struct ttm_device *bdev,
 /**
  * struct ttm_bo_shrink_flags - flags to govern the bo shrinking behaviour
  * @purge: Purge the content rather than backing it up.
- * @writeback: Attempt to immediately write content to swap space.
  * @allow_move: Allow moving to system before shrinking. This is typically
  * not desired for zombie- or ghost objects (with zombie object meaning
  * objects with a zero gem object refcount)
+ * @may_writeback: Allow retrying a failed backup allocation using kernel
+ * reserves. See struct ttm_backup_flags.
+ * @force_writeback: Attempt to immediately write content to swap space,
+ * both for the regular backup and for any retry allowed by
+ * @may_writeback. See struct ttm_backup_flags.
  */
 struct ttm_bo_shrink_flags {
 	u32 purge : 1;
-	u32 writeback : 1;
 	u32 allow_move : 1;
+	u32 may_writeback : 1;
+	u32 force_writeback : 1;
 };
 
 long ttm_bo_shrink(struct ttm_operation_ctx *ctx, struct ttm_buffer_object *bo,

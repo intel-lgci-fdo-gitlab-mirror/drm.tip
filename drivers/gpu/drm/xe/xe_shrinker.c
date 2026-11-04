@@ -171,6 +171,7 @@ out:
 static int xe_shrinker_walk(struct xe_shrinker *shrinker,
 			    struct ttm_operation_ctx *ctx,
 			    const struct xe_bo_shrink_flags flags,
+			    bool allow_writeback,
 			    unsigned long to_scan, unsigned long *scanned,
 			    unsigned long *freed)
 {
@@ -179,7 +180,8 @@ static int xe_shrinker_walk(struct xe_shrinker *shrinker,
 	int ret;
 
 	swap(no_wait_gpu, ctx->no_wait_gpu);
-	save_flags.writeback = false;
+	save_flags.may_writeback = false;
+	save_flags.force_writeback = false;
 	ret = __xe_shrinker_walk(shrinker, ctx, save_flags, to_scan, scanned,
 				 freed);
 	swap(no_wait_gpu, ctx->no_wait_gpu);
@@ -187,15 +189,32 @@ static int xe_shrinker_walk(struct xe_shrinker *shrinker,
 		return ret;
 
 	if (!ctx->no_wait_gpu) {
+		/*
+		 * Blocking is now tolerated: allow retrying a failed backup
+		 * allocation using kernel reserves, but only if writeback is
+		 * permitted at all in this gfp context (i.e. __GFP_IO is
+		 * set); see @allow_writeback in xe_shrinker_scan().
+		 */
+		save_flags.may_writeback = allow_writeback;
 		ret = __xe_shrinker_walk(shrinker, ctx, save_flags, to_scan, scanned,
 					 freed);
 		if (ret || *scanned >= to_scan)
 			return ret;
 	}
 
-	if (flags.writeback)
-		ret = __xe_shrinker_walk(shrinker, ctx, flags, to_scan, scanned,
+	if (allow_writeback) {
+		struct xe_bo_shrink_flags wb_flags = flags;
+
+		/*
+		 * Writeback explicitly allowed: also force writeback on any
+		 * retry so it actually relieves memory pressure instead of
+		 * just growing dirty shmem.
+		 */
+		wb_flags.may_writeback = true;
+		wb_flags.force_writeback = true;
+		ret = __xe_shrinker_walk(shrinker, ctx, wb_flags, to_scan, scanned,
 					 freed);
+	}
 
 	return ret;
 }
@@ -297,7 +316,12 @@ static unsigned long xe_shrinker_scan_purgeable(struct shrinker *shrink,
 		.purge = true,
 	};
 
-	xe_shrinker_walk(shrinker, &ctx, shrink_flags, nr_to_scan, &nr_scanned, &freed);
+	/*
+	 * Purging never does backup/writeback, so there's nothing to
+	 * force or gate on __GFP_IO here.
+	 */
+	xe_shrinker_walk(shrinker, &ctx, shrink_flags, false,
+			 nr_to_scan, &nr_scanned, &freed);
 
 	sc->nr_scanned = nr_scanned;
 
@@ -314,15 +338,16 @@ static unsigned long xe_shrinker_scan(struct shrinker *shrink, struct shrink_con
 	unsigned long nr_to_scan = sc->nr_to_scan, nr_scanned = 0, freed = 0;
 	struct xe_bo_shrink_flags shrink_flags = {
 		.purge = false,
-		/* Don't request writeback without __GFP_IO. */
-		.writeback = !ctx.no_wait_gpu && (sc->gfp_mask & __GFP_IO),
 	};
+	/* Don't allow writeback without __GFP_IO. */
+	bool allow_writeback = !ctx.no_wait_gpu && (sc->gfp_mask & __GFP_IO);
 	bool runtime_pm;
 
 	/* Might need runtime PM to access backed-up or CCS-compressed data. */
 	runtime_pm = xe_shrinker_runtime_pm_get(shrinker);
 
-	xe_shrinker_walk(shrinker, &ctx, shrink_flags, nr_to_scan, &nr_scanned, &freed);
+	xe_shrinker_walk(shrinker, &ctx, shrink_flags, allow_writeback,
+			 nr_to_scan, &nr_scanned, &freed);
 
 	sc->nr_scanned = nr_scanned;
 	xe_shrinker_runtime_pm_put(shrinker, runtime_pm);

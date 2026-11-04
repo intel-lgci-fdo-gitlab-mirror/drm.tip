@@ -616,11 +616,16 @@ static inline unsigned int xe_sg_segment_size(struct device *dev)
 /**
  * struct xe_bo_shrink_flags - flags governing the shrink behaviour.
  * @purge: Only purging allowed. Don't shrink if bo not purgeable.
- * @writeback: Attempt to immediately move content to swap.
+ * @may_writeback: Allow retrying a failed backup allocation using kernel
+ * reserves. See struct ttm_backup_flags.
+ * @force_writeback: Attempt to immediately move content to swap, both
+ * for the regular backup and for any retry allowed by @may_writeback.
+ * See struct ttm_backup_flags.
  */
 struct xe_bo_shrink_flags {
 	u32 purge : 1;
-	u32 writeback : 1;
+	u32 may_writeback : 1;
+	u32 force_writeback : 1;
 };
 
 long xe_bo_shrink(struct ttm_operation_ctx *ctx, struct ttm_buffer_object *bo,

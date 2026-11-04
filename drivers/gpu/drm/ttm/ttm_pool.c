@@ -1158,7 +1158,10 @@ static void ttm_pool_restore_abort(struct ttm_tt *tt)
  * If backup of a page fails for whatever reason, @ttm will still be
  * partially backed up, retaining those pages for which backup fails.
  * In that case, this function can be retried, possibly after freeing up
- * memory resources.
+ * memory resources. In particular, if allocating backup memory fails
+ * without dipping into kernel reserves, and @flags->may_writeback is not
+ * set, the backup stops at that point, also leaving @ttm partially backed
+ * up.
  *
  * Return: Number of pages actually backed up or freed, or negative
  * error code on error.
@@ -1174,6 +1177,7 @@ long ttm_pool_backup(struct ttm_pool *pool, struct ttm_tt *tt,
 	pgoff_t shrunken = 0;
 	pgoff_t i, j, num_pages, npages;
 	pgoff_t nr_backed;
+	bool dip_reserves;
 	bool partial = ttm_tt_is_partial(tt);
 
 	if (WARN_ON(ttm_tt_is_backed_up(tt)))
@@ -1256,7 +1260,9 @@ long ttm_pool_backup(struct ttm_pool *pool, struct ttm_tt *tt,
 	else
 		gfp = GFP_HIGHUSER;
 
-	alloc_gfp = GFP_KERNEL | __GFP_HIGH | __GFP_NOWARN | __GFP_RETRY_MAYFAIL;
+	/* Don't dip into kernel reserves unless @flags->may_writeback is set. */
+	alloc_gfp = GFP_KERNEL | __GFP_HIGH | __GFP_NOWARN |
+		    __GFP_RETRY_MAYFAIL | __GFP_NOMEMALLOC;
 
 	num_pages = tt->num_pages;
 
@@ -1280,14 +1286,7 @@ long ttm_pool_backup(struct ttm_pool *pool, struct ttm_tt *tt,
 		order = ttm_pool_page_order(pool, page);
 		npages = 1UL << order;
 
-		/*
-		 * We don't allow dipping kernel reserves for high order backup
-		 */
-		if (order)
-			alloc_gfp |= __GFP_NOMEMALLOC;
-		else
-			alloc_gfp &= ~__GFP_NOMEMALLOC;
-
+		dip_reserves = false;
 		/*
 		 * Back up the compound atomically at its native order. If
 		 * fault injection truncated num_pages mid-compound, skip
@@ -1296,10 +1295,18 @@ long ttm_pool_backup(struct ttm_pool *pool, struct ttm_tt *tt,
 		if (unlikely(i + npages > num_pages))
 			break;
 
+retry:
 		handle = ttm_backup_backup_folio(backup, page_folio(page),
-						 order, flags->writeback, i,
-						 gfp, alloc_gfp,
-						 &nr_backed);
+						 order, flags->force_writeback, i,
+						 gfp, dip_reserves ?
+						 alloc_gfp & ~__GFP_NOMEMALLOC :
+						 alloc_gfp, &nr_backed);
+		if (unlikely(handle == -ENOMEM && !nr_backed &&
+			     flags->may_writeback && !dip_reserves)) {
+			dip_reserves = true;
+			goto retry;
+		}
+
 		/*
 		 * Zero progress on this compound (whether order 0 or a
 		 * high-order compound that failed before backing up even
@@ -1319,12 +1326,22 @@ long ttm_pool_backup(struct ttm_pool *pool, struct ttm_tt *tt,
 		if (unlikely(nr_backed < npages)) {
 			/*
 			 * Partial OOM backup: split the compound and free the
-			 * subpages whose content is now in shmem. Continue the
-			 * loop from the first un-backed order-0 page.
+			 * subpages whose content is now in shmem.
 			 */
 			ttm_pool_split_for_swap(pool, page);
 			for (j = 0; j < nr_backed; j++)
 				__free_pages_gpu_account(page + j, 0, false);
+
+			if (!flags->may_writeback) {
+				/*
+				 * Leave the remaining subpages as still
+				 * unbacked order-0 pages; the caller may
+				 * retry later.
+				 */
+				break;
+			}
+
+			/* Continue the loop from the first un-backed order-0 page. */
 			npages = nr_backed;
 			continue;
 		}

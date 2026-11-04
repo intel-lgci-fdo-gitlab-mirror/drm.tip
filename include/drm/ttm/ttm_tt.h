@@ -315,12 +315,19 @@ unsigned long ttm_tt_pages_limit(void);
 /**
  * struct ttm_backup_flags - Flags to govern backup behaviour.
  * @purge: Free pages without backing up. Bypass pools.
- * @writeback: Attempt to copy contents directly to swap space, even
- * if that means blocking on writes to external memory.
+ * @may_writeback: If allocating backup memory fails without dipping into
+ * kernel reserves, allow retrying with reserves, splitting high-order
+ * pages if needed. If not set, stop the backup at that point, leaving
+ * the remainder resident, since the retry may need to block.
+ * @force_writeback: Attempt to copy contents directly to swap space,
+ * even if that means blocking on writes to external memory. This
+ * applies both to the regular backup and to any retry allowed by
+ * @may_writeback.
  */
 struct ttm_backup_flags {
 	u32 purge : 1;
-	u32 writeback : 1;
+	u32 may_writeback : 1;
+	u32 force_writeback : 1;
 };
 
 long ttm_tt_backup(struct ttm_device *bdev, struct ttm_tt *tt,

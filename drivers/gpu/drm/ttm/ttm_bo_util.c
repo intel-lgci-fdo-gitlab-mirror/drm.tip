@@ -1122,7 +1122,8 @@ long ttm_bo_shrink(struct ttm_operation_ctx *ctx, struct ttm_buffer_object *bo,
 
 	lret = ttm_tt_backup(bdev, bo->ttm, (struct ttm_backup_flags)
 			     {.purge = flags.purge,
-			      .writeback = flags.writeback});
+			      .may_writeback = flags.may_writeback,
+			      .force_writeback = flags.force_writeback});
 
 	if (lret > 0 && !ttm_tt_is_partial(bo->ttm)) {
 		spin_lock(&bdev->lru_lock);
