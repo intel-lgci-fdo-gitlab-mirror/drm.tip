@@ -129,8 +129,10 @@ void xe_sysctrl_irq_handler(struct xe_device *xe, u32 master_ctl)
  * xe_sysctrl_pm_resume() - System Controller resume handler
  * @xe: xe device instance
  *
- * Invoked during system resume (S3/S4 to S0) and runtime resume from D3cold.
- * Restores SoC remapper configuration.
+ * Invoked during system resume (S3/S4 to S0) and on every runtime resume.
+ * Restores SoC remapper configuration, which is lost whenever the device
+ * loses power - including when the platform drops power behind our back
+ * because the bridge above us runtime suspended.
  */
 void xe_sysctrl_pm_resume(struct xe_device *xe)
 {
