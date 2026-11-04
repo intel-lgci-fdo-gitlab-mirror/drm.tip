@@ -1135,9 +1135,11 @@ int drm_dev_register(struct drm_device *dev, unsigned long flags)
 	goto out_unlock;
 
 err_unload:
+	dev->registered = false;
 	if (dev->driver->unload)
 		dev->driver->unload(dev);
 err_minors:
+	dev->registered = false; /* fallback for driver->load() error path */
 	/*
 	 * If a minor was registered before the failure, userspace could have
 	 * opened it and entered a drm_dev_enter() critical section. Ensure all
