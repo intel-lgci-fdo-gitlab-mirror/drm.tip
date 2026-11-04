@@ -87,6 +87,12 @@ initial_plane_bo(struct xe_device *xe,
 		struct ttm_resource_manager *stolen;
 		u64 pte;
 
+		if (IS_ENABLED(CONFIG_PREEMPT_RT)) {
+			drm_dbg_kms(&xe->drm,
+				    "Skipping FB allocation from stolen mem due to PREEMPT_RT\n");
+			return NULL;
+		}
+
 		stolen = ttm_manager_type(&xe->ttm, XE_PL_STOLEN);
 		if (!stolen) {
 			drm_dbg_kms(&xe->drm, "No stolen for initial FB\n");
