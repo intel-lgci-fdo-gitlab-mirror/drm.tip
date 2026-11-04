@@ -37,6 +37,14 @@ MODULE_FIRMWARE("amdnpu/17f1_13/npu.sbin");
 MODULE_FIRMWARE("amdnpu/17f1_13/cert.sbin");
 MODULE_FIRMWARE("amdnpu/17f2_13/npu.sbin");
 MODULE_FIRMWARE("amdnpu/17f2_13/cert.sbin");
+MODULE_FIRMWARE("amdnpu/17f1_14/npu.sbin");
+MODULE_FIRMWARE("amdnpu/17f1_14/cert.sbin");
+MODULE_FIRMWARE("amdnpu/17f2_14/npu.sbin");
+MODULE_FIRMWARE("amdnpu/17f2_14/cert.sbin");
+MODULE_FIRMWARE("amdnpu/17f1_15/npu.sbin");
+MODULE_FIRMWARE("amdnpu/17f1_15/cert.sbin");
+MODULE_FIRMWARE("amdnpu/17f2_15/npu.sbin");
+MODULE_FIRMWARE("amdnpu/17f2_15/cert.sbin");
 MODULE_FIRMWARE("amdnpu/17f1_10/npu_l.sbin");
 MODULE_FIRMWARE("amdnpu/17f1_10/cert_l.sbin");
 MODULE_FIRMWARE("amdnpu/17f2_10/npu_l.sbin");
@@ -45,6 +53,14 @@ MODULE_FIRMWARE("amdnpu/17f1_13/npu_l.sbin");
 MODULE_FIRMWARE("amdnpu/17f1_13/cert_l.sbin");
 MODULE_FIRMWARE("amdnpu/17f2_13/npu_l.sbin");
 MODULE_FIRMWARE("amdnpu/17f2_13/cert_l.sbin");
+MODULE_FIRMWARE("amdnpu/17f1_14/npu_l.sbin");
+MODULE_FIRMWARE("amdnpu/17f1_14/cert_l.sbin");
+MODULE_FIRMWARE("amdnpu/17f2_14/npu_l.sbin");
+MODULE_FIRMWARE("amdnpu/17f2_14/cert_l.sbin");
+MODULE_FIRMWARE("amdnpu/17f1_15/npu_l.sbin");
+MODULE_FIRMWARE("amdnpu/17f1_15/cert_l.sbin");
+MODULE_FIRMWARE("amdnpu/17f2_15/npu_l.sbin");
+MODULE_FIRMWARE("amdnpu/17f2_15/cert_l.sbin");
 
 /*
  * 0.0: Initial version
@@ -89,6 +105,12 @@ static const struct amdxdna_device_id amdxdna_ids[] = {
 	{ 0x17f1, 0x13, &dev_npu3_classic_info },
 	{ 0x17f2, 0x13, &dev_npu3_pf_info },
 	{ 0x17f3, 0x13, &dev_npu3_vf_info },
+	{ 0x17f1, 0x14, &dev_npu10_classic_info },
+	{ 0x17f2, 0x14, &dev_npu10_pf_info },
+	{ 0x17f3, 0x14, &dev_npu10_vf_info },
+	{ 0x17f1, 0x15, &dev_npu11_classic_info },
+	{ 0x17f2, 0x15, &dev_npu11_pf_info },
+	{ 0x17f3, 0x15, &dev_npu11_vf_info },
 	{0}
 };
 
