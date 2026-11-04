@@ -196,11 +196,17 @@ out:
 
 			if (i915_request_wait(rq, 0, HZ / 5) < 0)
 				err = -EIO;
+
+			/*
+			 * The request can be freed as soon as its last
+			 * reference is dropped, so read the seqno first.
+			 */
+			if (!err)
+				cycles[i] = rq->hwsp_seqno[3] - rq->hwsp_seqno[2];
+
 			i915_request_put(rq);
 			if (err)
 				break;
-
-			cycles[i] = rq->hwsp_seqno[3] - rq->hwsp_seqno[2];
 		}
 		i915_vma_put(batch);
 		intel_engine_pm_put(engine);
