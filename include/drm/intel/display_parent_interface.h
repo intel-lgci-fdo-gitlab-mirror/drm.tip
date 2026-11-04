@@ -136,6 +136,20 @@ struct intel_display_irq_interface {
 	void (*synchronize)(struct drm_device *drm);
 };
 
+struct intel_display_mmio_interface {
+	u8 (*read8)(struct drm_device *drm, u32 reg);
+	void (*write8)(struct drm_device *drm, u32 reg, u8 val);
+	u16 (*read16)(struct drm_device *drm, u32 reg);
+	void (*write16)(struct drm_device *drm, u32 reg, u16 val);
+	u32 (*read32)(struct drm_device *drm, u32 reg);
+	u32 (*read32_fw)(struct drm_device *drm, u32 reg);
+	void (*write32)(struct drm_device *drm, u32 reg, u32 val);
+	void (*write32_fw)(struct drm_device *drm, u32 reg, u32 val);
+	void (*lock)(struct drm_device *drm);
+	void (*unlock)(struct drm_device *drm);
+	void (*arm_unclaimed_mmio_detection)(struct drm_device *drm);
+};
+
 struct intel_display_overlay_interface {
 	bool (*is_active)(struct drm_device *drm);
 
@@ -271,6 +285,9 @@ struct intel_display_parent_interface {
 
 	/** @irq: IRQ interface */
 	const struct intel_display_irq_interface *irq;
+
+	/** @mmio: MMIO interface */
+	const struct intel_display_mmio_interface *mmio;
 
 	/** @panic: Panic interface */
 	const struct intel_display_panic_interface *panic;

@@ -6,16 +6,11 @@
 #ifndef __INTEL_DE_H__
 #define __INTEL_DE_H__
 
+#include <drm/intel/display_parent_interface.h>
+
 #include "intel_display_core.h"
 #include "intel_dmc_wl.h"
 #include "intel_dsb.h"
-#include "intel_uncore.h"
-#include "intel_uncore_trace.h"
-
-static inline struct intel_uncore *__to_uncore(struct intel_display *display)
-{
-	return to_intel_uncore(display->drm);
-}
 
 u8 intel_de_read8(struct intel_display *display, intel_reg_t reg);
 void intel_de_write8(struct intel_display *display, intel_reg_t reg, u8 val);
@@ -28,7 +23,7 @@ intel_de_read(struct intel_display *display, intel_reg_t reg)
 
 	intel_dmc_wl_get(display, reg);
 
-	val = intel_uncore_read(__to_uncore(display), reg);
+	val = display->parent->mmio->read32(display->drm, intel_reg_offset(reg));
 
 	intel_dmc_wl_put(display, reg);
 
@@ -58,7 +53,7 @@ intel_de_write(struct intel_display *display, intel_reg_t reg, u32 val)
 {
 	intel_dmc_wl_get(display, reg);
 
-	intel_uncore_write(__to_uncore(display), reg, val);
+	display->parent->mmio->write32(display->drm, intel_reg_offset(reg), val);
 
 	intel_dmc_wl_put(display, reg);
 }
@@ -107,19 +102,13 @@ int intel_de_wait_for_clear_ms(struct intel_display *display, intel_reg_t reg,
 static inline u32
 intel_de_read_fw(struct intel_display *display, intel_reg_t reg)
 {
-	u32 val;
-
-	val = intel_uncore_read_fw(__to_uncore(display), reg);
-	trace_i915_reg_rw(false, reg, val, sizeof(val), true);
-
-	return val;
+	return display->parent->mmio->read32_fw(display->drm, intel_reg_offset(reg));
 }
 
 static inline void
 intel_de_write_fw(struct intel_display *display, intel_reg_t reg, u32 val)
 {
-	trace_i915_reg_rw(true, reg, val, sizeof(val), true);
-	intel_uncore_write_fw(__to_uncore(display), reg, val);
+	display->parent->mmio->write32_fw(display->drm, intel_reg_offset(reg), val);
 }
 
 static inline u32

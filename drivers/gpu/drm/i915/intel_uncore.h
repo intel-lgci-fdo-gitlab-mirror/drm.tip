@@ -515,4 +515,6 @@ struct intel_uncore *to_intel_uncore(struct drm_device *drm);
 #define raw_reg_write(base, reg, value) \
 	writel(value, base + i915_mmio_reg_offset(reg))
 
+extern const struct intel_display_mmio_interface i915_display_mmio_interface;
+
 #endif /* !__INTEL_UNCORE_H__ */

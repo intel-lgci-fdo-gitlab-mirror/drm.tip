@@ -33,6 +33,7 @@
 #include "xe_frontbuffer.h"
 #include "xe_hdcp_gsc.h"
 #include "xe_initial_plane.h"
+#include "xe_mmio.h"
 #include "xe_module.h"
 #include "xe_panic.h"
 #include "xe_stolen.h"
@@ -444,6 +445,82 @@ static void transient_data_flush(struct drm_device *drm)
 	xe_device_td_flush(xe);
 }
 
+static struct xe_mmio *to_xe_mmio(struct drm_device *drm)
+{
+	return xe_root_tile_mmio(to_xe_device(drm));
+}
+
+static u8 xe_uncore_read8(struct drm_device *drm, u32 reg)
+{
+	return xe_mmio_read8(to_xe_mmio(drm), XE_REG(reg));
+}
+
+static void xe_uncore_write8(struct drm_device *drm, u32 reg, u8 val)
+{
+	xe_mmio_write8(to_xe_mmio(drm), XE_REG(reg), val);
+}
+
+static u16 xe_uncore_read16(struct drm_device *drm, u32 reg)
+{
+	return xe_mmio_read16(to_xe_mmio(drm), XE_REG(reg));
+}
+
+static void xe_uncore_write16(struct drm_device *drm, u32 reg, u16 val)
+{
+}
+
+static u32 xe_uncore_read32(struct drm_device *drm, u32 reg)
+{
+	return xe_mmio_read32(to_xe_mmio(drm), XE_REG(reg));
+}
+
+static u32 xe_uncore_read32_fw(struct drm_device *drm, u32 reg)
+{
+	return xe_mmio_read32(to_xe_mmio(drm), XE_REG(reg));
+}
+
+static void xe_uncore_write32(struct drm_device *drm, u32 reg, u32 val)
+{
+	xe_mmio_write32(to_xe_mmio(drm), XE_REG(reg), val);
+}
+
+static void xe_uncore_write32_fw(struct drm_device *drm, u32 reg, u32 val)
+{
+	xe_mmio_write32(to_xe_mmio(drm), XE_REG(reg), val);
+}
+
+static void xe_uncore_lock(struct drm_device *drm)
+{
+	struct xe_device *xe = to_xe_device(drm);
+
+	spin_lock(&xe->uncore.lock);
+}
+
+static void xe_uncore_unlock(struct drm_device *drm)
+{
+	struct xe_device *xe = to_xe_device(drm);
+
+	spin_unlock(&xe->uncore.lock);
+}
+
+static void xe_uncore_arm_unclaimed_mmio_detection(struct drm_device *drm)
+{
+}
+
+const struct intel_display_mmio_interface xe_display_mmio_interface = {
+	.read8 = xe_uncore_read8,
+	.write8 = xe_uncore_write8,
+	.read16 = xe_uncore_read16,
+	.write16 = xe_uncore_write16,
+	.read32 = xe_uncore_read32,
+	.read32_fw = xe_uncore_read32_fw,
+	.write32 = xe_uncore_write32,
+	.write32_fw = xe_uncore_write32_fw,
+	.lock = xe_uncore_lock,
+	.unlock = xe_uncore_unlock,
+	.arm_unclaimed_mmio_detection = xe_uncore_arm_unclaimed_mmio_detection,
+};
+
 static const struct intel_display_parent_interface parent = {
 	.bo = &xe_display_bo_interface,
 	.dsb = &xe_display_dsb_interface,
@@ -452,6 +529,7 @@ static const struct intel_display_parent_interface parent = {
 	.hdcp = &xe_display_hdcp_interface,
 	.initial_plane = &xe_display_initial_plane_interface,
 	.irq = &xe_display_irq_interface,
+	.mmio = &xe_display_mmio_interface,
 	.panic = &xe_display_panic_interface,
 	.pcode = &xe_display_pcode_interface,
 	.rpm = &xe_display_rpm_interface,
