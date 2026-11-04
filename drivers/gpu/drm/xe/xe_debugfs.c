@@ -7,6 +7,7 @@
 
 #include <linux/bits.h>
 #include <linux/debugfs.h>
+#include <linux/mmzone.h>
 #include <linux/fault-inject.h>
 #include <linux/string_helpers.h>
 
@@ -344,6 +345,28 @@ static int dgfx_pcie_link_residencies_show(struct seq_file *m, void *data)
 
 	return 0;
 }
+
+static int dma_mapped_pages_show(struct seq_file *m, void *data)
+{
+	struct xe_device *xe = m->private;
+	unsigned int i;
+
+	seq_printf(m, "%-11s ", "");
+	for (i = 0; i < NR_PAGE_ORDERS; i++)
+		seq_printf(m, " ---%2u---", i);
+	seq_printf(m, "\n%-11s:", "bo");
+	for (i = 0; i < NR_PAGE_ORDERS; i++)
+		seq_printf(m, " %8lu",
+			   atomic_long_read(&xe->mem.dma_mapped_pages[i]));
+	seq_printf(m, "\n%-11s:", "svm/userptr");
+	for (i = 0; i < NR_PAGE_ORDERS; i++)
+		seq_printf(m, " %8lu",
+			   atomic_long_read(&xe->mem.dma_mapped_pages_svm[i]));
+	seq_puts(m, "\n");
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(dma_mapped_pages);
 
 static const struct drm_info_list debugfs_list[] = {
 	{"info", info, 0},
@@ -764,6 +787,9 @@ void xe_debugfs_register(struct xe_device *xe)
 		ttm_resource_manager_create_debugfs(man, root, "stolen_mm");
 
 	xe_ttm_vram_debugfs_init(xe, root);
+
+	debugfs_create_file("dma_mapped_pages", 0444, root, xe,
+			    &dma_mapped_pages_fops);
 
 	for_each_tile(tile, xe, tile_id)
 		xe_tile_debugfs_register(tile);
