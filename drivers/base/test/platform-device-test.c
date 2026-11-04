@@ -420,9 +420,66 @@ static void platform_device_two_swnodes(struct kunit *test)
 			    "Expected errno == -EINVAL, got: %pe", pdev);
 }
 
+static void platform_device_swnode_sharer_release(struct device *dev)
+{
+}
+
+/*
+ * A software node assigned as a platform device's primary firmware node may be
+ * shared with other devices: i2c-designware passes dev_fwnode() of its platform
+ * device down to the i2c adapter device it creates. Check that removing the
+ * sharing device leaves the owner's software node intact.
+ */
+static void platform_device_swnode_shared(struct kunit *test)
+{
+	static const struct property_entry properties[] = {
+		PROPERTY_ENTRY_STRING("compatible", "test,shared-swnode"),
+		{ }
+	};
+	struct fwnode_handle *fwnode;
+	struct platform_device *pdev;
+	struct device *shared;
+	int ret;
+
+	pdev = platform_device_alloc(DEVICE_NAME, PLATFORM_DEVID_NONE);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, pdev);
+
+	fwnode = fwnode_create_software_node(properties, NULL);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, fwnode);
+	platform_device_set_fwnode(pdev, fwnode);
+
+	ret = platform_device_add(pdev);
+	KUNIT_ASSERT_EQ(test, ret, 0);
+
+	/*
+	 * A second, non-platform device referencing the same fwnode, like the
+	 * i2c adapter device created by i2c-designware.
+	 */
+	shared = kunit_kzalloc(test, sizeof(*shared), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, shared);
+
+	device_initialize(shared);
+	shared->release = platform_device_swnode_sharer_release;
+	ret = dev_set_name(shared, "test-swnode-sharer");
+	KUNIT_ASSERT_EQ(test, ret, 0);
+	device_set_node(shared, dev_fwnode(&pdev->dev));
+
+	ret = device_add(shared);
+	KUNIT_ASSERT_EQ(test, ret, 0);
+
+	device_unregister(shared);
+
+	/* The owner must still have its software node. */
+	KUNIT_EXPECT_PTR_EQ(test, dev_fwnode(&pdev->dev), fwnode);
+
+	platform_device_unregister(pdev);
+	fwnode_remove_software_node(fwnode);
+}
+
 static struct kunit_case platform_device_swnode_tests[] = {
 	KUNIT_CASE(platform_device_swnode_add_twice),
 	KUNIT_CASE(platform_device_swnode_as_primary),
+	KUNIT_CASE(platform_device_swnode_shared),
 	KUNIT_CASE(platform_device_two_swnodes),
 	{}
 };
