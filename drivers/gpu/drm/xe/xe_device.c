@@ -731,6 +731,10 @@ int xe_device_probe_early(struct xe_device *xe)
 	if (IS_SRIOV_VF(xe))
 		vf_update_device_info(xe);
 
+	err = xe_wedge_init(xe);
+	if (err)
+		return err;
+
 	/*
 	 * Check for pcode uncore_init status to confirm if the SoC
 	 * initialization is complete. Until done, any MMIO or lmem access from
@@ -760,10 +764,6 @@ int xe_device_probe_early(struct xe_device *xe)
 	assert_lmem_ready(xe);
 
 	err = xe_device_vram_alloc(xe);
-	if (err)
-		return err;
-
-	err = xe_wedge_init(xe);
 	if (err)
 		return err;
 
