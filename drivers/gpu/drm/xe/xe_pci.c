@@ -15,6 +15,8 @@
 #include <drm/drm_drv.h>
 #include <drm/intel/pciids.h>
 
+#include <generated/xe_device_wa_oob.h>
+
 #include "display/xe_display.h"
 #include "regs/xe_gt_regs.h"
 #include "regs/xe_regs.h"
@@ -39,6 +41,7 @@
 #include "xe_survivability_mode.h"
 #include "xe_tile.h"
 #include "xe_tile_printk.h"
+#include "xe_wa.h"
 
 enum toggle_d3cold {
 	D3COLD_DISABLE,
@@ -793,6 +796,17 @@ static int xe_info_init_early(struct xe_device *xe,
 	xe->info.platform = desc->platform;
 	xe->info.subplatform = subplatform_desc ?
 		subplatform_desc->subplatform : XE_SUBPLATFORM_NONE;
+
+	/*
+	 * Device OOB workarounds only match on platform, subplatform and
+	 * platform step, which are all known by now, so process them here and
+	 * make XE_DEVICE_WA() usable for the remainder of early probe.
+	 */
+	err = xe_wa_device_init(xe);
+	if (err)
+		return err;
+
+	xe_wa_process_device_oob(xe);
 
 	xe->info.dma_mask_size = desc->dma_mask_size;
 	xe->info.va_bits = desc->va_bits;
