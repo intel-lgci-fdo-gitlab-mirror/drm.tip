@@ -429,6 +429,11 @@ int xe_gsc_init(struct xe_gsc *gsc)
 	else if (ret)
 		goto out;
 
+	if (IS_ENABLED(CONFIG_PREEMPT_RT)) {
+		xe_gt_warn(gt, "RT performance might be impacted by GSC stolen memory usage\n");
+		xe_gt_warn(gt, "Consider disabling GSC (xe.gsc_firmware_path=\"\") to improve it\n");
+	}
+
 	ret = xe_gsc_proxy_init(gsc);
 	if (ret && ret != -ENODEV)
 		goto out;
