@@ -30,6 +30,7 @@ static int xe_ttm_sys_mgr_new(struct ttm_resource_manager *man,
 			      const struct ttm_place *place,
 			      struct ttm_resource **res)
 {
+	struct xe_device *xe = container_of(man, struct xe_device, mem.sys_mgr);
 	struct xe_ttm_sys_node *node;
 	int r;
 
@@ -40,8 +41,18 @@ static int xe_ttm_sys_mgr_new(struct ttm_resource_manager *man,
 	node->tbo = tbo;
 	ttm_resource_init(tbo, place, &node->base.base);
 
-	if (!(place->flags & TTM_PL_FLAG_TEMPORARY) &&
-	    ttm_resource_manager_usage(man) > (man->size << PAGE_SHIFT)) {
+	/*
+	 * Imported dma-buf BOs (e.g. peer-GPU VRAM mapped for P2P) are backed
+	 * by external pages and never allocate from this device's TTM pool, so
+	 * they consume no host RAM and must not be charged against the
+	 * host-RAM-sized TT budget.
+	 */
+	if (tbo->type == ttm_bo_type_sg) {
+		atomic64_add(node->base.base.size, &xe->mem.sys_mgr_sg_usage);
+	} else if (!(place->flags & TTM_PL_FLAG_TEMPORARY) &&
+		   ttm_resource_manager_usage(man) -
+		   atomic64_read(&xe->mem.sys_mgr_sg_usage) >
+		   (man->size << PAGE_SHIFT)) {
 		r = -ENOSPC;
 		goto err_fini;
 	}
@@ -63,7 +74,11 @@ err_fini:
 static void xe_ttm_sys_mgr_del(struct ttm_resource_manager *man,
 			       struct ttm_resource *res)
 {
+	struct xe_device *xe = container_of(man, struct xe_device, mem.sys_mgr);
 	struct xe_ttm_sys_node *node = to_xe_ttm_sys_node(res);
+
+	if (node->tbo->type == ttm_bo_type_sg)
+		atomic64_sub(res->size, &xe->mem.sys_mgr_sg_usage);
 
 	ttm_resource_fini(man, res);
 	kfree(node);

@@ -298,6 +298,13 @@ struct xe_device {
 		struct xe_vram_region *vram;
 		/** @mem.sys_mgr: system TTM manager */
 		struct ttm_resource_manager sys_mgr;
+		/**
+		 * @mem.sys_mgr_sg_usage: Bytes of externally-backed (dma-buf
+		 * imported, e.g. peer-GPU VRAM mapped for P2P) BOs placed in
+		 * the TT manager. These consume no host RAM and are excluded
+		 * from the host-RAM-sized TT budget.
+		 */
+		atomic64_t sys_mgr_sg_usage;
 		/** @mem.shrinker: system memory shrinker. */
 		struct xe_shrinker *shrinker;
 		/** @mem.stolen_mgr: stolen memory manager. */
