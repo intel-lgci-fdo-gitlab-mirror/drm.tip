@@ -908,12 +908,24 @@ static int xe_oa_alloc_oa_buffer(struct xe_oa_stream *stream, size_t size)
 		XE_BO_FLAG_VRAM_IF_DGFX(xe_device_get_root_tile(stream->oa->xe)) :
 		XE_BO_FLAG_SYSTEM;
 	struct xe_bo *bo;
+	int ret;
 
 	bo = xe_bo_create_pin_map_novm(stream->oa->xe, stream->gt->tile,
 				       size, ttm_bo_type_kernel,
 				       vram | XE_BO_FLAG_GGTT, false);
 	if (IS_ERR(bo))
 		return PTR_ERR(bo);
+
+	/*
+	 * Reserve a range for the OA buffer in the drm device's address_space, so that its
+	 * userspace mmaps don't overlap with those of GEM BOs or other OA buffers and can be
+	 * unmapped on their own. Not granted to any drm_file, so not mmap'able via drm fds.
+	 */
+	ret = drm_gem_create_mmap_offset(&bo->ttm.base);
+	if (ret) {
+		xe_bo_unpin_map_no_vm(bo);
+		return ret;
+	}
 
 	/*
 	 * ttm_bo_type_kernel BOs are not zeroed on allocation, so the buffer can
@@ -1722,6 +1734,15 @@ static int xe_oa_mmap(struct file *file, struct vm_area_struct *vma)
 		return ret;
 	}
 
+	/*
+	 * Userspace always maps the OA buffer at offset 0, the mapping is moved to the OA
+	 * buffer's own range in the drm device's address_space below
+	 */
+	if (vma->vm_pgoff) {
+		drm_dbg(&stream->oa->xe->drm, "Wrong mmap offset, must be 0\n");
+		return -EINVAL;
+	}
+
 	/* Can mmap the entire OA buffer or nothing (no partial OA buffer mmaps) */
 	if (vma->vm_end - vma->vm_start != xe_bo_size(bo)) {
 		drm_dbg(&stream->oa->xe->drm, "Wrong mmap size, must be OA buffer size\n");
@@ -1738,6 +1759,8 @@ static int xe_oa_mmap(struct file *file, struct vm_area_struct *vma)
 	}
 	vm_flags_mod(vma, VM_PFNMAP | VM_DONTEXPAND | VM_DONTDUMP | VM_DONTCOPY,
 		     VM_MAYWRITE | VM_MAYEXEC);
+
+	vma->vm_pgoff = drm_vma_node_start(&bo->ttm.base.vma_node);
 
 	return drm_gem_mmap_obj(&bo->ttm.base, xe_bo_size(bo), vma);
 }
@@ -1869,6 +1892,7 @@ static int xe_oa_stream_open_ioctl_locked(struct xe_oa *oa,
 {
 	struct xe_oa_stream *stream;
 	struct drm_syncobj *ufence_syncobj;
+	struct file *file;
 	int stream_fd;
 	int ret;
 
@@ -1910,11 +1934,26 @@ static int xe_oa_stream_open_ioctl_locked(struct xe_oa *oa,
 			goto err_destroy;
 	}
 
-	stream_fd = anon_inode_getfd("[xe_oa]", &xe_oa_fops, stream, 0);
+	stream_fd = get_unused_fd_flags(0);
 	if (stream_fd < 0) {
 		ret = stream_fd;
 		goto err_disable;
 	}
+
+	file = anon_inode_getfile("[xe_oa]", &xe_oa_fops, stream, 0);
+	if (IS_ERR(file)) {
+		ret = PTR_ERR(file);
+		put_unused_fd(stream_fd);
+		goto err_disable;
+	}
+
+	/*
+	 * Don't use the address_space of the anon inode singleton, which is shared with
+	 * unrelated anon files. Use the drm device's address_space instead, same as drm fds.
+	 * OA buffer mmaps live at the OA buffer's own fake offset range there.
+	 */
+	file->f_mapping = oa->xe->drm.anon_inode->i_mapping;
+	fd_install(stream_fd, file);
 
 	if (stream->sample)
 		xe_reg_whitelist_oa_regs(stream->gt);
