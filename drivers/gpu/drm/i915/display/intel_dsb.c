@@ -608,8 +608,13 @@ static void intel_dsb_gosub_align(struct intel_dsb *dsb)
 	/*
 	 * Wa_16024917128
 	 * "Ensure GOSUB is not placed in cacheline QW slot 6 or 7 (numbered 0-7)"
+	 *
+	 * free_pos always advances to the next cacheline, so the skipped
+	 * bytes remain inside the programmed command range. Fill the whole
+	 * gap with NOPs; clearing only slots 6 and 7 leaves a larger gap
+	 * uninitialized.
 	 */
-	if (aligned_tail - tail <= 2 * 8)
+	if (aligned_tail > tail)
 		dsb_buffer_fill(dsb, dsb->free_pos, 0, aligned_tail - tail);
 
 	dsb->free_pos = aligned_tail / 4;
