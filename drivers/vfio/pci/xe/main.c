@@ -24,6 +24,16 @@ struct xe_vfio_pci_migration_file {
 	u8 disabled:1;
 };
 
+/**
+ * struct xe_vfio_pci_desc - device specific description
+ * @hidden_ranges: BAR ranges hidden from the VFIO user by default
+ * @num_hidden_ranges: number of entries in @hidden_ranges
+ */
+struct xe_vfio_pci_desc {
+	const struct vfio_pci_bar_range *hidden_ranges;
+	unsigned int num_hidden_ranges;
+};
+
 struct xe_vfio_pci_core_device {
 	struct vfio_pci_core_device core_device;
 	struct xe_device *xe;
@@ -543,8 +553,32 @@ static const struct vfio_device_ops xe_vfio_pci_ops = {
 	.detach_ioas = vfio_iommufd_physical_detach_ioas,
 };
 
+#define INTEL_PCI_VFIO_DEVICE(_id, _desc) { \
+	PCI_DRIVER_OVERRIDE_DEVICE_VFIO(PCI_VENDOR_ID_INTEL, (_id)), \
+	.driver_data = (kernel_ulong_t)(_desc), \
+}
+
+static const struct pci_device_id xe_vfio_pci_table[] = {
+	INTEL_BMG_IDS(INTEL_PCI_VFIO_DEVICE, NULL),
+	INTEL_CRI_IDS(INTEL_PCI_VFIO_DEVICE, NULL),
+	INTEL_NVLS_IDS(INTEL_PCI_VFIO_DEVICE, NULL),
+	INTEL_NVLP_IDS(INTEL_PCI_VFIO_DEVICE, NULL),
+	INTEL_PTL_IDS(INTEL_PCI_VFIO_DEVICE, NULL),
+	INTEL_WCL_IDS(INTEL_PCI_VFIO_DEVICE, NULL),
+	{}
+};
+MODULE_DEVICE_TABLE(pci, xe_vfio_pci_table);
+
 static int xe_vfio_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
+	/*
+	 * Dynamic IDs added through new_id are matched before the static ones
+	 * and carry no driver data, look the description up in the static
+	 * table so that they can't bypass the default hidden ranges.
+	 */
+	const struct pci_device_id *match = pci_match_id(xe_vfio_pci_table, pdev);
+	const struct xe_vfio_pci_desc *desc =
+		match ? (const void *)match->driver_data : NULL;
 	struct xe_vfio_pci_core_device *xe_vdev;
 	int ret;
 
@@ -554,6 +588,17 @@ static int xe_vfio_pci_probe(struct pci_dev *pdev, const struct pci_device_id *i
 		return PTR_ERR(xe_vdev);
 
 	dev_set_drvdata(&pdev->dev, xe_vdev);
+	xe_vdev->core_device.hidden_ranges_supported = true;
+
+	if (desc) {
+		ret = vfio_pci_core_hide_bar_ranges(&xe_vdev->core_device,
+						    desc->hidden_ranges,
+						    desc->num_hidden_ranges);
+		if (ret) {
+			vfio_put_device(&xe_vdev->core_device.vdev);
+			return ret;
+		}
+	}
 
 	ret = vfio_pci_core_register_device(&xe_vdev->core_device);
 	if (ret) {
@@ -571,21 +616,6 @@ static void xe_vfio_pci_remove(struct pci_dev *pdev)
 	vfio_pci_core_unregister_device(&xe_vdev->core_device);
 	vfio_put_device(&xe_vdev->core_device.vdev);
 }
-
-#define INTEL_PCI_VFIO_DEVICE(_id) { \
-	PCI_DRIVER_OVERRIDE_DEVICE_VFIO(PCI_VENDOR_ID_INTEL, (_id)) \
-}
-
-static const struct pci_device_id xe_vfio_pci_table[] = {
-	INTEL_BMG_IDS(INTEL_PCI_VFIO_DEVICE),
-	INTEL_CRI_IDS(INTEL_PCI_VFIO_DEVICE),
-	INTEL_NVLS_IDS(INTEL_PCI_VFIO_DEVICE),
-	INTEL_NVLP_IDS(INTEL_PCI_VFIO_DEVICE),
-	INTEL_PTL_IDS(INTEL_PCI_VFIO_DEVICE),
-	INTEL_WCL_IDS(INTEL_PCI_VFIO_DEVICE),
-	{}
-};
-MODULE_DEVICE_TABLE(pci, xe_vfio_pci_table);
 
 static struct pci_driver xe_vfio_pci_driver = {
 	.name = "xe-vfio-pci",
