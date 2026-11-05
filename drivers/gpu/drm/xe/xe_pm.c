@@ -166,13 +166,19 @@ static void xe_rpm_lockmap_release(const struct xe_device *xe)
 			 &xe_pm_runtime_d3cold_map);
 }
 
+static bool xe_pm_needs_bo_evict(struct xe_device *xe, bool hibernate)
+{
+	return IS_DGFX(xe) || hibernate;
+}
+
 /**
- * xe_pm_suspend - Helper for System suspend, i.e. S0->S3 / S0->S2idle
+ * xe_pm_suspend - Helper for System suspend, i.e. S0->S3 / S0->S2idle / S0->S4
  * @xe: xe device instance
+ * @hibernate: true if preparing for S4 hibernation, false for < S4 suspend
  *
  * Return: 0 on success
  */
-int xe_pm_suspend(struct xe_device *xe)
+int xe_pm_suspend(struct xe_device *xe, bool hibernate)
 {
 	struct xe_gt *gt;
 	u8 id;
@@ -193,10 +199,12 @@ int xe_pm_suspend(struct xe_device *xe)
 
 	xe_display_pm_suspend(xe);
 
-	/* FIXME: Super racey... */
-	err = xe_bo_evict_all(xe);
-	if (err)
-		goto err_display;
+	if (xe_pm_needs_bo_evict(xe, hibernate)) {
+		/* FIXME: Super racey... */
+		err = xe_bo_evict_all(xe);
+		if (err)
+			goto err_display;
+	}
 
 	for_each_gt(gt, xe, id) {
 		err = xe_gt_suspend(gt);
@@ -452,7 +460,12 @@ static int xe_pm_notifier_callback(struct notifier_block *nb,
 				   unsigned long action, void *data)
 {
 	struct xe_device *xe = container_of(nb, struct xe_device, pm_notifier);
+	bool hibernate = (action == PM_HIBERNATION_PREPARE ||
+			  action == PM_POST_HIBERNATION);
 	int err = 0;
+
+	if (!xe_pm_needs_bo_evict(xe, hibernate))
+		return NOTIFY_DONE;
 
 	switch (action) {
 	case PM_HIBERNATION_PREPARE:
