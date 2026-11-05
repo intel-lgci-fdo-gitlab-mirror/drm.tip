@@ -881,6 +881,8 @@ bool intel_audio_compute_config(struct intel_encoder *encoder,
 	crtc_state->eld[6] = drm_av_sync_delay(connector, adjusted_mode) / 2;
 	mutex_unlock(&connector->eld_mutex);
 
+	drm_eld_set_port_id(crtc_state->eld, connector);
+
 	return true;
 }
 
