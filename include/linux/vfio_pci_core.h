@@ -196,8 +196,7 @@ void vfio_pci_core_disable(struct vfio_pci_core_device *vdev);
 void vfio_pci_core_finish_enable(struct vfio_pci_core_device *vdev);
 ssize_t vfio_pci_core_do_io_rw(struct vfio_pci_core_device *vdev, bool test_mem,
 			       void __iomem *io, char __user *buf,
-			       loff_t off, size_t count, size_t x_start,
-			       size_t x_end, bool iswrite,
+			       loff_t off, size_t count, bool iswrite,
 			       enum vfio_pci_io_width max_width);
 bool __vfio_pci_memory_enabled(struct vfio_pci_core_device *vdev);
 bool vfio_pci_core_range_intersect_range(loff_t buf_start, size_t buf_cnt,

@@ -126,66 +126,41 @@ VFIO_IORDWR(16)
 VFIO_IORDWR(32)
 VFIO_IORDWR(64)
 
-/*
- * Read or write from an __iomem region (MMIO or I/O port) with an excluded
- * range which is inaccessible.  The excluded range drops writes and fills
- * reads with -1.  This is intended for handling MSI-X vector tables and
- * leftover space for ROM BARs.
- */
+/* Read or write from an __iomem region (MMIO or I/O port) */
 ssize_t vfio_pci_core_do_io_rw(struct vfio_pci_core_device *vdev, bool test_mem,
 			       void __iomem *io, char __user *buf,
-			       loff_t off, size_t count, size_t x_start,
-			       size_t x_end, bool iswrite,
+			       loff_t off, size_t count, bool iswrite,
 			       enum vfio_pci_io_width max_width)
 {
 	ssize_t done = 0;
 	int ret;
 
 	while (count) {
-		size_t fillable, filled;
+		size_t filled;
 
-		if (off < x_start)
-			fillable = min(count, (size_t)(x_start - off));
-		else if (off >= x_end)
-			fillable = count;
-		else
-			fillable = 0;
-
-		if (fillable >= 8 && !(off % 8) && max_width >= 8) {
+		if (count >= 8 && !(off % 8) && max_width >= 8) {
 			ret = vfio_pci_iordwr64(vdev, iswrite, test_mem,
 						io, buf, off, &filled);
 			if (ret)
 				return ret;
 
-		} else if (fillable >= 4 && !(off % 4) && max_width >= 4) {
+		} else if (count >= 4 && !(off % 4) && max_width >= 4) {
 			ret = vfio_pci_iordwr32(vdev, iswrite, test_mem,
 						io, buf, off, &filled);
 			if (ret)
 				return ret;
 
-		} else if (fillable >= 2 && !(off % 2) && max_width >= 2) {
+		} else if (count >= 2 && !(off % 2) && max_width >= 2) {
 			ret = vfio_pci_iordwr16(vdev, iswrite, test_mem,
 						io, buf, off, &filled);
 			if (ret)
 				return ret;
 
-		} else if (fillable) {
+		} else {
 			ret = vfio_pci_iordwr8(vdev, iswrite, test_mem,
 					       io, buf, off, &filled);
 			if (ret)
 				return ret;
-
-		} else {
-			/* Fill reads with -1, drop writes */
-			filled = min(count, (size_t)(x_end - off));
-			if (!iswrite) {
-				u8 val = 0xFF;
-				size_t i;
-
-				for (i = 0; i < filled; i++)
-					if (copy_to_user(buf + i, &val, 1))
-						return -EFAULT;
-			}
 		}
 
 		count -= filled;
@@ -198,12 +173,69 @@ ssize_t vfio_pci_core_do_io_rw(struct vfio_pci_core_device *vdev, bool test_mem,
 }
 EXPORT_SYMBOL_GPL(vfio_pci_core_do_io_rw);
 
+struct vfio_pci_excl_range {
+	loff_t	start;
+	loff_t	end;
+};
+
+/*
+ * Read or write from a BAR with excluded ranges which are inaccessible.  The
+ * excluded ranges, sorted by their start and possibly overlapping, drop writes
+ * and fill reads with -1.  This is intended for handling MSI-X vector tables
+ * and leftover space for ROM BARs.
+ */
+static ssize_t vfio_pci_bar_do_io_rw(struct vfio_pci_core_device *vdev,
+				     bool test_mem, void __iomem *io,
+				     char __user *buf, loff_t off, size_t count,
+				     const struct vfio_pci_excl_range *x,
+				     unsigned int nr_x, bool iswrite,
+				     enum vfio_pci_io_width max_width)
+{
+	ssize_t done = 0, ret;
+
+	while (count) {
+		size_t len;
+
+		while (nr_x && off >= x->end) {
+			x++;
+			nr_x--;
+		}
+
+		if (!nr_x || off < x->start) {
+			len = nr_x ? min(count, (size_t)(x->start - off)) : count;
+			ret = vfio_pci_core_do_io_rw(vdev, test_mem, io, buf, off,
+						     len, iswrite, max_width);
+			if (ret < 0)
+				return ret;
+		} else {
+			/* Fill reads with -1, drop writes */
+			len = min(count, (size_t)(x->end - off));
+			if (!iswrite) {
+				u8 val = 0xFF;
+				size_t i;
+
+				for (i = 0; i < len; i++)
+					if (copy_to_user(buf + i, &val, 1))
+						return -EFAULT;
+			}
+		}
+
+		count -= len;
+		done += len;
+		off += len;
+		buf += len;
+	}
+
+	return done;
+}
+
 ssize_t vfio_pci_bar_rw(struct vfio_pci_core_device *vdev, char __user *buf,
 			size_t count, loff_t *ppos, bool iswrite)
 {
 	struct pci_dev *pdev = vdev->pdev;
 	loff_t pos = *ppos & VFIO_PCI_OFFSET_MASK;
 	int bar = VFIO_PCI_OFFSET_TO_INDEX(*ppos);
+	struct vfio_pci_excl_range x = {};
 	size_t x_start = 0, x_end = 0;
 	resource_size_t end;
 	void __iomem *io;
@@ -261,8 +293,10 @@ ssize_t vfio_pci_bar_rw(struct vfio_pci_core_device *vdev, char __user *buf,
 		x_end = vdev->msix_offset + vdev->msix_size;
 	}
 
-	done = vfio_pci_core_do_io_rw(vdev, res->flags & IORESOURCE_MEM, io, buf, pos,
-				      count, x_start, x_end, iswrite, max_width);
+	x.start = x_start;
+	x.end = x_end;
+	done = vfio_pci_bar_do_io_rw(vdev, res->flags & IORESOURCE_MEM, io, buf,
+				     pos, count, &x, 1, iswrite, max_width);
 
 	if (done >= 0)
 		*ppos += done;
@@ -336,7 +370,7 @@ ssize_t vfio_pci_vga_rw(struct vfio_pci_core_device *vdev, char __user *buf,
 	 * to the memory enable bit in the command register.
 	 */
 	done = vfio_pci_core_do_io_rw(vdev, false, iomem, buf, off, count,
-				      0, 0, iswrite, VFIO_PCI_IO_WIDTH_4);
+				      iswrite, VFIO_PCI_IO_WIDTH_4);
 
 	vga_put(vdev->pdev, rsrc);
 
