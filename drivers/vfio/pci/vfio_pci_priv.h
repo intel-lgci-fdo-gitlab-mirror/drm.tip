@@ -60,6 +60,42 @@ int vfio_pci_hidden_add_sparse_mmap(struct vfio_pci_core_device *vdev,
 				    struct vfio_region_info *info,
 				    struct vfio_info_cap *caps);
 extern const struct attribute_group *vfio_pci_hidden_bar_ranges_groups[];
+int vfio_pci_add_bar_range(struct vfio_pci_bar_range *ranges,
+			   unsigned int *num,
+			   const struct vfio_pci_bar_range *range);
+int vfio_pci_del_bar_range(struct vfio_pci_bar_range *ranges,
+			   unsigned int *num,
+			   const struct vfio_pci_bar_range *range);
+ssize_t vfio_pci_show_bar_ranges(const struct vfio_pci_bar_range *ranges,
+				 unsigned int num, char *buf);
+int __vfio_pci_hide_bar_ranges(struct vfio_pci_core_device *vdev,
+			       const struct vfio_pci_bar_range *ranges,
+			       unsigned int num, const char *source);
+
+#ifdef CONFIG_VFIO_PCI_CONFIGFS
+int vfio_pci_configfs_bind(struct vfio_pci_core_device *vdev);
+void vfio_pci_configfs_unbind(struct vfio_pci_core_device *vdev);
+int vfio_pci_configfs_init(void);
+void vfio_pci_configfs_exit(void);
+#else
+static inline int vfio_pci_configfs_bind(struct vfio_pci_core_device *vdev)
+{
+	return 0;
+}
+
+static inline void vfio_pci_configfs_unbind(struct vfio_pci_core_device *vdev)
+{
+}
+
+static inline int vfio_pci_configfs_init(void)
+{
+	return 0;
+}
+
+static inline void vfio_pci_configfs_exit(void)
+{
+}
+#endif
 
 #ifdef CONFIG_VFIO_PCI_VGA
 ssize_t vfio_pci_vga_rw(struct vfio_pci_core_device *vdev, char __user *buf,

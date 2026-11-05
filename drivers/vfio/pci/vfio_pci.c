@@ -188,6 +188,7 @@ static int vfio_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	dev_set_drvdata(&pdev->dev, vdev);
 	vdev->pci_ops = &vfio_pci_dev_ops;
+	vdev->hidden_ranges_supported = true;
 	ret = vfio_pci_core_register_device(vdev);
 	if (ret)
 		goto out_put_vdev;

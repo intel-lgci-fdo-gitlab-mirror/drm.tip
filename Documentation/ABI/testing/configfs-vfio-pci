@@ -1,0 +1,49 @@
+What:		/sys/kernel/config/vfio-pci/<device>/
+Date:		November 2026
+Contact:	kvm@vger.kernel.org
+Description:
+		Configuration of a PCI device applied when it is bound to
+		vfio-pci or to a vfio-pci variant driver. The directory name
+		is the canonical name of the PCI device, as in
+		/sys/bus/pci/devices/, e.g. 0000:03:00.1. It can be created
+		before the device exists, e.g. for a VF before SR-IOV is
+		enabled. The configuration is applied when the device is
+		bound and can't change until it is unbound: creating and
+		removing the directory and writing hide_bar_range and
+		unhide_bar_range fail with EBUSY while the device is bound.
+		Available if CONFIG_VFIO_PCI_CONFIGFS is enabled.
+
+What:		/sys/kernel/config/vfio-pci/<device>/hide_bar_range
+Date:		November 2026
+Contact:	kvm@vger.kernel.org
+Description:
+		(WO) Adds a range of a memory BAR to hide from the VFIO user,
+		written as "<bar>:<offset>:<size>", where <bar> is the decimal
+		BAR index and <offset> and <size> are hexadecimal values with
+		an optional 0x prefix. The range must not overlap the ranges
+		already added, at most 16 ranges can be added. The accesses
+		crossing the boundaries of the range are split, so it should
+		match the access granularity of the device, e.g. its register
+		width. Whether the range fits into a memory BAR of the device
+		is checked when the device is bound, which fails if it
+		doesn't. Binding also fails if the driver of the device
+		accesses its memory BARs in ways which can't hide the ranges,
+		e.g. a vfio-pci variant driver with its own BAR accesses. The
+		ranges are merged with the ones hidden by the driver of the
+		device, see
+		/sys/.../<device>/vfio-dev/vfioX/hidden_bar_ranges.
+
+What:		/sys/kernel/config/vfio-pci/<device>/unhide_bar_range
+Date:		November 2026
+Contact:	kvm@vger.kernel.org
+Description:
+		(WO) Removes a range added through hide_bar_range, written in
+		the same format, which must match the added range exactly.
+
+What:		/sys/kernel/config/vfio-pci/<device>/hidden_bar_ranges
+Date:		November 2026
+Contact:	kvm@vger.kernel.org
+Description:
+		(RO) Lists the ranges added through hide_bar_range, one per
+		line as "<bar>:<offset>:<size>", with <offset> and <size>
+		prefixed with 0x.

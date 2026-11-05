@@ -2275,6 +2275,10 @@ int vfio_pci_core_register_device(struct vfio_pci_core_device *vdev)
 	if (ret)
 		goto out_vf;
 
+	ret = vfio_pci_configfs_bind(vdev);
+	if (ret)
+		goto out_vga;
+
 	vfio_pci_probe_power_state(vdev);
 
 	/*
@@ -2310,6 +2314,8 @@ out_power:
 		pm_runtime_get_noresume(dev);
 
 	pm_runtime_forbid(dev);
+	vfio_pci_configfs_unbind(vdev);
+out_vga:
 	vfio_pci_vga_uninit(vdev);
 out_vf:
 	vfio_pci_vf_uninit(vdev);
@@ -2323,6 +2329,7 @@ void vfio_pci_core_unregister_device(struct vfio_pci_core_device *vdev)
 
 	vfio_unregister_group_dev(&vdev->vdev);
 
+	vfio_pci_configfs_unbind(vdev);
 	vfio_pci_vf_uninit(vdev);
 	vfio_pci_vga_uninit(vdev);
 
@@ -2667,14 +2674,25 @@ static void vfio_pci_dev_set_try_reset(struct vfio_device_set *dev_set)
 
 static void vfio_pci_core_cleanup(void)
 {
+	vfio_pci_configfs_exit();
 	vfio_pci_uninit_perm_bits();
 	rcu_barrier();
 }
 
 static int __init vfio_pci_core_init(void)
 {
+	int ret;
+
 	/* Allocate shared config space permission data used by all devices */
-	return vfio_pci_init_perm_bits();
+	ret = vfio_pci_init_perm_bits();
+	if (ret)
+		return ret;
+
+	ret = vfio_pci_configfs_init();
+	if (ret)
+		vfio_pci_uninit_perm_bits();
+
+	return ret;
 }
 
 module_init(vfio_pci_core_init);

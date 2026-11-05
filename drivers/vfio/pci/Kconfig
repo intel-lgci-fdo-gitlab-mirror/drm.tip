@@ -7,6 +7,19 @@ config VFIO_PCI_CORE
 	select VFIO_VIRQFD
 	select IRQ_BYPASS_MANAGER
 
+config VFIO_PCI_CONFIGFS
+	bool "VFIO PCI configuration through configfs"
+	depends on VFIO_PCI_CORE
+	select CONFIGFS_FS
+	help
+	  Let the host administrator configure PCI devices before they are
+	  bound to vfio-pci or to a vfio-pci variant driver, through
+	  /sys/kernel/config/vfio-pci/<device>/. The configuration allows
+	  hiding BAR ranges of a device from the VFIO user, in addition to
+	  the ones hidden by its driver.
+
+	  If you don't know what to do here, say N.
+
 config VFIO_PCI_INTX
 	def_bool y if !S390
 	depends on VFIO_PCI_CORE

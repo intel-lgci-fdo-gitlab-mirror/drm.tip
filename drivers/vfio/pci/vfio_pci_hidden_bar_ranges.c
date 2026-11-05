@@ -8,6 +8,10 @@
  * reads of them are filled with ones and writes to them are dropped, the
  * pages containing them are never mapped, and neither ioeventfds nor
  * dma-bufs may cover them.
+ *
+ * The ranges are hidden by the driver of the device and the host
+ * administrator can hide more of them through configfs, see
+ * vfio_pci_configfs.c.
  */
 
 #include <linux/device.h>
@@ -54,9 +58,9 @@ static int vfio_pci_check_bar_range(const struct vfio_pci_bar_range *range)
 	return 0;
 }
 
-static int vfio_pci_add_bar_range(struct vfio_pci_bar_range *ranges,
-				  unsigned int *num,
-				  const struct vfio_pci_bar_range *range)
+int vfio_pci_add_bar_range(struct vfio_pci_bar_range *ranges,
+			   unsigned int *num,
+			   const struct vfio_pci_bar_range *range)
 {
 	unsigned int i;
 	int ret;
@@ -96,8 +100,8 @@ static void vfio_pci_remove_bar_range(struct vfio_pci_bar_range *ranges,
 	(*num)--;
 }
 
-static ssize_t vfio_pci_show_bar_ranges(const struct vfio_pci_bar_range *ranges,
-					unsigned int num, char *buf)
+ssize_t vfio_pci_show_bar_ranges(const struct vfio_pci_bar_range *ranges,
+				 unsigned int num, char *buf)
 {
 	unsigned int i;
 	ssize_t len = 0;
@@ -149,9 +153,9 @@ static int vfio_pci_hide_bar_range(struct vfio_pci_core_device *vdev,
 				      &vdev->num_hidden_ranges, &merged);
 }
 
-static int __vfio_pci_hide_bar_ranges(struct vfio_pci_core_device *vdev,
-				      const struct vfio_pci_bar_range *ranges,
-				      unsigned int num, const char *source)
+int __vfio_pci_hide_bar_ranges(struct vfio_pci_core_device *vdev,
+			       const struct vfio_pci_bar_range *ranges,
+			       unsigned int num, const char *source)
 {
 	unsigned int i;
 	int ret;
@@ -176,11 +180,13 @@ static int __vfio_pci_hide_bar_ranges(struct vfio_pci_core_device *vdev,
  * @num: number of entries in @ranges
  *
  * Must be called before vfio_pci_core_register_device(), so that the ranges
- * are hidden before the device can be opened. The ranges are hidden by the
- * accesses done through vfio-pci-core: region reads and writes, region infos,
- * mmaps, ioeventfds and dma-bufs. The driver must declare that it doesn't
- * access its memory BARs in any other way by setting
- * &vfio_pci_core_device.hidden_ranges_supported first.
+ * are hidden before the device can be opened. The ranges configured by the
+ * host administrator through configfs, if CONFIG_VFIO_PCI_CONFIGFS is enabled,
+ * are hidden by vfio_pci_core_register_device() after the ones of the driver.
+ * The ranges are hidden by the accesses done through vfio-pci-core: region
+ * reads and writes, region infos, mmaps, ioeventfds and dma-bufs. The driver
+ * must declare that it doesn't access its memory BARs in any other way by
+ * setting &vfio_pci_core_device.hidden_ranges_supported first.
  *
  * The accesses crossing the boundaries of a hidden range are split, so the
  * range should match the access granularity of the device, e.g. its register
@@ -287,3 +293,21 @@ const struct attribute_group *vfio_pci_hidden_bar_ranges_groups[] = {
 	&vfio_pci_hidden_bar_ranges_group,
 	NULL
 };
+
+int vfio_pci_del_bar_range(struct vfio_pci_bar_range *ranges,
+			   unsigned int *num,
+			   const struct vfio_pci_bar_range *range)
+{
+	unsigned int i;
+
+	for (i = 0; i < *num; i++) {
+		if (ranges[i].bar == range->bar &&
+		    ranges[i].offset == range->offset &&
+		    ranges[i].size == range->size) {
+			vfio_pci_remove_bar_range(ranges, num, i);
+			return 0;
+		}
+	}
+
+	return -ENOENT;
+}

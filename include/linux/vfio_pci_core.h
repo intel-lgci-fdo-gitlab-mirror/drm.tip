@@ -177,6 +177,10 @@ struct vfio_pci_core_device {
 	 * BAR ranges.
 	 */
 	bool			hidden_ranges_supported;
+#ifdef CONFIG_VFIO_PCI_CONFIGFS
+	/* in the list of the bound devices, whose configfs can't change */
+	struct list_head	configfs_node;
+#endif
 };
 
 enum vfio_pci_io_width {
