@@ -1,0 +1,44 @@
+drm drm-fixes 6628e7d4c6b25c8d18f1345e3a20d21829aae7e4
+	Linux 7.4-rc1
+drm-misc drm-misc-fixes 75709a35da45bc67f94c9ceb91bf8871fdfe4d9e
+	drm/sched: Adjust run-queue when changing priority at runtime
+drm-rust drm-rust-fixes 6628e7d4c6b25c8d18f1345e3a20d21829aae7e4
+	Linux 7.4-rc1
+drm-intel drm-intel-fixes 01aa63eade529680cb28fce40f2357bf392a249f
+	drm/i915/vrr: Fix intel_vrr_dcb_vmin_vblank_start()
+drm-xe drm-xe-fixes d2ce8fcd778ee6d92748c92d23a56d4416c29d86
+	drm/xe: Bump LRU for external objects on exec and rebind
+drm-amdgpu drm-amdgpu-fixes 752480ad62964edf0254e151110d3e53a7cb37de
+	drm/amdgpu/sdma3: Work around POLL_REGMEM / FENCE hang
+drm drm-next 6628e7d4c6b25c8d18f1345e3a20d21829aae7e4
+	Linux 7.4-rc1
+drm-misc drm-misc-next-fixes 9a96e169c9267af918d28fb291df948d83112807
+	drm/panthor: Move cache-flush after UPDATE(UNMAPPED)
+drm-rust drm-rust-next-fixes d511064b2e732b7152a542d589d07a4814c1b674
+	rust: drm: Remove unused flags argument from Registration::new()
+drm-intel drm-intel-next-fixes 6628e7d4c6b25c8d18f1345e3a20d21829aae7e4
+	Linux 7.4-rc1
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes fbb201890156e04b062c4488d1b500de52367684
+	drm/amd/display: refresh cached HDMI FreeSync state
+drm-misc drm-misc-next d2a8cee91bfa8616f713c7c8f539a81e8e3554ea
+	drm/vkms: Switch container_of helpers to container_of_const
+drm-rust drm-rust-next c2a54407c78943151f8c501983f377429af4c297
+	gpu: nova-core: gsp: cmdq: expose the sequence number of sent commands
+drm-intel drm-intel-next 8901ecd0bf243d7f3492d690db189e18daa513d8
+	drm/i915/display: Run the selective fetch update after the crtc checks
+drm-intel drm-intel-gt-next 4e9db08db75f55c920986ac929cfd82a4ee99f41
+	drm/i915/gem: Reset err for each fence entry
+drm-xe drm-xe-next 3b8860fe2581a8db796150728687ba1c6b78ddab
+	drm/xe: Unwrap sync fences before adding them as job dependencies
+drm-amdgpu drm-amdgpu-next a24121023a434cb9b2b4db964d3fbbb4547d5e4c
+	drm/radeon: retry UVD v1 init on failure after resume
+drm-intel topic/core-for-CI 0630e7e76969b135f2a8fffea73c941c61f35c90
+	Revert "io_uring/sqpoll: don't attach to a thread that is canceling"
+drm-xe topic/xe-for-CI 412b1c187cb161857a3fafdb51619668c15acdad
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
+drm topic/pci-vgaarb-rework 93d41424caf7569ab50092a922477e2a881232b4
+	PCI/VGA: pass a data pointer to be used in the decode callback (v2)
