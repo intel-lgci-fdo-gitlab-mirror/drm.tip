@@ -30,11 +30,11 @@
 #include "xe_pm.h"
 #include "xe_res_cursor.h"
 #include "xe_sriov.h"
+#include "xe_tile.h"
 #include "xe_tile_printk.h"
 #include "xe_tile_sriov_vf.h"
 #include "xe_tlb_inval.h"
 #include "xe_wa.h"
-#include "xe_wopcm.h"
 
 /**
  * DOC: Global Graphics Translation Table (GGTT)
@@ -394,11 +394,13 @@ int xe_ggtt_init_early(struct xe_ggtt *ggtt)
 {
 	struct xe_device *xe = tile_to_xe(ggtt->tile);
 	struct pci_dev *pdev = to_pci_dev(xe->drm.dev);
+	u64 ggtt_start, ggtt_size;
 	unsigned int gsm_size;
-	u64 ggtt_start, wopcm = xe_wopcm_size(xe), ggtt_size;
 	int err;
 
 	if (!IS_SRIOV_VF(xe)) {
+		u64 wopcm = xe_tile_wopcm_size(ggtt->tile);
+
 		if (GRAPHICS_VERx100(xe) >= 1250)
 			gsm_size = SZ_8M; /* GGTT is expected to be 4GiB */
 		else
@@ -414,8 +416,7 @@ int xe_ggtt_init_early(struct xe_ggtt *ggtt)
 		ggtt_start = xe_tile_sriov_vf_ggtt_base(ggtt->tile);
 		ggtt_size = xe_tile_sriov_vf_ggtt(ggtt->tile);
 
-		if (ggtt_start < wopcm ||
-		    ggtt_start + ggtt_size > GUC_GGTT_TOP) {
+		if (ggtt_start + ggtt_size > GUC_GGTT_TOP) {
 			xe_log_err_fatal(ggtt->tile, GGTT, -ERANGE,
 					 "Invalid GGTT configuration: %#llx-%#llx\n",
 					 ggtt_start, ggtt_start + ggtt_size - 1);
@@ -647,13 +648,15 @@ static void xe_ggtt_invalidate_engine(struct xe_ggtt *ggtt)
  * This function may be called multiple times during recovery, but if
  * @new_start is unchanged from the current base, it's a noop.
  *
- * @new_start should be a value between xe_wopcm_size() and #GUC_GGTT_TOP.
+ * @new_start should be a value above the wopcm size and below #GUC_GGTT_TOP.
+ * VFs can't access the register with the wopcm size info, so we trust that PF
+ * has done the correct programming for that and we just assert on the upper
+ * bound.
  */
 void xe_ggtt_shift_nodes(struct xe_ggtt *ggtt, u64 new_start)
 {
 	guard(mutex)(&ggtt->lock);
 
-	xe_tile_assert(ggtt->tile, new_start >= xe_wopcm_size(tile_to_xe(ggtt->tile)));
 	xe_tile_assert(ggtt->tile, new_start + ggtt->size <= GUC_GGTT_TOP);
 
 	/* pairs with READ_ONCE in xe_ggtt_node_addr() */

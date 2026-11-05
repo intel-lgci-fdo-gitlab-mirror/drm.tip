@@ -13,15 +13,18 @@
 #include "xe_ggtt.h"
 #include "xe_memirq.h"
 #include "xe_migrate.h"
+#include "xe_mmio.h"
 #include "xe_pcode.h"
 #include "xe_sa.h"
 #include "xe_svm.h"
 #include "xe_tile.h"
+#include "xe_tile_printk.h"
 #include "xe_tile_sysfs.h"
 #include "xe_ttm_vram_mgr.h"
 #include "xe_vram.h"
 #include "xe_vram_types.h"
 #include "xe_wa.h"
+#include "regs/xe_regs.h"
 
 /**
  * DOC: Multi-tile Design
@@ -223,6 +226,41 @@ int xe_tile_init(struct xe_tile *tile)
 void xe_tile_migrate_wait(struct xe_tile *tile)
 {
 	xe_migrate_wait(tile->migrate);
+}
+
+int xe_tile_wopcm_init(struct xe_tile *tile)
+{
+	u32 wopcm_size;
+	u64 val;
+
+	if (IS_SRIOV_VF(tile_to_xe(tile)))
+		return 0;
+
+	val = xe_mmio_read64_2x32(&tile->mmio, STOLEN_RESERVED);
+	val = REG_FIELD_GET64(WOPCM_SIZE_MASK, val);
+
+	switch (val) {
+	case 0x5 ... 0x6:
+		val--;
+		fallthrough;
+	case 0x0 ... 0x3:
+		wopcm_size = (1U << val) * SZ_1M;
+		break;
+	default:
+		WARN(1, "Missing case wopcm_size=%llx\n", val);
+		return -EIO;
+	}
+
+	tile->mem.wopcm_size = wopcm_size;
+
+	xe_tile_info(tile, "WOPCM size: %uKB\n", wopcm_size / 1024);
+	return 0;
+}
+
+u32 xe_tile_wopcm_size(struct xe_tile *tile)
+{
+	xe_assert(tile_to_xe(tile), tile->mem.wopcm_size != 0);
+	return tile->mem.wopcm_size;
 }
 
 #if IS_ENABLED(CONFIG_DRM_XE_PAGEMAP)
