@@ -648,7 +648,7 @@ vc4_queue_submit(struct drm_device *dev, struct vc4_exec_info *exec,
 	exec->seqno = seqno;
 
 	dma_fence_init(&fence->base, &vc4_fence_ops, &vc4->job_lock,
-		       vc4->dma_fence_context, exec->seqno);
+		       vc4->dma_fence_context, exec->seqno, 0);
 	fence->seqno = exec->seqno;
 	exec->fence = &fence->base;
 
