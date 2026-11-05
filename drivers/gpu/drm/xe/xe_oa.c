@@ -875,10 +875,30 @@ static void xe_oa_disable_metric_set(struct xe_oa_stream *stream)
 		xe_mmio_rmw32(mmio, OAM_COMPRESSION_T3_CONTROL, OAM_LAT_MEASURE_ENABLE, 0);
 }
 
+static void xe_oa_stream_hw_teardown(struct xe_oa_stream *stream)
+{
+	if (stream->sample)
+		xe_reg_dewhitelist_oa_regs(stream->gt);
+
+	xe_oa_disable_metric_set(stream);
+	xe_force_wake_put(gt_to_fw(stream->hwe->gt), stream->fw_ref);
+}
+
+static void xe_oa_stream_free_resources(struct xe_oa_stream *stream)
+{
+	xe_exec_queue_put(stream->k_exec_q);
+
+	xe_oa_free_oa_buffer(stream);
+
+	xe_pm_runtime_put(stream->oa->xe);
+
+	xe_oa_free_configs(stream);
+	xe_file_put(stream->xef);
+}
+
 static void xe_oa_stream_destroy(struct xe_oa_stream *stream)
 {
 	struct xe_oa_unit *u = stream->oa_unit;
-	struct xe_gt *gt = stream->hwe->gt;
 
 	if (WARN_ON(stream != u->exclusive_stream))
 		return;
@@ -887,19 +907,8 @@ static void xe_oa_stream_destroy(struct xe_oa_stream *stream)
 
 	mutex_destroy(&stream->stream_lock);
 
-	if (stream->sample)
-		xe_reg_dewhitelist_oa_regs(stream->gt);
-
-	xe_oa_disable_metric_set(stream);
-	xe_exec_queue_put(stream->k_exec_q);
-
-	xe_oa_free_oa_buffer(stream);
-
-	xe_force_wake_put(gt_to_fw(gt), stream->fw_ref);
-	xe_pm_runtime_put(stream->oa->xe);
-
-	xe_oa_free_configs(stream);
-	xe_file_put(stream->xef);
+	xe_oa_stream_hw_teardown(stream);
+	xe_oa_stream_free_resources(stream);
 }
 
 static int xe_oa_alloc_oa_buffer(struct xe_oa_stream *stream, size_t size)
