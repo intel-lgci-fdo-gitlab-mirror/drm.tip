@@ -907,6 +907,7 @@ static bool xe_migrate_allow_identity(u64 size, const struct xe_res_cursor *cur)
 
 #define PTE_UPDATE_FLAG_IS_VRAM		BIT(0)
 #define PTE_UPDATE_FLAG_IS_COMP_PTE	BIT(1)
+#define PTE_UPDATE_FLAG_ALLOW_IDENTITY	BIT(2)
 
 static u32 pte_update_size(struct xe_migrate *m,
 			   u32 flags,
@@ -918,9 +919,10 @@ static u32 pte_update_size(struct xe_migrate *m,
 	u32 cmds = 0;
 	bool is_vram = PTE_UPDATE_FLAG_IS_VRAM & flags;
 	bool is_comp_pte = PTE_UPDATE_FLAG_IS_COMP_PTE & flags;
+	bool allow_identity = PTE_UPDATE_FLAG_ALLOW_IDENTITY & flags;
 
 	*L0_pt = pt_ofs;
-	if (is_vram && xe_migrate_allow_identity(*L0, cur)) {
+	if (is_vram && allow_identity && xe_migrate_allow_identity(*L0, cur)) {
 		/* Offset into identity map. */
 		*L0_ofs = xe_migrate_vram_ofs(tile_to_xe(m->tile),
 					      cur->start + vram_region_gpu_offset(res),
@@ -1206,6 +1208,14 @@ static u32 xe_migrate_ccs_copy(struct xe_migrate *m,
 	return flush_flags;
 }
 
+static bool is_devmem(struct xe_bo *bo, struct ttm_resource *res)
+{
+	if (mem_type_is_vram(res->mem_type) || res->mem_type == XE_PL_STOLEN)
+		return true;
+
+	return false;
+}
+
 static struct dma_fence *__xe_migrate_copy(struct xe_migrate *m,
 					   struct xe_bo *src_bo,
 					   struct xe_bo *dst_bo,
@@ -1226,8 +1236,8 @@ static struct dma_fence *__xe_migrate_copy(struct xe_migrate *m,
 	int err;
 	bool src_is_pltt = src->mem_type == XE_PL_TT;
 	bool dst_is_pltt = dst->mem_type == XE_PL_TT;
-	bool src_is_vram = mem_type_is_vram(src->mem_type);
-	bool dst_is_vram = mem_type_is_vram(dst->mem_type);
+	bool src_is_vram = is_devmem(src_bo, src);
+	bool dst_is_vram = is_devmem(dst_bo, dst);
 	bool type_device = src_bo->ttm.type == ttm_bo_type_device;
 	bool needs_ccs_emit = type_device && xe_migrate_needs_ccs_emit(xe);
 	bool copy_ccs = xe_device_has_flat_ccs(xe) &&
@@ -1287,6 +1297,7 @@ static struct dma_fence *__xe_migrate_copy(struct xe_migrate *m,
 
 		pte_flags = src_is_vram ? PTE_UPDATE_FLAG_IS_VRAM : 0;
 		pte_flags |= use_comp_pat ? PTE_UPDATE_FLAG_IS_COMP_PTE : 0;
+		pte_flags |= IS_DGFX(xe) ? PTE_UPDATE_FLAG_ALLOW_IDENTITY : 0;
 		batch_size += pte_update_size(m, pte_flags, src, &src_it, &src_L0,
 					      &src_L0_ofs, &src_L0_pt, 0, 0,
 					      avail_pts);
@@ -1294,6 +1305,7 @@ static struct dma_fence *__xe_migrate_copy(struct xe_migrate *m,
 			dst_L0_ofs = src_L0_ofs;
 		} else {
 			pte_flags = dst_is_vram ? PTE_UPDATE_FLAG_IS_VRAM : 0;
+			pte_flags |= IS_DGFX(xe) ? PTE_UPDATE_FLAG_ALLOW_IDENTITY : 0;
 			batch_size += pte_update_size(m, pte_flags, dst,
 						      &dst_it, &src_L0,
 						      &dst_L0_ofs, &dst_L0_pt,
@@ -1320,13 +1332,13 @@ static struct dma_fence *__xe_migrate_copy(struct xe_migrate *m,
 			goto err_sync;
 		}
 
-		if (src_is_vram && xe_migrate_allow_identity(src_L0, &src_it))
+		if (src_is_vram && IS_DGFX(xe) && xe_migrate_allow_identity(src_L0, &src_it))
 			xe_res_next(&src_it, src_L0);
 		else
 			emit_pte(m, bb, src_L0_pt, src_is_vram, copy_system_ccs || use_comp_pat,
 				 &src_it, src_L0, src);
 
-		if (dst_is_vram && xe_migrate_allow_identity(src_L0, &dst_it))
+		if (dst_is_vram && IS_DGFX(xe) && xe_migrate_allow_identity(src_L0, &dst_it))
 			xe_res_next(&dst_it, src_L0);
 		else if (!copy_only_ccs)
 			emit_pte(m, bb, dst_L0_pt, dst_is_vram, copy_system_ccs,
@@ -1739,7 +1751,7 @@ struct dma_fence *xe_migrate_vram_copy_chunk(struct xe_bo *vram_bo, u64 vram_off
 	xe_res_first_sg(xe_bo_sg(sysmem_bo), sysmem_offset, size, &sysmem_it);
 
 	while (size) {
-		u32 pte_flags = PTE_UPDATE_FLAG_IS_VRAM;
+		u32 pte_flags = PTE_UPDATE_FLAG_IS_VRAM | PTE_UPDATE_FLAG_ALLOW_IDENTITY;
 		u32 batch_size = 2; /* arb_clear() + MI_BATCH_BUFFER_END */
 		struct xe_sched_job *job;
 		struct xe_bb *bb;
@@ -1927,7 +1939,7 @@ struct dma_fence *xe_migrate_clear(struct xe_migrate *m,
 				   struct ttm_resource *dst,
 				   u32 clear_flags)
 {
-	bool clear_vram = mem_type_is_vram(dst->mem_type);
+	bool clear_vram = is_devmem(bo, dst);
 	bool clear_bo_data = XE_MIGRATE_CLEAR_FLAG_BO_DATA & clear_flags;
 	bool clear_ccs = XE_MIGRATE_CLEAR_FLAG_CCS_DATA & clear_flags;
 	struct xe_gt *gt = m->tile->primary_gt;
@@ -1967,6 +1979,7 @@ struct dma_fence *xe_migrate_clear(struct xe_migrate *m,
 
 		/* Calculate final sizes and batch size.. */
 		pte_flags = clear_vram ? PTE_UPDATE_FLAG_IS_VRAM : 0;
+		pte_flags |= IS_DGFX(xe) ? PTE_UPDATE_FLAG_ALLOW_IDENTITY : 0;
 		batch_size = 1 +
 			pte_update_size(m, pte_flags, src, &src_it,
 					&clear_L0, &clear_L0_ofs, &clear_L0_pt,
@@ -1989,7 +2002,7 @@ struct dma_fence *xe_migrate_clear(struct xe_migrate *m,
 
 		size -= clear_L0;
 		/* Preemption is enabled again by the ring ops. */
-		if (clear_vram && xe_migrate_allow_identity(clear_L0, &src_it)) {
+		if (clear_vram && IS_DGFX(xe) && xe_migrate_allow_identity(clear_L0, &src_it)) {
 			xe_res_next(&src_it, clear_L0);
 		} else {
 			emit_pte(m, bb, clear_L0_pt, clear_vram,
