@@ -43,6 +43,7 @@
 #include "xe_sriov.h"
 #include "xe_sync.h"
 #include "xe_wa.h"
+#include "xe_wedge.h"
 
 #define DEFAULT_POLL_FREQUENCY_HZ 200
 #define DEFAULT_POLL_PERIOD_NS (NSEC_PER_SEC / DEFAULT_POLL_FREQUENCY_HZ)
@@ -875,6 +876,11 @@ static void xe_oa_disable_metric_set(struct xe_oa_stream *stream)
 		xe_mmio_rmw32(mmio, OAM_COMPRESSION_T3_CONTROL, OAM_LAT_MEASURE_ENABLE, 0);
 }
 
+/*
+ * Also drops forcewake, which accesses the HW too. On a wedged device this is skipped and
+ * the forcewake reference leaks, which is fine: the device needs a reset or rebind to
+ * recover, which reinitializes forcewake.
+ */
 static void xe_oa_stream_hw_teardown(struct xe_oa_stream *stream)
 {
 	if (stream->sample)
@@ -907,7 +913,8 @@ static void xe_oa_stream_destroy(struct xe_oa_stream *stream)
 
 	mutex_destroy(&stream->stream_lock);
 
-	xe_oa_stream_hw_teardown(stream);
+	if (!xe_wedged(stream->oa->xe))
+		xe_oa_stream_hw_teardown(stream);
 	xe_oa_stream_free_resources(stream);
 }
 
@@ -1705,7 +1712,8 @@ static void xe_oa_destroy_locked(struct xe_oa_stream *stream)
 {
 	xe_pm_runtime_get(gt_to_xe(stream->gt));
 
-	if (stream->enabled)
+	/* A wedged device may be unresponsive, skip HW access */
+	if (stream->enabled && !xe_wedged(gt_to_xe(stream->gt)))
 		xe_oa_disable_locked(stream);
 
 	xe_oa_stream_destroy(stream);
