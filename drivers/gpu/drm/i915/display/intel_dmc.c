@@ -126,7 +126,7 @@ static bool dmc_firmware_param_disabled(struct intel_display *display)
 #define DISPLAY_VER13_DMC_MAX_FW_SIZE	0x20000
 #define DISPLAY_VER12_DMC_MAX_FW_SIZE	ICL_DMC_MAX_FW_SIZE
 
-#define XE3P_LPD_DMC_PATH		DMC_PATH(xe3p_lpd)
+#define XE3P_LPD_DMC_PATH		"i915/xe3p_lpd_dmc_ver2_44.bin"
 MODULE_FIRMWARE(XE3P_LPD_DMC_PATH);
 
 #define XE3LPD_3002_DMC_PATH		DMC_PATH(xe3lpd_3002)
