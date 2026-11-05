@@ -227,6 +227,7 @@ int vfio_pci_core_feature_dma_buf(struct vfio_pci_core_device *vdev, u32 flags,
 	DEFINE_DMA_BUF_EXPORT_INFO(exp_info);
 	struct vfio_pci_dma_buf *priv;
 	size_t length;
+	u32 i;
 	int ret;
 
 	if (!vdev->pci_ops || !vdev->pci_ops->get_dmabuf_phys)
@@ -259,6 +260,16 @@ int vfio_pci_core_feature_dma_buf(struct vfio_pci_core_device *vdev, u32 flags,
 	ret = validate_dmabuf_input(&get_dma_buf, dma_ranges, &length);
 	if (ret)
 		goto err_free_ranges;
+
+	/* the importers access the BAR directly, bypassing the hidden ranges */
+	for (i = 0; i < get_dma_buf.nr_ranges; i++) {
+		if (vfio_pci_bar_range_hidden(vdev, get_dma_buf.region_index,
+					      dma_ranges[i].offset,
+					      dma_ranges[i].length)) {
+			ret = -EINVAL;
+			goto err_free_ranges;
+		}
+	}
 
 	priv = kzalloc_obj(*priv);
 	if (!priv) {

@@ -12,6 +12,7 @@
 
 #include <linux/fs.h>
 #include <linux/pci.h>
+#include <linux/sched.h>
 #include <linux/uaccess.h>
 #include <linux/io.h>
 #include <linux/vfio.h>
@@ -178,11 +179,32 @@ struct vfio_pci_excl_range {
 	loff_t	end;
 };
 
+/* a hidden range can be large, fill it in chunks and let others run */
+static int vfio_pci_fill_ones(char __user *buf, size_t count)
+{
+	u8 ones[128];
+
+	memset(ones, 0xff, sizeof(ones));
+
+	while (count) {
+		size_t len = min(count, sizeof(ones));
+
+		if (copy_to_user(buf, ones, len))
+			return -EFAULT;
+
+		buf += len;
+		count -= len;
+		cond_resched();
+	}
+
+	return 0;
+}
+
 /*
  * Read or write from a BAR with excluded ranges which are inaccessible.  The
  * excluded ranges, sorted by their start and possibly overlapping, drop writes
- * and fill reads with -1.  This is intended for handling MSI-X vector tables
- * and leftover space for ROM BARs.
+ * and fill reads with -1.  This is intended for handling MSI-X vector tables,
+ * leftover space for ROM BARs and BAR ranges hidden from the VFIO user.
  */
 static ssize_t vfio_pci_bar_do_io_rw(struct vfio_pci_core_device *vdev,
 				     bool test_mem, void __iomem *io,
@@ -210,14 +232,8 @@ static ssize_t vfio_pci_bar_do_io_rw(struct vfio_pci_core_device *vdev,
 		} else {
 			/* Fill reads with -1, drop writes */
 			len = min(count, (size_t)(x->end - off));
-			if (!iswrite) {
-				u8 val = 0xFF;
-				size_t i;
-
-				for (i = 0; i < len; i++)
-					if (copy_to_user(buf + i, &val, 1))
-						return -EFAULT;
-			}
+			if (!iswrite && vfio_pci_fill_ones(buf, len))
+				return -EFAULT;
 		}
 
 		count -= len;
@@ -229,14 +245,44 @@ static ssize_t vfio_pci_bar_do_io_rw(struct vfio_pci_core_device *vdev,
 	return done;
 }
 
+/*
+ * Add the hidden ranges of a BAR to its excluded ranges, which hold the MSI-X
+ * table, if any, keeping them sorted by their start.
+ */
+static unsigned int vfio_pci_bar_excl_hidden(struct vfio_pci_core_device *vdev,
+					     unsigned int bar,
+					     struct vfio_pci_excl_range *x,
+					     unsigned int nr_x)
+{
+	unsigned int i;
+
+	for (i = 0; i < vdev->num_hidden_ranges; i++) {
+		const struct vfio_pci_bar_range *range = &vdev->hidden_ranges[i];
+
+		if (range->bar != bar)
+			continue;
+
+		x[nr_x].start = range->offset;
+		x[nr_x].end = range->offset + range->size;
+		nr_x++;
+	}
+
+	/* the hidden ranges are sorted, only the MSI-X table may be out of place */
+	for (i = 1; i < nr_x && x[i].start < x[i - 1].start; i++)
+		swap(x[i], x[i - 1]);
+
+	return nr_x;
+}
+
 ssize_t vfio_pci_bar_rw(struct vfio_pci_core_device *vdev, char __user *buf,
 			size_t count, loff_t *ppos, bool iswrite)
 {
 	struct pci_dev *pdev = vdev->pdev;
 	loff_t pos = *ppos & VFIO_PCI_OFFSET_MASK;
 	int bar = VFIO_PCI_OFFSET_TO_INDEX(*ppos);
-	struct vfio_pci_excl_range x = {};
+	struct vfio_pci_excl_range x[VFIO_PCI_MAX_HIDDEN_BAR_RANGES + 1];
 	size_t x_start = 0, x_end = 0;
+	unsigned int nr_x = 1;
 	resource_size_t end;
 	void __iomem *io;
 	struct resource *res = &vdev->pdev->resource[bar];
@@ -293,10 +339,13 @@ ssize_t vfio_pci_bar_rw(struct vfio_pci_core_device *vdev, char __user *buf,
 		x_end = vdev->msix_offset + vdev->msix_size;
 	}
 
-	x.start = x_start;
-	x.end = x_end;
+	x[0].start = x_start;
+	x[0].end = x_end;
+	if (vfio_pci_bar_range_hidden(vdev, bar, pos, count))
+		nr_x = vfio_pci_bar_excl_hidden(vdev, bar, x, nr_x);
+
 	done = vfio_pci_bar_do_io_rw(vdev, res->flags & IORESOURCE_MEM, io, buf,
-				     pos, count, &x, 1, iswrite, max_width);
+				     pos, count, x, nr_x, iswrite, max_width);
 
 	if (done >= 0)
 		*ppos += done;
@@ -455,6 +504,9 @@ int vfio_pci_ioeventfd(struct vfio_pci_core_device *vdev, loff_t offset,
 	if (bar == vdev->msix_bar &&
 	    !(pos + count <= vdev->msix_offset ||
 	      pos >= vdev->msix_offset + vdev->msix_size))
+		return -EINVAL;
+
+	if (vfio_pci_bar_range_hidden(vdev, bar, pos, count))
 		return -EINVAL;
 
 	io = vfio_pci_core_get_iomap(vdev, bar);

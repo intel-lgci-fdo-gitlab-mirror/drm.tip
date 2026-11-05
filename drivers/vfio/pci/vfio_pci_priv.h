@@ -44,6 +44,23 @@ ssize_t vfio_pci_config_rw_single(struct vfio_pci_core_device *vdev,
 ssize_t vfio_pci_bar_rw(struct vfio_pci_core_device *vdev, char __user *buf,
 			size_t count, loff_t *ppos, bool iswrite);
 
+bool __vfio_pci_bar_range_hidden(struct vfio_pci_core_device *vdev,
+				 unsigned int bar, u64 offset, u64 size);
+
+/* inline, so that the devices without hidden ranges don't pay for a call */
+static inline bool vfio_pci_bar_range_hidden(struct vfio_pci_core_device *vdev,
+					     unsigned int bar, u64 offset,
+					     u64 size)
+{
+	return unlikely(vdev->num_hidden_ranges) &&
+	       __vfio_pci_bar_range_hidden(vdev, bar, offset, size);
+}
+
+int vfio_pci_hidden_add_sparse_mmap(struct vfio_pci_core_device *vdev,
+				    struct vfio_region_info *info,
+				    struct vfio_info_cap *caps);
+extern const struct attribute_group *vfio_pci_hidden_bar_ranges_groups[];
+
 #ifdef CONFIG_VFIO_PCI_VGA
 ssize_t vfio_pci_vga_rw(struct vfio_pci_core_device *vdev, char __user *buf,
 			size_t count, loff_t *ppos, bool iswrite);

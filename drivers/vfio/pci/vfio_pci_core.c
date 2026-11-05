@@ -1147,6 +1147,10 @@ int vfio_pci_ioctl_get_region_info(struct vfio_device *core_vdev,
 				if (ret)
 					return ret;
 			}
+
+			ret = vfio_pci_hidden_add_sparse_mmap(vdev, info, caps);
+			if (ret)
+				return ret;
 		}
 
 		break;
@@ -1771,11 +1775,20 @@ static vm_fault_t vfio_pci_mmap_huge_fault(struct vm_fault *vmf,
 	unsigned long addr = vmf->address & ~((PAGE_SIZE << order) - 1);
 	unsigned long pgoff = linear_page_delta(vma, addr);
 	unsigned long pfn = vma_to_pfn(vma) + pgoff;
+	unsigned int index = vma->vm_pgoff >> (VFIO_PCI_OFFSET_SHIFT - PAGE_SHIFT);
+	u64 bar_pgoff = (vma->vm_pgoff &
+			 ((1U << (VFIO_PCI_OFFSET_SHIFT - PAGE_SHIFT)) - 1)) + pgoff;
 	vm_fault_t ret = VM_FAULT_FALLBACK;
 
 	if (is_aligned_for_order(vma, addr, pfn, order)) {
-		scoped_guard(rwsem_read, &vdev->memory_lock)
-			ret = vfio_pci_vmf_insert_pfn(vdev, vmf, pfn, order);
+		if (vfio_pci_bar_range_hidden(vdev, index, bar_pgoff << PAGE_SHIFT,
+					      PAGE_SIZE << order)) {
+			if (!order)
+				ret = VM_FAULT_SIGBUS;
+		} else {
+			scoped_guard(rwsem_read, &vdev->memory_lock)
+				ret = vfio_pci_vmf_insert_pfn(vdev, vmf, pfn, order);
+		}
 	}
 
 	dev_dbg_ratelimited(&vdev->pdev->dev,
@@ -2279,9 +2292,14 @@ int vfio_pci_core_register_device(struct vfio_pci_core_device *vdev)
 	if (!vdev->disable_idle_d3)
 		pm_runtime_put(dev);
 
+	vdev->vdev.device.groups = vfio_pci_hidden_bar_ranges_groups;
 	ret = vfio_register_group_dev(&vdev->vdev);
 	if (ret)
 		goto out_power;
+
+	if (vdev->num_hidden_ranges)
+		pci_dbg(pdev, "Hiding %u BAR range(s) from the VFIO user\n",
+			vdev->num_hidden_ranges);
 
 	vfio_pci_core_debugfs_init(vdev);
 

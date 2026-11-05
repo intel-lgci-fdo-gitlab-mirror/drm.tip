@@ -97,6 +97,20 @@ static inline int vfio_pci_core_get_dmabuf_phys(
 }
 #endif
 
+#define VFIO_PCI_MAX_HIDDEN_BAR_RANGES	16
+
+/**
+ * struct vfio_pci_bar_range - range of a memory BAR
+ * @bar: index of the BAR
+ * @offset: offset of the range in the BAR
+ * @size: size of the range
+ */
+struct vfio_pci_bar_range {
+	unsigned int	bar;
+	u64		offset;
+	u64		size;
+};
+
 struct vfio_pci_core_device {
 	struct vfio_device	vdev;
 	struct pci_dev		*pdev;
@@ -151,6 +165,18 @@ struct vfio_pci_core_device {
 	struct notifier_block	nb;
 	struct rw_semaphore	memory_lock;
 	struct list_head	dmabufs;
+	/*
+	 * BAR ranges hidden from the VFIO user, sorted by BAR and offset.
+	 * Set up before the device is registered and not changed afterwards.
+	 */
+	struct vfio_pci_bar_range hidden_ranges[VFIO_PCI_MAX_HIDDEN_BAR_RANGES];
+	unsigned int		num_hidden_ranges;
+	/*
+	 * Set by the driver before registering the device if all the accesses
+	 * to its memory BARs go through vfio-pci-core, so that it can hide
+	 * BAR ranges.
+	 */
+	bool			hidden_ranges_supported;
 };
 
 enum vfio_pci_io_width {
@@ -170,6 +196,9 @@ int vfio_pci_core_init_dev(struct vfio_device *core_vdev);
 void vfio_pci_core_release_dev(struct vfio_device *core_vdev);
 int vfio_pci_core_register_device(struct vfio_pci_core_device *vdev);
 void vfio_pci_core_unregister_device(struct vfio_pci_core_device *vdev);
+int vfio_pci_core_hide_bar_ranges(struct vfio_pci_core_device *vdev,
+				  const struct vfio_pci_bar_range *ranges,
+				  unsigned int num);
 int vfio_pci_core_sriov_configure(struct vfio_pci_core_device *vdev,
 				  int nr_virtfn);
 long vfio_pci_core_ioctl(struct vfio_device *core_vdev, unsigned int cmd,
