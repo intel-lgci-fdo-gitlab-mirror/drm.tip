@@ -1865,15 +1865,14 @@ void xe_exec_queue_tlb_inval_last_fence_set(struct xe_exec_queue *q,
 	q->tlb_inval[idx].last_fence = dma_fence_get(fence);
 }
 
-/**
- * xe_exec_queue_contexts_hwsp_rebase - Re-compute GGTT references
- * within all LRCs of a queue.
+/*
+ * Re-compute GGTT references within all LRCs of a queue.
  * @q: the &xe_exec_queue struct instance containing target LRCs
  * @scratch: scratch buffer to be used as temporary storage
  *
  * Returns: zero on success, negative error code on failure
  */
-int xe_exec_queue_contexts_hwsp_rebase(struct xe_exec_queue *q, void *scratch)
+static int xe_exec_queue_lrcs_hwsp_rebase_with_scratch(struct xe_exec_queue *q, void *scratch)
 {
 	int i;
 	int err = 0;
@@ -1892,6 +1891,27 @@ int xe_exec_queue_contexts_hwsp_rebase(struct xe_exec_queue *q, void *scratch)
 		if (err)
 			break;
 	}
+
+	return err;
+}
+
+/**
+ * xe_exec_queue_lrcs_hwsp_rebase - Re-compute GGTT references
+ * within all LRCs of a queue, using migration scratch.
+ * @q: the &xe_exec_queue struct instance containing target LRCs
+ *
+ * Returns: zero on success, negative error code on failure
+ */
+int xe_exec_queue_lrcs_hwsp_rebase(struct xe_exec_queue *q)
+{
+	struct xe_gt *gt = q->gt;
+	int err;
+
+	xe_gt_assert(gt, IS_SRIOV_VF(gt_to_xe(gt)));
+
+	mutex_lock(&gt->sriov.vf.migration.scratch_lock);
+	err = xe_exec_queue_lrcs_hwsp_rebase_with_scratch(q, gt->sriov.vf.migration.scratch);
+	mutex_unlock(&gt->sriov.vf.migration.scratch_lock);
 
 	return err;
 }
