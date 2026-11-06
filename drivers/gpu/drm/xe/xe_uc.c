@@ -349,7 +349,7 @@ void xe_uc_runtime_resume(struct xe_uc *uc)
  */
 void xe_uc_wedge_declare(struct xe_uc *uc)
 {
-	xe_gt_assert(uc_to_gt(uc), uc_to_xe(uc)->wedged.mode);
+	xe_gt_assert(uc_to_gt(uc), READ_ONCE(uc_to_xe(uc)->wedged.mode));
 
 	xe_guc_wedge_declare(&uc->guc);
 }

@@ -1863,7 +1863,7 @@ int xe_guc_print_info(struct xe_guc *guc, struct drm_printer *p)
  */
 void xe_guc_wedge_declare(struct xe_guc *guc)
 {
-	xe_gt_assert(guc_to_gt(guc), guc_to_xe(guc)->wedged.mode);
+	xe_gt_assert(guc_to_gt(guc), READ_ONCE(guc_to_xe(guc)->wedged.mode));
 
 	xe_guc_ct_stop(&guc->ct);
 	xe_guc_submit_wedge(guc);

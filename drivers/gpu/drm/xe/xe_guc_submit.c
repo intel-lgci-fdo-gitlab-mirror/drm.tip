@@ -1424,7 +1424,7 @@ void xe_guc_submit_wedge(struct xe_guc *guc)
 	struct xe_exec_queue *q;
 	unsigned long index;
 
-	xe_gt_assert(guc_to_gt(guc), guc_to_xe(guc)->wedged.mode);
+	xe_gt_assert(guc_to_gt(guc), READ_ONCE(guc_to_xe(guc)->wedged.mode));
 
 	/*
 	 * If device is being wedged even before submission_state is
@@ -1433,7 +1433,7 @@ void xe_guc_submit_wedge(struct xe_guc *guc)
 	if (!guc->submission_state.initialized)
 		return;
 
-	if (xe->wedged.mode == XE_WEDGED_MODE_UPON_ANY_HANG_NO_RESET) {
+	if (xe_wedge_is_hanging_on_any(READ_ONCE(xe->wedged.mode))) {
 		mutex_lock(&guc->submission_state.lock);
 		xa_for_each(&guc->submission_state.exec_queue_lookup, index, q)
 			if (xe_exec_queue_get_unless_zero(q))
@@ -1453,7 +1453,7 @@ static bool guc_submit_hint_wedged(struct xe_guc *guc)
 {
 	struct xe_device *xe = guc_to_xe(guc);
 
-	if (xe->wedged.mode != XE_WEDGED_MODE_UPON_ANY_HANG_NO_RESET)
+	if (!xe_wedge_is_hanging_on_any(READ_ONCE(xe->wedged.mode)))
 		return false;
 
 	if (xe_wedged(xe))
@@ -1672,7 +1672,10 @@ guc_exec_queue_timedout_job(struct drm_sched_job *drm_job)
 	if (!exec_queue_killed(q))
 		wedged = guc_submit_hint_wedged(exec_queue_to_guc(q));
 	else
-		wedged = xe_wedged(xe);
+		wedged = xe_wedged(xe) ||
+			 (READ_ONCE(xe->wedged.mode) ==
+			  XE_WEDGED_MODE_UPON_ANY_HANG_NO_RESET_WAIT_FOR_RELEASE &&
+			  exec_queue_wedged(q));
 
 	/*
 	 * Only tag as GPU hang if this is the original timeout, not a
@@ -1726,6 +1729,13 @@ guc_exec_queue_timedout_job(struct drm_sched_job *drm_job)
 			goto handle_vf_resume;
 		if (!ret || xe_guc_read_stopped(guc)) {
 trigger_reset:
+			if (READ_ONCE(xe->wedged.mode) ==
+			    XE_WEDGED_MODE_UPON_ANY_HANG_NO_RESET_WAIT_FOR_RELEASE &&
+			    (atomic_read(&xe->wedged.declare_pending) ||
+			     exec_queue_wedged(q) || exec_queue_wedged(primary))) {
+				wedged = true;
+				goto complete_jobs;
+			}
 			if (!ret)
 				xe_gt_warn(guc_to_gt(guc),
 					   "Schedule disable failed to respond, guc_id=%d",
@@ -1778,6 +1788,7 @@ trigger_reset:
 		}
 	}
 
+complete_jobs:
 	/* Mark all outstanding jobs as bad, thus completing them */
 	xe_sched_job_set_error(job, err);
 	drm_sched_for_each_pending_job(tmp_job, &sched->base, NULL)

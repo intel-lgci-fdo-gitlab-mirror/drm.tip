@@ -239,7 +239,7 @@ static long xe_drm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	struct xe_device *xe = to_xe_device(file_priv->minor->dev);
 	long ret;
 
-	if (xe_wedged(xe))
+	if (xe_wedged(xe) || atomic_read(&xe->wedged.declare_pending))
 		return -ECANCELED;
 
 	ACQUIRE(xe_pm_runtime_ioctl, pm)(xe);
@@ -257,7 +257,7 @@ static long xe_drm_compat_ioctl(struct file *file, unsigned int cmd, unsigned lo
 	struct xe_device *xe = to_xe_device(file_priv->minor->dev);
 	long ret;
 
-	if (xe_wedged(xe))
+	if (xe_wedged(xe) || atomic_read(&xe->wedged.declare_pending))
 		return -ECANCELED;
 
 	ACQUIRE(xe_pm_runtime_ioctl, pm)(xe);
@@ -460,6 +460,11 @@ static void xe_device_parse_modparam(struct xe_device *xe)
 int xe_device_init_early(struct xe_device *xe)
 {
 	int err;
+
+	mutex_init(&xe->wedged.mode_mutex);
+	spin_lock_init(&xe->wedged.mode_lock);
+	atomic_set(&xe->wedged.declare_pending, 0);
+	init_waitqueue_head(&xe->wedged.pause_waitq);
 
 	err = ttm_device_init(&xe->ttm, &xe_ttm_funcs, xe->drm.dev,
 			      xe->drm.anon_inode->i_mapping,
@@ -1110,6 +1115,7 @@ int xe_device_probe(struct xe_device *xe)
 	return 0;
 
 err_unregister_display:
+	xe_wedge_prepare_fini(xe);
 	xe_display_unregister(xe);
 	drm_dev_unregister(&xe->drm);
 
@@ -1131,6 +1137,8 @@ void xe_device_shutdown(struct xe_device *xe)
 	u8 id;
 
 	drm_dbg(&xe->drm, "Shutting down device\n");
+
+	xe_wedge_prepare_fini(xe);
 
 	xe_display_shutdown(xe);
 

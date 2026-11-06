@@ -419,7 +419,7 @@ static ssize_t wedged_mode_show(struct file *f, char __user *ubuf,
 	char buf[32];
 	int len = 0;
 
-	len = scnprintf(buf, sizeof(buf), "%d\n", xe->wedged.mode);
+	len = scnprintf(buf, sizeof(buf), "%d\n", READ_ONCE(xe->wedged.mode));
 
 	return simple_read_from_buffer(ubuf, size, pos, buf, len);
 }
@@ -446,6 +446,25 @@ static const struct file_operations wedged_mode_fops = {
 	.owner = THIS_MODULE,
 	.read = wedged_mode_show,
 	.write = wedged_mode_set,
+};
+
+static ssize_t wedged_pause_resume_set(struct file *f, const char __user *ubuf,
+				       size_t size, loff_t *pos)
+{
+	struct xe_device *xe = file_inode(f)->i_private;
+	u32 reply;
+	int ret;
+
+	ret = kstrtouint_from_user(ubuf, size, 0, &reply);
+	if (ret)
+		return ret;
+	ret = xe_wedge_set_reply(xe, reply);
+	return ret ? ret : size;
+}
+
+static const struct file_operations wedged_pause_resume_fops = {
+	.owner = THIS_MODULE,
+	.write = wedged_pause_resume_set,
 };
 
 static ssize_t page_reclaim_hw_assist_show(struct file *f, char __user *ubuf,
@@ -723,6 +742,16 @@ void xe_debugfs_register(struct xe_device *xe)
 
 	debugfs_create_file("wedged_mode", 0600, root, xe,
 			    &wedged_mode_fops);
+	/*
+	 * Before starting workloads with wedged_mode=3, disable runtime
+	 * autosuspend by writing "on" to the PCI device's power/control sysfs
+	 * attribute. Keep it disabled after SKIP and avoid system suspend and
+	 * hibernation: releasing inspection does not restore normal operation.
+	 * Skip is not recovery: GTs remain stopped. Inspection has no automatic
+	 * timeout. Continue completes permanent wedging, not normal execution.
+	 */
+	debugfs_create_file("wedged_pause_resume", 0200, root, xe,
+			    &wedged_pause_resume_fops);
 
 	debugfs_create_file("atomic_svm_timeslice_ms", 0600, root, xe,
 			    &atomic_svm_timeslice_ms_fops);

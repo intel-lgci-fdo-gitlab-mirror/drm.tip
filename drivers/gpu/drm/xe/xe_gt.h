@@ -41,6 +41,7 @@ int xe_gt_init_early(struct xe_gt *gt);
 int xe_gt_init(struct xe_gt *gt);
 void xe_gt_mmio_init(struct xe_gt *gt);
 void xe_gt_wedge_declare(struct xe_gt *gt);
+void xe_gt_wedge_pause(struct xe_gt *gt);
 int xe_gt_record_default_lrcs(struct xe_gt *gt);
 
 /**

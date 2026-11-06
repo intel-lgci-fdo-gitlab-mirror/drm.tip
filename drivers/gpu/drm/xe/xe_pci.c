@@ -39,6 +39,7 @@
 #include "xe_survivability_mode.h"
 #include "xe_tile.h"
 #include "xe_tile_printk.h"
+#include "xe_wedge.h"
 
 enum toggle_d3cold {
 	D3COLD_DISABLE,
@@ -1122,6 +1123,8 @@ static void xe_pci_remove(struct pci_dev *pdev)
 {
 	struct xe_device *xe = pdev_to_xe_device(pdev);
 
+	xe_wedge_prepare_fini(xe);
+
 	if (IS_SRIOV_PF(xe))
 		xe_pci_sriov_configure(pdev, 0);
 
@@ -1254,15 +1257,15 @@ static int __xe_pci_probe(struct pci_dev *pdev, const struct xe_device_desc *des
 
 	err = xe_probe_info(xe, &probed_info);
 	if (err)
-		return err;
+		goto err_wedge_cleanup;
 
 	err = xe_info_init(xe, &probed_info);
 	if (err)
-		return err;
+		goto err_wedge_cleanup;
 
 	err = xe_display_probe(xe);
 	if (err)
-		return err;
+		goto err_wedge_cleanup;
 
 	drm_dbg(&xe->drm, "%s %s %04x:%04x dgfx:%d gfx:%s (%d.%02d) media:%s (%d.%02d) display:%s dma_m_s:%d tc:%d gscfi:%d cscfi:%d",
 		desc->platform_name,
@@ -1290,11 +1293,11 @@ static int __xe_pci_probe(struct pci_dev *pdev, const struct xe_device_desc *des
 
 	err = xe_pm_probe(xe);
 	if (err)
-		return err;
+		goto err_wedge_cleanup;
 
 	err = xe_device_probe(xe);
 	if (err)
-		return err;
+		goto err_wedge_cleanup;
 
 	err = xe_pm_init(xe);
 	if (err)
@@ -1304,6 +1307,9 @@ static int __xe_pci_probe(struct pci_dev *pdev, const struct xe_device_desc *des
 
 err_driver_cleanup:
 	xe_pci_remove(pdev);
+	return err;
+err_wedge_cleanup:
+	xe_wedge_prepare_fini(xe);
 	return err;
 }
 
