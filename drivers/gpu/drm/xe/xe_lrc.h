@@ -51,8 +51,23 @@ struct xe_lrc_snapshot {
 	u32 ctx_job_timestamp;
 };
 
-#define LRC_PPHWSP_FLUSH_INVAL_SCRATCH_ADDR (0x34 * 4)
-#define LRC_PPHWSP_PXP_INVAL_SCRATCH_ADDR (0x40 * 4)
+/*
+ * The PPHWSP software scratch area starts at different locations
+ * depending on the IP:
+ *
+ *  - Before graphics version 35.10 B0-step: dword #34.
+ *  - Starting with graphics version 35.10 B0: dword #36.
+ *
+ * For our driver usage, we use a custom base that fits all supported
+ * IPs and adds some extra buffer in case future hardware updates end
+ * up reserving extra dwords and further pushing the base of the
+ * scratch area.
+ */
+#define LRC_PPHWSP_SCRATCH_BASE			(128 * 4)
+#define LRC_PPHWSP_SCRATCH_DW(idx)		(LRC_PPHWSP_SCRATCH_BASE + (idx) * 4)
+
+#define LRC_PPHWSP_FLUSH_INVAL_SCRATCH_ADDR	LRC_PPHWSP_SCRATCH_DW(0)
+#define LRC_PPHWSP_PXP_INVAL_SCRATCH_ADDR	LRC_PPHWSP_SCRATCH_DW(12)
 
 #define LRC_WA_BB_SIZE SZ_4K
 
