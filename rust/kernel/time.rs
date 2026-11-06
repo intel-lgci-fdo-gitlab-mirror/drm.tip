@@ -215,8 +215,9 @@ impl<C: ClockId> Instant<C> {
         Self::now() - *self
     }
 
+    /// Return the raw nanonseconds values from the clock source.
     #[inline]
-    pub(crate) fn as_nanos(&self) -> i64 {
+    pub fn as_nanos(&self) -> i64 {
         self.inner
     }
 
