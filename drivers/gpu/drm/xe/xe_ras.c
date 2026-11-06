@@ -1106,6 +1106,146 @@ int xe_ras_set_threshold(struct xe_device *xe, u8 severity, u8 component, u32 th
 	return 0;
 }
 
+static int get_info_queue(struct xe_device *xe,
+			  struct xe_ras_get_info_queue_request *request,
+			  struct xe_ras_get_info_queue_response *response)
+{
+	struct xe_sysctrl_mailbox_command command = {0};
+	const struct xe_ras_info_queue_header *hdr;
+	size_t rlen;
+	int ret;
+
+	xe_sysctrl_create_command(&command, XE_SYSCTRL_GROUP_GFSP, XE_SYSCTRL_CMD_GET_INFO_QUEUE,
+				  request, sizeof(*request), response, sizeof(*response));
+
+	ret = xe_sysctrl_send_command(&xe->sc, &command, &rlen);
+	if (ret) {
+		xe_err(xe, "sysctrl: failed to get info queue %d\n", ret);
+		return ret;
+	}
+
+	if (rlen != sizeof(*response)) {
+		xe_err(xe, "sysctrl: unexpected get info queue response length %zu (expected %zu)\n",
+		       rlen, sizeof(*response));
+		return -EIO;
+	}
+
+	ret = ras_status_to_errno(response->status);
+	if (ret) {
+		xe_err(xe, "sysctrl: get info queue command failed with status %#x\n",
+		       response->status);
+		return ret;
+	}
+
+	hdr = &response->queue_response.header;
+	xe_dbg(xe, "[RAS] info queue: total_size=%u chunk_offset=%u chunk_size=%u flags=0x%x num_headers=%u\n",
+	       hdr->total_size, hdr->chunk_offset, hdr->chunk_size,
+	       hdr->flags, hdr->num_headers);
+
+	return 0;
+}
+
+static bool chunk_is_valid(const struct xe_ras_info_queue_header *hdr,
+			   u32 expected_offset, u32 dest_size)
+{
+	u32 end;
+
+	return hdr->chunk_offset == expected_offset &&
+	       hdr->chunk_size && hdr->chunk_size <= XE_RAS_INFO_QUEUE_MAX_CHUNK_SIZE &&
+	       !check_add_overflow(hdr->chunk_offset, hdr->chunk_size, &end) &&
+	       end <= XE_RAS_INFO_QUEUE_MAX_TOTAL_SIZE && end <= dest_size;
+}
+
+static u32 get_first_chunk(struct xe_device *xe,
+			   const struct xe_ras_get_counter_response *response,
+			   u8 *dest_buf, u32 dest_size, u32 *flags)
+{
+	const struct xe_ras_info_queue_header *hdr = &response->first.header;
+
+	if (!chunk_is_valid(hdr, 0, dest_size)) {
+		xe_warn(xe, "[RAS]: invalid first info queue chunk (offset=%u size=%u, expected offset=%u)\n",
+			hdr->chunk_offset, hdr->chunk_size, 0);
+		return 0;
+	}
+
+	memcpy(dest_buf, response->first.data, hdr->chunk_size);
+	*flags = hdr->flags;
+
+	return hdr->chunk_size;
+}
+
+static u32 get_remaining_chunks(struct xe_device *xe,
+				const struct xe_ras_get_counter_response *response,
+				u8 *dest_buf, u32 dest_size, u32 offset, u32 flags)
+{
+	int ret;
+
+	while ((flags & XE_RAS_INFO_QUEUE_FLAG_MORE_DATA) && offset < dest_size) {
+		struct xe_ras_get_info_queue_request request = {};
+		struct xe_ras_get_info_queue_response queue_response = {};
+		struct xe_ras_info_queue_header *hdr;
+
+		request.queue_request.offset = offset;
+		request.queue_request.size = min(XE_RAS_INFO_QUEUE_MAX_CHUNK_SIZE,
+						 dest_size - offset);
+		request.queue_request.session_id = response->counter;
+
+		ret = get_info_queue(xe, &request, &queue_response);
+		if (ret) {
+			xe_err(xe, "[RAS]: info queue drain aborted: fetch at offset=%u, ret = %d\n",
+			       offset, ret);
+			return offset;
+		}
+
+		hdr = &queue_response.queue_response.header;
+
+		if (!chunk_is_valid(hdr, offset, dest_size)) {
+			xe_warn(xe, "[RAS]: invalid info queue chunk (offset=%u size=%u, expected offset=%u)\n",
+				hdr->chunk_offset, hdr->chunk_size, offset);
+			return offset;
+		}
+
+		memcpy(dest_buf + offset, queue_response.queue_response.data, hdr->chunk_size);
+		offset += hdr->chunk_size;
+		flags = hdr->flags;
+	}
+
+	return min(offset, response->first.header.total_size);
+}
+
+/**
+ * xe_ras_drain_info_queue() - Drain the full RAS info queue into a flat buffer
+ * @xe: xe device
+ * @response: counter response carrying the first embedded chunk
+ * @dest_buf: destination buffer supplied by the caller
+ * @dest_size: size of @dest_buf in bytes; also caps the total amount of data
+ *             assembled from the info queue
+ *
+ * Copies the first chunk already embedded in @response, then loops
+ * issuing GET_INFO_QUEUE to fetch any remaining chunks until the queue
+ * signals no more data or a transport/bounds error is encountered.  On
+ * transport or bounds errors the function stops and returns whatever has
+ * been assembled so far.
+ *
+ * Returns: Number of valid bytes written into @dest_buf.
+ */
+u32 xe_ras_drain_info_queue(struct xe_device *xe,
+			    const struct xe_ras_get_counter_response *response,
+			    u8 *dest_buf, u32 dest_size)
+{
+	u32 flags, offset;
+
+	xe_assert(xe, response->has_info_queue);
+	xe_assert(xe, dest_buf);
+	xe_assert(xe, dest_size);
+
+	offset = get_first_chunk(xe, response, dest_buf, dest_size, &flags);
+	if (!offset)
+		return 0;
+
+	return get_remaining_chunks(xe, response, dest_buf, dest_size, offset, flags);
+}
+
 static ssize_t gpu_health_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct xe_ras_get_health_response response = {0};
