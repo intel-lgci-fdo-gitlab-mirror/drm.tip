@@ -22,6 +22,7 @@
 #include "xe_bo.h"
 #include "xe_gt.h"
 #include "xe_gt_printk.h"
+#include "xe_gt_sriov_vf.h"
 #include "xe_gt_types.h"
 #include "xe_log.h"
 #include "xe_map.h"
@@ -833,7 +834,9 @@ static int __xe_ggtt_insert_bo_at(struct xe_ggtt *ggtt, struct xe_bo *bo,
 				  u64 start, u64 end, struct drm_exec *exec)
 {
 	u64 alignment = bo->min_align > 0 ? bo->min_align : XE_PAGE_SIZE;
+	u64 rel_start, rel_end;
 	u8 tile_id = ggtt->tile->id;
+	int marker;
 	int err;
 
 	if (xe_bo_is_vram(bo) && ggtt->flags & XE_GGTT_FLAGS_64K)
@@ -858,6 +861,9 @@ static int __xe_ggtt_insert_bo_at(struct xe_ggtt *ggtt, struct xe_bo *bo,
 		goto out;
 	}
 
+retry:
+	marker = xe_gt_sriov_vf_wait_valid_ggtt(ggtt->tile->primary_gt);
+
 	mutex_lock(&ggtt->lock);
 	/*
 	 * When inheriting the initial framebuffer, the framebuffer is
@@ -867,20 +873,20 @@ static int __xe_ggtt_insert_bo_at(struct xe_ggtt *ggtt, struct xe_bo *bo,
 	 * remainder of GGTT, unaware that the start is reserved by WOPCM.
 	 */
 	if (start >= ggtt->start)
-		start -= ggtt->start;
+		rel_start = start - ggtt->start;
 	else
-		start = 0;
+		rel_start = 0;
 
 	/* Should never happen, but since we handle start, fail graciously for end */
 	if (end >= ggtt->start)
-		end -= ggtt->start;
+		rel_end = end - ggtt->start;
 	else
-		end = 0;
+		rel_end = 0;
 
-	xe_tile_assert(ggtt->tile, end >= start + xe_bo_size(bo));
+	xe_tile_assert(ggtt->tile, rel_end >= rel_start + xe_bo_size(bo));
 
 	err = drm_mm_insert_node_in_range(&ggtt->mm, &bo->ggtt_node[tile_id]->base,
-					  xe_bo_size(bo), alignment, 0, start, end, 0);
+					  xe_bo_size(bo), alignment, 0, rel_start, rel_end, 0);
 	if (err) {
 		ggtt_node_fini(bo->ggtt_node[tile_id]);
 		bo->ggtt_node[tile_id] = NULL;
@@ -890,6 +896,24 @@ static int __xe_ggtt_insert_bo_at(struct xe_ggtt *ggtt, struct xe_bo *bo,
 		u64 pte = ggtt->pt_ops->pte_encode_flags(bo, pat_index);
 
 		xe_ggtt_map_bo(ggtt, bo->ggtt_node[tile_id], bo, pte);
+
+		/*
+		 * If VF migration happens during BO mapping, some PTE value writes may
+		 * be ignored by HW. This can happen in case GGTT range changes; already
+		 * set PTEs are moved by the VF restore, but xe_ggtt_map_bo() within VM
+		 * may still loop at old position. To be sure, redo all PTE writes.
+		 */
+		if (marker != xe_vf_migration_fixups_complete_count(ggtt->tile->primary_gt)) {
+			struct xe_ggtt_node *node = bo->ggtt_node[tile_id];
+			/*
+			 * Cannot skip the clear, as after releasing the ggtt lock, another
+			 * insert operation could immediately reserve the space.
+			 */
+			xe_ggtt_clear(ggtt, xe_ggtt_node_addr(node), xe_ggtt_node_size(node));
+			drm_mm_remove_node(&node->base);
+			mutex_unlock(&ggtt->lock);
+			goto retry;
+		}
 	}
 	mutex_unlock(&ggtt->lock);
 

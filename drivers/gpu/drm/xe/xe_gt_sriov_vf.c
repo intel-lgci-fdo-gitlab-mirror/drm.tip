@@ -1615,9 +1615,9 @@ int xe_gt_sriov_vf_wait_valid_ggtt(struct xe_gt *gt)
 	    !xe_sriov_vf_migration_supported(gt_to_xe(gt)))
 		return 0;
 
-	ret = wait_event_interruptible_timeout(gt->sriov.vf.migration.wq,
-					       vf_valid_ggtt(gt),
-					       HZ * 5);
+	ret = wait_event_timeout(gt->sriov.vf.migration.wq,
+				 vf_valid_ggtt(gt),
+				 HZ * 5);
 	xe_gt_WARN_ON(gt, !ret);
 
 	return atomic_read(&gt->sriov.vf.migration.fixups_complete_count);

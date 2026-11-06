@@ -425,34 +425,22 @@ static int __xe_exec_queue_init(struct xe_exec_queue *q, u32 exec_queue_flags)
 	 * post-migration recovery, as the fixups for the LRC GGTT addresses
 	 * depend on the queue being present in the backend tracking structure.
 	 *
-	 * In addition to above, we must wait on inflight GGTT changes to avoid
-	 * writing out stale values here. Such wait provides a solid solution
-	 * (without a race) only if the function can detect migration instantly
-	 * from the moment vCPU resumes execution.
+	 * In addition to above, we must make sure inflight GGTT changes are
+	 * properly handled (with wait and/or repeat) to avoid writing out stale
+	 * values here; but that is handled deeper, within BO pinning code.
 	 */
 	for (i = 0; i < q->width; ++i) {
-		struct xe_lrc *__lrc = NULL;
-		int marker;
 
-		do {
-			struct xe_lrc *lrc;
+		struct xe_lrc *lrc;
 
-			marker = xe_gt_sriov_vf_wait_valid_ggtt(q->gt);
+		lrc = xe_lrc_create(q->hwe, q->vm, q->replay_state,
+				    xe_lrc_ring_size(), q->msix_vec, flags);
+		if (IS_ERR(lrc)) {
+			err = PTR_ERR(lrc);
+			goto err_lrc;
+		}
 
-			lrc = xe_lrc_create(q->hwe, q->vm, q->replay_state,
-					    xe_lrc_ring_size(), q->msix_vec, flags);
-			if (IS_ERR(lrc)) {
-				err = PTR_ERR(lrc);
-				goto err_lrc;
-			}
-
-			xe_exec_queue_set_lrc(q, lrc, i);
-
-			if (__lrc)
-				xe_lrc_put(__lrc);
-			__lrc = lrc;
-
-		} while (marker != xe_vf_migration_fixups_complete_count(q->gt));
+		xe_exec_queue_set_lrc(q, lrc, i);
 	}
 
 	return 0;
