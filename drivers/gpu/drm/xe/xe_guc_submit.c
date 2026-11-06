@@ -47,6 +47,7 @@
 #include "xe_ring_ops_types.h"
 #include "xe_sched_job.h"
 #include "xe_sleep.h"
+#include "xe_sriov_vf.h"
 #include "xe_trace.h"
 #include "xe_uc_fw.h"
 #include "xe_vm.h"
@@ -1032,6 +1033,9 @@ static void register_exec_queue(struct xe_exec_queue *q, int ctx_type)
 
 	xe_gt_assert(guc_to_gt(guc), !exec_queue_registered(q));
 	xe_gt_assert(guc_to_gt(guc), ctx_type < GUC_CONTEXT_COUNT);
+
+	if (IS_SRIOV_VF(xe) && xe_sriov_vf_migration_supported(xe))
+		xe_exec_queue_lrcs_hwsp_rebase(q);
 
 	memset(&info, 0, sizeof(info));
 	info.context_idx = q->guc->id;
@@ -3141,6 +3145,8 @@ static void guc_exec_queue_unpause_prepare(struct xe_guc *guc,
 	struct drm_sched_job *s_job;
 	bool restore_replay = false;
 
+	if (exec_queue_registered(q))
+		xe_exec_queue_lrcs_hwsp_rebase(q);
 	drm_sched_for_each_pending_job(s_job, &sched->base, NULL) {
 		job = to_xe_sched_job(s_job);
 		restore_replay |= job->restore_replay;
@@ -4087,33 +4093,4 @@ u32 xe_guc_submit_active_multi_queue_lrca(struct xe_guc *guc,
 	}
 
 	return lrca;
-}
-
-/**
- * xe_guc_contexts_hwsp_rebase - Re-compute GGTT references within all
- * exec queues registered to given GuC.
- * @guc: the &xe_guc struct instance
- * @scratch: scratch buffer to be used as temporary storage
- *
- * Returns: zero on success, negative error code on failure.
- */
-int xe_guc_contexts_hwsp_rebase(struct xe_guc *guc, void *scratch)
-{
-	struct xe_exec_queue *q;
-	unsigned long index;
-	int err = 0;
-
-	mutex_lock(&guc->submission_state.lock);
-	xa_for_each(&guc->submission_state.exec_queue_lookup, index, q) {
-		/* Prevent redundant attempts to stop parallel queues */
-		if (q->guc->id != index)
-			continue;
-
-		err = xe_exec_queue_contexts_hwsp_rebase(q, scratch);
-		if (err)
-			break;
-	}
-	mutex_unlock(&guc->submission_state.lock);
-
-	return err;
 }
