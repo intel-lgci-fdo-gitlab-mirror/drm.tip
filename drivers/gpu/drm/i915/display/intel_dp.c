@@ -1362,16 +1362,27 @@ static int intel_dp_mso_pixel_clock(struct intel_dp *intel_dp, int pixel_clock)
 	return pixel_clock / intel_dp->mso_link_count;
 }
 
+/* eDP can only be joined as the pipe A and B pair. */
+static u8 intel_dp_joiner_valid_primary_pipe_mask(struct intel_dp *intel_dp,
+						  int num_joined_pipes)
+{
+	struct intel_display *display = to_intel_display(intel_dp);
+	u8 pipe_mask = intel_joiner_valid_primary_pipe_mask(display, num_joined_pipes);
+
+	if (num_joined_pipes > 1 && intel_dp_is_edp(intel_dp))
+		pipe_mask &= BIT(PIPE_A);
+
+	return pipe_mask;
+}
+
 static
 bool intel_dp_can_join(struct intel_dp *intel_dp,
 		       int num_joined_pipes)
 {
-	struct intel_display *display = to_intel_display(intel_dp);
-
 	if (num_joined_pipes > 1 && !intel_dp_has_joiner(intel_dp))
 		return false;
 
-	return intel_joiner_valid_primary_pipe_mask(display, num_joined_pipes);
+	return intel_dp_joiner_valid_primary_pipe_mask(intel_dp, num_joined_pipes);
 }
 
 bool intel_dp_dotclk_valid(struct intel_display *display,
@@ -3083,7 +3094,6 @@ intel_dp_compute_link_config(struct intel_encoder *encoder,
 			     struct drm_connector_state *conn_state,
 			     bool respect_downstream_limits)
 {
-	struct intel_display *display = to_intel_display(encoder);
 	struct intel_crtc *crtc = to_intel_crtc(crtc_state->uapi.crtc);
 	struct intel_connector *connector =
 		to_intel_connector(conn_state->connector);
@@ -3099,7 +3109,8 @@ intel_dp_compute_link_config(struct intel_encoder *encoder,
 
 	for_each_joiner_candidate(connector, adjusted_mode, num_joined_pipes) {
 		/* If the pipe can't be a joiner primary, skip early. */
-		if (!(intel_joiner_valid_primary_pipe_mask(display, num_joined_pipes) & BIT(crtc->pipe)))
+		if (!(intel_dp_joiner_valid_primary_pipe_mask(intel_dp, num_joined_pipes) &
+		      BIT(crtc->pipe)))
 			continue;
 
 		/*
