@@ -1470,6 +1470,14 @@ int xe_guc_suspend(struct xe_guc *guc)
 	struct xe_gt *gt = guc_to_gt(guc);
 	int ret;
 
+	/*
+	 * Stop CT and synchronize with the G2H worker before sampling queue
+	 * suspension states. Outstanding acknowledgments are not drained;
+	 * submission suspend must reject queues with incomplete preemption.
+	 */
+	xe_guc_ct_stop(&guc->ct);
+	xe_guc_submit_suspend(guc);
+
 	ret = xe_guc_softreset(guc);
 	if (ret) {
 		xe_log_err(gt, GUC, ret, "Suspend aborted\n");

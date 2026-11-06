@@ -2733,13 +2733,50 @@ static const struct xe_exec_queue_ops guc_exec_queue_ops = {
 	.reset_status = guc_exec_queue_reset_status,
 };
 
-static void guc_exec_queue_stop(struct xe_guc *guc, struct xe_exec_queue *q)
+static bool guc_exec_queue_should_preserve_lr(struct xe_guc *guc,
+				struct xe_exec_queue *q, bool suspend)
+{
+	if (!suspend || !xe_exec_queue_is_lr(q))
+		return false;
+
+	/*
+	 * Do not preserve unhealthy LR queues that have already encountered
+	 * a reset, ban, or fatal error prior to system suspend.
+	 */
+	if (exec_queue_killed_or_banned_or_wedged(q) || exec_queue_reset(q))
+		return false;
+
+	/*
+	 * SUSPENDED is set before requesting scheduling disable. The suspend
+	 * fence and pending-disable state must also show completion before we
+	 * can rely on the saved context surviving system sleep.
+	 */
+	if (!exec_queue_suspended(q) || READ_ONCE(q->guc->suspend_pending) ||
+	    exec_queue_pending_disable(q)) {
+		xe_gt_dbg(guc_to_gt(guc),
+			  "LR exec queue %d failed to suspend prior to stop; will be banned\n",
+			  q->guc->id);
+		return false;
+	}
+
+	return true;
+}
+
+static void guc_exec_queue_stop(struct xe_guc *guc, struct xe_exec_queue *q,
+				bool suspend)
 {
 	struct xe_gpu_scheduler *sched = &q->guc->sched;
 	bool do_destroy = false;
+	bool preserve_lr;
 
 	/* Stop scheduling + flush any DRM scheduler operations */
 	xe_sched_submission_stop(sched);
+
+	/*
+	 * Sample acknowledged preemption before synthesizing lost G2H state.
+	 * Only healthy, cleanly preempted LR queues are preserved across sleep.
+	 */
+	preserve_lr = guc_exec_queue_should_preserve_lr(guc, q, suspend);
 
 	/* Clean up lost G2H + reset engine state */
 	if (exec_queue_registered(q)) {
@@ -2764,7 +2801,11 @@ static void guc_exec_queue_stop(struct xe_guc *guc, struct xe_exec_queue *q)
 	 * started but not complete job or if a job has gone through a GT reset
 	 * more than twice.
 	 */
-	if (!(q->flags & (EXEC_QUEUE_FLAG_KERNEL | EXEC_QUEUE_FLAG_VM))) {
+	/*
+	 * Preempted LR jobs normally remain unfinished. System sleep must keep
+	 * their saved contexts, while reset recovery retains its ban policy.
+	 */
+	if (!(q->flags & (EXEC_QUEUE_FLAG_KERNEL | EXEC_QUEUE_FLAG_VM)) && !preserve_lr) {
 		struct xe_sched_job *job = xe_sched_first_pending_job(sched);
 		bool ban = false;
 
@@ -2822,7 +2863,7 @@ void xe_guc_submit_reset_wait(struct xe_guc *guc)
 		   !xe_guc_read_stopped(guc));
 }
 
-void xe_guc_submit_stop(struct xe_guc *guc)
+static void guc_submit_stop(struct xe_guc *guc, bool suspend)
 {
 	struct xe_exec_queue *q;
 	unsigned long index;
@@ -2836,7 +2877,7 @@ void xe_guc_submit_stop(struct xe_guc *guc)
 		if (q->guc->id != index)
 			continue;
 
-		guc_exec_queue_stop(guc, q);
+		guc_exec_queue_stop(guc, q, suspend);
 	}
 
 	mutex_unlock(&guc->submission_state.lock);
@@ -2846,6 +2887,16 @@ void xe_guc_submit_stop(struct xe_guc *guc)
 	 * creation which is protected by guc->submission_state.lock.
 	 */
 
+}
+
+void xe_guc_submit_stop(struct xe_guc *guc)
+{
+	guc_submit_stop(guc, false);
+}
+
+void xe_guc_submit_suspend(struct xe_guc *guc)
+{
+	guc_submit_stop(guc, true);
 }
 
 static void guc_exec_queue_revert_pending_state_change(struct xe_guc *guc,

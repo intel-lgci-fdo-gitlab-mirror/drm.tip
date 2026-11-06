@@ -293,8 +293,6 @@ int xe_uc_suspend(struct xe_uc *uc)
 
 	uc_reset_wait(uc);
 
-	xe_uc_stop(uc);
-
 	return xe_guc_suspend(&uc->guc);
 }
 
