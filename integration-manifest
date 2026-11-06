@@ -1,0 +1,44 @@
+drm drm-fixes 19e67d977d3d4d0c54f03906ef578578190db9e1
+	Merge tag 'amd-drm-fixes-7.4-2026-11-05' of https://gitlab.freedesktop.org/drm/amdgpu/kernel into drm-fixes
+drm-misc drm-misc-fixes 19e67d977d3d4d0c54f03906ef578578190db9e1
+	Merge tag 'amd-drm-fixes-7.4-2026-11-05' of https://gitlab.freedesktop.org/drm/amdgpu/kernel into drm-fixes
+drm-rust drm-rust-fixes 6628e7d4c6b25c8d18f1345e3a20d21829aae7e4
+	Linux 7.4-rc1
+drm-intel drm-intel-fixes 01aa63eade529680cb28fce40f2357bf392a249f
+	drm/i915/vrr: Fix intel_vrr_dcb_vmin_vblank_start()
+drm-xe drm-xe-fixes 28f45837549a0558c5dbe19a78c0717fc7d774ee
+	drm/xe/guc: Do not attribute a TDR disable to a pending suspend
+drm-amdgpu drm-amdgpu-fixes 6d1f901a83603a7d314e4a756b416b11d8dc7e35
+	drm/amdgpu: don't drop the gang dependency fence twice
+drm drm-next 6628e7d4c6b25c8d18f1345e3a20d21829aae7e4
+	Linux 7.4-rc1
+drm-misc drm-misc-next-fixes 9a96e169c9267af918d28fb291df948d83112807
+	drm/panthor: Move cache-flush after UPDATE(UNMAPPED)
+drm-rust drm-rust-next-fixes d511064b2e732b7152a542d589d07a4814c1b674
+	rust: drm: Remove unused flags argument from Registration::new()
+drm-intel drm-intel-next-fixes 6628e7d4c6b25c8d18f1345e3a20d21829aae7e4
+	Linux 7.4-rc1
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes fbb201890156e04b062c4488d1b500de52367684
+	drm/amd/display: refresh cached HDMI FreeSync state
+drm-misc drm-misc-next 09b4318c0e8a3d27b1fe6a2765163c1c52e321fb
+	drm/rockchip: dw_hdmi_qp: Enable YUV420 output format
+drm-rust drm-rust-next 7a6bc132f1b51437063c9203e7221067b40a791e
+	rust: sync: Accept errors for Lock payload data
+drm-intel drm-intel-next 850e22e0b6e41771c3c2228dfdd4f4bbef08fcde
+	drm/i915/display: add and use INTEL_REG_INVALID macro
+drm-intel drm-intel-gt-next 4e9db08db75f55c920986ac929cfd82a4ee99f41
+	drm/i915/gem: Reset err for each fence entry
+drm-xe drm-xe-next 6848115144cd1089876a3f3da9931c96bcf437af
+	drm/xe/xe_pci_error: Wait for pcode init post SBR
+drm-amdgpu drm-amdgpu-next 5349075eac146ae0511d8929fc24451e4d9a4b7e
+	drm/amdgpu: Use feedback buffer for VCE destroy message
+drm-intel topic/core-for-CI 0630e7e76969b135f2a8fffea73c941c61f35c90
+	Revert "io_uring/sqpoll: don't attach to a thread that is canceling"
+drm-xe topic/xe-for-CI 412b1c187cb161857a3fafdb51619668c15acdad
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
+drm topic/pci-vgaarb-rework 93d41424caf7569ab50092a922477e2a881232b4
+	PCI/VGA: pass a data pointer to be used in the decode callback (v2)
