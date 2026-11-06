@@ -83,9 +83,17 @@ static void xe_tlb_inval_fence_timeout(struct work_struct *work)
 	long timeout_delay = tlb_inval->ops->timeout_delay(tlb_inval);
 	int timedout_seqno = 0, seqno_recv = 0;
 
+	spin_lock_irq(&tlb_inval->pending_lock);
+	if (tlb_inval->debug_paused)
+		goto out_unlock;
+	spin_unlock_irq(&tlb_inval->pending_lock);
+
 	tlb_inval->ops->flush(tlb_inval);
 
 	spin_lock_irq(&tlb_inval->pending_lock);
+	if (tlb_inval->debug_paused)
+		goto out_unlock;
+
 	list_for_each_entry_safe(fence, next,
 				 &tlb_inval->pending_fences, link) {
 		s64 since_inval_ms = ktime_ms_delta(ktime_get(),
@@ -124,6 +132,7 @@ static void xe_tlb_inval_fence_timeout(struct work_struct *work)
 		queue_delayed_work(tlb_inval->timeout_wq, &tlb_inval->fence_tdr,
 				   timeout_delay);
 	seqno_recv = tlb_inval->seqno_recv;
+out_unlock:
 	spin_unlock_irq(&tlb_inval->pending_lock);
 
 	/*
@@ -184,6 +193,7 @@ int xe_gt_tlb_inval_init_early(struct xe_gt *gt)
 	tlb_inval->seqno = 1;
 	INIT_LIST_HEAD(&tlb_inval->pending_fences);
 	spin_lock_init(&tlb_inval->pending_lock);
+	tlb_inval->debug_paused = false;
 	spin_lock_init(&tlb_inval->lock);
 	INIT_DELAYED_WORK(&tlb_inval->fence_tdr, xe_tlb_inval_fence_timeout);
 
@@ -207,6 +217,24 @@ int xe_gt_tlb_inval_init_early(struct xe_gt *gt)
 	xe_guc_tlb_inval_init_early(&gt->uc.guc, tlb_inval);
 
 	return drmm_add_action_or_reset(&xe->drm, tlb_inval_fini, tlb_inval);
+}
+
+/**
+ * xe_tlb_inval_debug_pause() - Preserve pending invalidations for inspection
+ * @tlb_inval: TLB invalidation client
+ *
+ * A reset ends this pause even while inspection waits for a reply.
+ * Holding a runtime PM reference does not prevent system suspend.
+ */
+void xe_tlb_inval_debug_pause(struct xe_tlb_inval *tlb_inval)
+{
+	if (!tlb_inval->ops->initialized(tlb_inval))
+		return;
+
+	spin_lock_irq(&tlb_inval->pending_lock);
+	tlb_inval->debug_paused = true;
+	cancel_delayed_work(&tlb_inval->fence_tdr);
+	spin_unlock_irq(&tlb_inval->pending_lock);
 }
 
 /**
@@ -235,6 +263,7 @@ void xe_tlb_inval_reset(struct xe_tlb_inval *tlb_inval)
 
 	mutex_lock(&tlb_inval->seqno_lock);
 	spin_lock_irq(&tlb_inval->pending_lock);
+	tlb_inval->debug_paused = false;
 	cancel_delayed_work(&tlb_inval->fence_tdr);
 	/*
 	 * We might have various kworkers waiting for TLB flushes to complete
@@ -464,6 +493,10 @@ void xe_tlb_inval_done_handler(struct xe_tlb_inval *tlb_inval, int seqno)
 	 * process_g2h_msg().
 	 */
 	spin_lock_irqsave(&tlb_inval->pending_lock, flags);
+	if (tlb_inval->debug_paused) {
+		spin_unlock_irqrestore(&tlb_inval->pending_lock, flags);
+		return;
+	}
 	if (seqno == TLB_INVALIDATION_SEQNO_INVALID) {
 		xe_tlb_inval_reset_timeout(tlb_inval);
 		spin_unlock_irqrestore(&tlb_inval->pending_lock, flags);

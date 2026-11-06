@@ -17,6 +17,7 @@
 #include "xe_pm.h"
 #include "xe_printk.h"
 #include "xe_sriov.h"
+#include "xe_tlb_inval.h"
 #include "xe_wedge.h"
 
 /**
@@ -115,6 +116,9 @@ static void wedge_declare_now(struct xe_device *xe, unsigned long method,
 	if (!gts_already_wedged) {
 		for_each_initialized_gt(gt, xe, id)
 			xe_gt_wedge_declare(gt);
+	} else {
+		for_each_initialized_gt(gt, xe, id)
+			xe_tlb_inval_reset(&gt->tlb_inval);
 	}
 
 	/*
@@ -208,6 +212,7 @@ static void wedge_pause_work(struct work_struct *work)
 
 	xe_err(xe, "GT submission stopped for mode-3 hardware debugging.\n"
 	       "New DRM ioctls are blocked while waiting for 'wedged_pause_resume'.\n"
+	       "Pending TLB invalidations are preserved until continue or another reset.\n"
 	       "Skip: 0x%08x; continue into permanent wedge: 0x%08x.\n"
 	       "Skip does not restart GTs or recover the fault.\n",
 	       XE_WEDGE_REPLY_SKIP, XE_WEDGE_REPLY_CONTINUE);

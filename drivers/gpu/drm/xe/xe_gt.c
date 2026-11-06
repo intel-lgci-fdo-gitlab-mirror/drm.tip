@@ -1228,7 +1228,7 @@ void xe_gt_wedge_pause(struct xe_gt *gt)
 {
 	xe_gt_assert(gt, READ_ONCE(gt_to_xe(gt)->wedged.mode) ==
 		     XE_WEDGED_MODE_UPON_ANY_HANG_NO_RESET_WAIT_FOR_RELEASE);
+	xe_tlb_inval_debug_pause(&gt->tlb_inval);
 	xe_uc_reset_prepare(&gt->uc);
 	xe_uc_wedge_declare(&gt->uc);
-	xe_tlb_inval_reset(&gt->tlb_inval);
 }

@@ -749,6 +749,13 @@ void xe_debugfs_register(struct xe_device *xe)
 	 * hibernation: releasing inspection does not restore normal operation.
 	 * Skip is not recovery: GTs remain stopped. Inspection has no automatic
 	 * timeout. Continue completes permanent wedging, not normal execution.
+	 * TLB preservation does not freeze mapping changes or gate new
+	 * invalidations. New requests may be canceled and signaled while older
+	 * fences remain preserved. GGTT invalidations may still program MMIO
+	 * with CT disabled; signaling on cancellation does not imply hardware
+	 * completion. Inspection is best-effort, not an atomic snapshot.
+	 * Preserved TLB fences may block process exit, unbind or unload; a power
+	 * cycle may be necessary. Automatic recovery is not guaranteed.
 	 */
 	debugfs_create_file("wedged_pause_resume", 0200, root, xe,
 			    &wedged_pause_resume_fops);

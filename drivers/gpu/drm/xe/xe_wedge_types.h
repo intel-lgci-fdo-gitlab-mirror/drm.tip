@@ -31,7 +31,12 @@ enum xe_wedged_mode {
 	XE_WEDGED_MODE_UPON_ANY_HANG_NO_RESET_WAIT_FOR_RELEASE = 3,
 };
 
-/* Skip releases inspection without recovering the fault or restarting GTs. */
+/*
+ * Skip releases inspection without recovering the fault or restarting GTs.
+ * Pending TLB invalidations remain paused; fence waiters may block indefinitely.
+ * Later resets are possible, but automatic recovery is not guaranteed.
+ * Continue resets deferred invalidations and completes permanent wedging.
+ */
 #define XE_WEDGE_REPLY_CONTINUE 0xdeadbbbb
 #define XE_WEDGE_REPLY_SKIP 0xdeadf001
 
