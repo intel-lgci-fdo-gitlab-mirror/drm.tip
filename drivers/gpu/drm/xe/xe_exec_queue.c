@@ -431,28 +431,17 @@ static int __xe_exec_queue_init(struct xe_exec_queue *q, u32 exec_queue_flags)
 	 * from the moment vCPU resumes execution.
 	 */
 	for (i = 0; i < q->width; ++i) {
-		struct xe_lrc *__lrc = NULL;
-		int marker;
 
-		do {
-			struct xe_lrc *lrc;
+		struct xe_lrc *lrc;
 
-			marker = xe_gt_sriov_vf_wait_valid_ggtt(q->gt);
+		lrc = xe_lrc_create(q->hwe, q->vm, q->replay_state,
+				    xe_lrc_ring_size(), q->msix_vec, flags);
+		if (IS_ERR(lrc)) {
+			err = PTR_ERR(lrc);
+			goto err_lrc;
+		}
 
-			lrc = xe_lrc_create(q->hwe, q->vm, q->replay_state,
-					    xe_lrc_ring_size(), q->msix_vec, flags);
-			if (IS_ERR(lrc)) {
-				err = PTR_ERR(lrc);
-				goto err_lrc;
-			}
-
-			xe_exec_queue_set_lrc(q, lrc, i);
-
-			if (__lrc)
-				xe_lrc_put(__lrc);
-			__lrc = lrc;
-
-		} while (marker != xe_vf_migration_fixups_complete_count(q->gt));
+		xe_exec_queue_set_lrc(q, lrc, i);
 	}
 
 	return 0;
