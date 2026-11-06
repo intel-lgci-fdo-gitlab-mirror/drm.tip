@@ -189,7 +189,7 @@ static void wedge_pause_work(struct work_struct *work)
 	if (!pm_ref) {
 		xe_warn(xe, "Mode-3 wedge could not retain active runtime PM; resuming for inspection, hardware state may have changed\n");
 		if (!xe_pm_runtime_resume_and_get(xe)) {
-			xe_err(xe, "Failed to resume device for mode-3 inspection; aborting pause\n");
+			xe_err(xe, "Failed to resume device for mode-3 inspection; restoring TLB timeout handling\n");
 			spin_lock_irqsave(&xe->wedged.mode_lock, flags);
 			WRITE_ONCE(xe->wedged.pause_failed, true);
 			atomic_set(&xe->wedged.declare_pending, 0);
@@ -299,6 +299,39 @@ void xe_wedge_declare(struct xe_device *xe, unsigned long method)
 void xe_wedge_declare_mode3(struct xe_device *xe)
 {
 	wedge_request(xe, DRM_WEDGE_RECOVERY_NONE, true);
+}
+
+/**
+ * xe_wedge_mode3_wait() - Inspect a recoverable PCI error before reset
+ * @xe: Device with accessible MMIO, kept alive by the caller
+ *
+ * Request or join mode-3 inspection and wait for its worker to finish.
+ * Do not hold mode_mutex while waiting; teardown needs it to abort inspection.
+ * Waiting has no timeout and can stall recovery and removal of devices in the
+ * same PCI hierarchy. Other devices can request reset after this callback
+ * returns; frozen-channel recovery can force reset regardless of our vote.
+ *
+ * Return: true if reset must be declined because inspection stopped the GTs,
+ * the device is wedged, or teardown started. Otherwise, normal recovery may
+ * proceed.
+ */
+bool xe_wedge_mode3_wait(struct xe_device *xe)
+{
+	mutex_lock(&xe->wedged.mode_mutex);
+	if (READ_ONCE(xe->wedged.mode) !=
+	    XE_WEDGED_MODE_UPON_ANY_HANG_NO_RESET_WAIT_FOR_RELEASE) {
+		mutex_unlock(&xe->wedged.mode_mutex);
+		return false;
+	}
+
+	if (!READ_ONCE(xe->wedged.pause_stopped) && !xe_wedged(xe))
+		xe_wedge_declare_mode3(xe);
+	mutex_unlock(&xe->wedged.mode_mutex);
+
+	flush_work(&xe->wedged.pause_work);
+
+	return READ_ONCE(xe->wedged.pause_stopped) ||
+		READ_ONCE(xe->wedged.shutting_down) || xe_wedged(xe);
 }
 
 /**

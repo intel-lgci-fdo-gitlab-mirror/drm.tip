@@ -19,6 +19,7 @@ static inline bool xe_wedged(struct xe_device *xe)
 
 void xe_wedge_declare(struct xe_device *xe, unsigned long method);
 void xe_wedge_declare_mode3(struct xe_device *xe);
+bool xe_wedge_mode3_wait(struct xe_device *xe);
 void xe_wedge_prepare_fini(struct xe_device *xe);
 int xe_wedge_set_reply(struct xe_device *xe, u32 reply);
 int xe_wedge_init(struct xe_device *xe);

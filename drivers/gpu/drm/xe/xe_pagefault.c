@@ -21,6 +21,7 @@
 #include "xe_svm.h"
 #include "xe_trace_bo.h"
 #include "xe_vm.h"
+#include "xe_wedge.h"
 
 /**
  * DOC: Xe page faults
@@ -698,10 +699,12 @@ static void xe_pagefault_queue_work(struct work_struct *w)
 				xe_pagefault_cache_start_invalidate(cache_start);
 				xe_pagefault_print(pf);
 				xe_log_err_info(pf->gt, PAGEFAULT, err, "Unsuccessful response\n");
+				xe_wedge_declare_mode3(xe);
 			} else {
 				xe_gt_stats_incr(pf->gt, XE_GT_STATS_ID_INVALID_PREFETCH_PAGEFAULT_COUNT, 1);
 				xe_gt_dbg(pf->gt, "Prefetch Fault response: Unsuccessful %pe\n",
 					  ERR_PTR(err));
+				xe_wedge_declare_mode3(xe);
 			}
 		} else {
 			/* Cache valid fault locally */

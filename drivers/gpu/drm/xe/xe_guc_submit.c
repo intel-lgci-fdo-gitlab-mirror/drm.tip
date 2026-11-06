@@ -3580,12 +3580,15 @@ int xe_guc_exec_queue_memory_cat_error_handler(struct xe_guc *guc, u32 *msg,
 		 * context. In such case only PF will be notified about that fault.
 		 */
 		xe_gt_err_ratelimited(gt, "Memory CAT error reported by GuC!\n");
+		xe_wedge_declare_mode3(gt_to_xe(gt));
 		return 0;
 	}
 
 	q = g2h_exec_queue_lookup(guc, guc_id);
-	if (unlikely(!q))
+	if (unlikely(!q)) {
+		xe_wedge_declare_mode3(gt_to_xe(gt));
 		return -EPROTO;
+	}
 
 	/*
 	 * The type is HW-defined and changes based on platform, so we don't
@@ -3602,6 +3605,7 @@ int xe_guc_exec_queue_memory_cat_error_handler(struct xe_guc *guc, u32 *msg,
 			   xe_hw_engine_class_to_str(q->class), q->logical_mask, guc_id);
 
 	trace_xe_exec_queue_memory_cat_error(q);
+	xe_wedge_declare_mode3(gt_to_xe(gt));
 
 	/* Treat the same as engine reset */
 	xe_guc_exec_queue_reset_trigger_cleanup(q);

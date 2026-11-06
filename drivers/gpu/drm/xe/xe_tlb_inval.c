@@ -17,6 +17,7 @@
 #include "xe_printk.h"
 #include "xe_tlb_inval.h"
 #include "xe_trace.h"
+#include "xe_wedge.h"
 
 /**
  * DOC: Xe TLB invalidation
@@ -84,15 +85,29 @@ static void xe_tlb_inval_fence_timeout(struct work_struct *work)
 	int timedout_seqno = 0, seqno_recv = 0;
 
 	spin_lock_irq(&tlb_inval->pending_lock);
-	if (tlb_inval->debug_paused)
-		goto out_unlock;
+	if (tlb_inval->debug_paused) {
+		if (!tlb_inval->debug_pause_pending)
+			goto out_unlock;
+		if (!READ_ONCE(xe->wedged.pause_failed) &&
+		    atomic_read(&xe->wedged.declare_pending))
+			goto out_rearm;
+		tlb_inval->debug_paused = false;
+		tlb_inval->debug_pause_pending = false;
+	}
 	spin_unlock_irq(&tlb_inval->pending_lock);
 
 	tlb_inval->ops->flush(tlb_inval);
 
 	spin_lock_irq(&tlb_inval->pending_lock);
-	if (tlb_inval->debug_paused)
-		goto out_unlock;
+	if (tlb_inval->debug_paused) {
+		if (!tlb_inval->debug_pause_pending)
+			goto out_unlock;
+		if (!READ_ONCE(xe->wedged.pause_failed) &&
+		    atomic_read(&xe->wedged.declare_pending))
+			goto out_rearm;
+		tlb_inval->debug_paused = false;
+		tlb_inval->debug_pause_pending = false;
+	}
 
 	list_for_each_entry_safe(fence, next,
 				 &tlb_inval->pending_fences, link) {
@@ -106,6 +121,17 @@ static void xe_tlb_inval_fence_timeout(struct work_struct *work)
 		drm_err(&xe->drm,
 			"TLB invalidation fence timeout, seqno=%d recv=%d",
 			fence->seqno, tlb_inval->seqno_recv);
+		if (!READ_ONCE(xe->wedged.pause_failed))
+			xe_wedge_declare_mode3(xe);
+		if (!READ_ONCE(xe->wedged.pause_failed) &&
+		    READ_ONCE(xe->wedged.mode) ==
+		    XE_WEDGED_MODE_UPON_ANY_HANG_NO_RESET_WAIT_FOR_RELEASE &&
+		    atomic_read(&xe->wedged.declare_pending)) {
+			tlb_inval->debug_paused = true;
+			tlb_inval->debug_pause_pending = true;
+			/* Keep timeout processing until inspection owns the pause. */
+			goto out_rearm;
+		}
 
 		if (!timedout_seqno) {
 			/*
@@ -128,6 +154,7 @@ static void xe_tlb_inval_fence_timeout(struct work_struct *work)
 		fence->base.error = -ETIME;
 		xe_tlb_inval_fence_signal(fence);
 	}
+out_rearm:
 	if (!list_empty(&tlb_inval->pending_fences))
 		queue_delayed_work(tlb_inval->timeout_wq, &tlb_inval->fence_tdr,
 				   timeout_delay);
@@ -194,6 +221,7 @@ int xe_gt_tlb_inval_init_early(struct xe_gt *gt)
 	INIT_LIST_HEAD(&tlb_inval->pending_fences);
 	spin_lock_init(&tlb_inval->pending_lock);
 	tlb_inval->debug_paused = false;
+	tlb_inval->debug_pause_pending = false;
 	spin_lock_init(&tlb_inval->lock);
 	INIT_DELAYED_WORK(&tlb_inval->fence_tdr, xe_tlb_inval_fence_timeout);
 
@@ -233,6 +261,7 @@ void xe_tlb_inval_debug_pause(struct xe_tlb_inval *tlb_inval)
 
 	spin_lock_irq(&tlb_inval->pending_lock);
 	tlb_inval->debug_paused = true;
+	tlb_inval->debug_pause_pending = false;
 	cancel_delayed_work(&tlb_inval->fence_tdr);
 	spin_unlock_irq(&tlb_inval->pending_lock);
 }
@@ -264,6 +293,7 @@ void xe_tlb_inval_reset(struct xe_tlb_inval *tlb_inval)
 	mutex_lock(&tlb_inval->seqno_lock);
 	spin_lock_irq(&tlb_inval->pending_lock);
 	tlb_inval->debug_paused = false;
+	tlb_inval->debug_pause_pending = false;
 	cancel_delayed_work(&tlb_inval->fence_tdr);
 	/*
 	 * We might have various kworkers waiting for TLB flushes to complete

@@ -114,6 +114,8 @@ struct xe_tlb_inval {
 	spinlock_t pending_lock;
 	/** @debug_paused: Preserve mode-3 pending state under pending_lock. */
 	bool debug_paused;
+	/** @debug_pause_pending: Worker has not taken over; under pending_lock. */
+	bool debug_pause_pending;
 	/**
 	 * @timedout_seqno: seqno of the most recent timed out TLB
 	 * invalidation, 0 if none. Used to measure how late the ack for a

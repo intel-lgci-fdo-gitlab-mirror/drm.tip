@@ -747,8 +747,9 @@ void xe_debugfs_register(struct xe_device *xe)
 	 * autosuspend by writing "on" to the PCI device's power/control sysfs
 	 * attribute. Keep it disabled after SKIP and avoid system suspend and
 	 * hibernation: releasing inspection does not restore normal operation.
-	 * Skip is not recovery: GTs remain stopped. Inspection has no automatic
-	 * timeout. Continue completes permanent wedging, not normal execution.
+	 * XE_WEDGE_REPLY_SKIP (SKIP) is not recovery: GTs remain stopped.
+	 * Inspection has no automatic timeout. XE_WEDGE_REPLY_CONTINUE
+	 * (CONTINUE) completes permanent wedging, not normal execution.
 	 * TLB preservation does not freeze mapping changes or gate new
 	 * invalidations. New requests may be canceled and signaled while older
 	 * fences remain preserved. GGTT invalidations may still program MMIO

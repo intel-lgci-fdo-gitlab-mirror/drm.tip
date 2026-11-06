@@ -94,6 +94,17 @@ static pci_ers_result_t xe_pci_error_mmio_enabled(struct pci_dev *pdev)
 		return PCI_ERS_RESULT_DISCONNECT;
 	}
 
+	/*
+	 * Wait before reset preparation changes device state or disables PCI.
+	 * Neither inspection reply recovers the GTs, so decline our reset request.
+	 * Frozen-channel recovery bypasses this callback and may force a reset.
+	 */
+	if (action == XE_RAS_RECOVERY_ACTION_RESET &&
+	    xe_wedge_mode3_wait(xe)) {
+		xe_info(xe, "PCI recovery stopped after mode-3 inspection or teardown; not requesting reset\n");
+		return PCI_ERS_RESULT_DISCONNECT;
+	}
+
 	return ras_action_to_pci_result(pdev, action);
 }
 
