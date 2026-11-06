@@ -11,6 +11,7 @@
 #endif
 
 #include <linux/utsname.h>
+#include <linux/vmalloc.h>
 #include <drm/drm_managed.h>
 
 #include "abi/guc_lfd_abi.h"
@@ -114,48 +115,22 @@ log_to_xe(struct xe_guc_log *log)
 	return gt_to_xe(log_to_gt(log));
 }
 
-static struct xe_guc_log_snapshot *xe_guc_log_snapshot_alloc(struct xe_guc_log *log, bool atomic)
+static struct xe_guc_log_snapshot *xe_guc_log_snapshot_alloc(struct xe_guc_log *log)
 {
 	struct xe_guc_log_snapshot *snapshot;
-	size_t remain;
-	int i;
 
-	snapshot = kzalloc_obj(*snapshot, atomic ? GFP_ATOMIC : GFP_KERNEL);
+	snapshot = kzalloc(sizeof(*snapshot), GFP_KERNEL);
 	if (!snapshot)
 		return NULL;
 
-	/*
-	 * NB: kmalloc has a hard limit well below the maximum GuC log buffer size.
-	 * Also, can't use vmalloc as might be called from atomic context. So need
-	 * to break the buffer up into smaller chunks that can be allocated.
-	 */
 	snapshot->size = xe_bo_size(log->bo);
-	snapshot->num_chunks = DIV_ROUND_UP(snapshot->size, GUC_LOG_CHUNK_SIZE);
-
-	snapshot->copy = kzalloc_objs(*snapshot->copy, snapshot->num_chunks,
-				      atomic ? GFP_ATOMIC : GFP_KERNEL);
-	if (!snapshot->copy)
-		goto fail_snap;
-
-	remain = snapshot->size;
-	for (i = 0; i < snapshot->num_chunks; i++) {
-		size_t size = min(GUC_LOG_CHUNK_SIZE, remain);
-
-		snapshot->copy[i] = kmalloc(size, atomic ? GFP_ATOMIC : GFP_KERNEL);
-		if (!snapshot->copy[i])
-			goto fail_copy;
-		remain -= size;
+	snapshot->data = vzalloc(snapshot->size);
+	if (!snapshot->data) {
+		kfree(snapshot);
+		return NULL;
 	}
 
 	return snapshot;
-
-fail_copy:
-	for (i = 0; i < snapshot->num_chunks; i++)
-		kfree(snapshot->copy[i]);
-	kfree(snapshot->copy);
-fail_snap:
-	kfree(snapshot);
-	return NULL;
 }
 
 /**
@@ -167,17 +142,10 @@ fail_snap:
  */
 void xe_guc_log_snapshot_free(struct xe_guc_log_snapshot *snapshot)
 {
-	int i;
-
 	if (!snapshot)
 		return;
 
-	if (snapshot->copy) {
-		for (i = 0; i < snapshot->num_chunks; i++)
-			kfree(snapshot->copy[i]);
-		kfree(snapshot->copy);
-	}
-
+	vfree(snapshot->data);
 	xe_guc_dump_cache_fini(&snapshot->dump_cache);
 	kfree(snapshot);
 }
@@ -202,19 +170,10 @@ struct xe_guc_log_snapshot *xe_guc_log_snapshot_capture(struct xe_guc_log *log, 
 	if (!log->bo)
 		return NULL;
 
-	snapshot = xe_guc_log_snapshot_alloc(log, atomic);
+	snapshot = xe_guc_log_snapshot_alloc(log);
 	if (!snapshot)
 		return NULL;
-
-	remain = snapshot->size;
-	for (i = 0; i < snapshot->num_chunks; i++) {
-		size_t size = min(GUC_LOG_CHUNK_SIZE, remain);
-
-		xe_map_memcpy_from(xe, snapshot->copy[i], &log->bo->vmap,
-				   i * GUC_LOG_CHUNK_SIZE, size);
-		remain -= size;
-	}
-
+	xe_map_memcpy_from(xe, snapshot->data, &log->bo->vmap, 0, snapshot->size);
 	CLASS(xe_force_wake, fw_ref)(gt_to_fw(gt), XE_FW_GT);
 	if (!fw_ref.domains)
 		snapshot->stamp = ~0ULL;
@@ -445,8 +404,8 @@ void xe_guc_log_snapshot_print(struct xe_guc_log_snapshot *snapshot, struct drm_
 	drm_printf(p, "Log level: %u\n", snapshot->level);
 
 	xe_guc_print_blob(gt, p, "[LOG]", "[LOG].data",
-			  snapshot->copy, snapshot->num_chunks,
-			  GUC_LOG_CHUNK_SIZE, snapshot->size,
+			  &snapshot->data, 1,
+			  snapshot->size, snapshot->size,
 			  &snapshot->dump_cache);
 }
 
@@ -622,21 +581,7 @@ static void
 xe_guc_log_print_chunks(struct drm_printer *p, struct xe_guc_log_snapshot *snapshot,
 			u32 from, u32 to)
 {
-	int chunk_from = from % GUC_LOG_CHUNK_SIZE;
-	int chunk_id = from / GUC_LOG_CHUNK_SIZE;
-	int to_chunk_id = to / GUC_LOG_CHUNK_SIZE;
-	int chunk_to = to % GUC_LOG_CHUNK_SIZE;
-	int pos = from;
-
-	do {
-		size_t size = (to_chunk_id == chunk_id ? chunk_to : GUC_LOG_CHUNK_SIZE) -
-			      chunk_from;
-
-		lfd_output_binary(p, snapshot->copy[chunk_id] + chunk_from, size);
-		pos += size;
-		chunk_id++;
-		chunk_from = 0;
-	} while (pos < to);
+	lfd_output_binary(p, snapshot->data + from, to - from);
 }
 
 static inline int
@@ -693,7 +638,6 @@ xe_guc_log_add_crash_dump(struct drm_printer *p, struct xe_guc_log_snapshot *sna
 			  struct guc_lic_save *config)
 {
 	struct guc_log_buffer_entry_list *entry;
-	int chunk_from, chunk_id;
 	int from, to, i;
 	size_t size = 0;
 	u32 *buf32;
@@ -707,9 +651,7 @@ xe_guc_log_add_crash_dump(struct drm_printer *p, struct xe_guc_log_snapshot *sna
 	/* Check if crash dump section are all zero */
 	from = entry->offset;
 	to = entry->offset + entry->buf_size;
-	chunk_from = from % GUC_LOG_CHUNK_SIZE;
-	chunk_id = from / GUC_LOG_CHUNK_SIZE;
-	buf32 = snapshot->copy[chunk_id] + chunk_from;
+	buf32 = snapshot->data + from;
 
 	for (i = 0; i < entry->buf_size / sizeof(u32); i++)
 		if (buf32[i])
@@ -753,7 +695,7 @@ xe_guc_log_snapshot_print_lfd(struct xe_guc_log_snapshot *snapshot, struct drm_p
 			  offsetof(struct guc_lfd_file_header, stream));
 
 	/* Output LFD stream */
-	xe_guc_log_load_lic(snapshot->copy[0], &config);
+	xe_guc_log_load_lic(snapshot->data, &config);
 	size = xe_guc_log_output_lfd_init(p, snapshot, &config);
 	if (!size)
 		return;

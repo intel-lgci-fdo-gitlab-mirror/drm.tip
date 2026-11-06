@@ -39,7 +39,7 @@ struct xe_guc_log_snapshot {
 	/** @size: Size in bytes of the @copy allocation */
 	size_t size;
 	/** @copy: Host memory copy of the log buffer for later dumping, split into chunks */
-	void **copy;
+	void *data;
 	/** @num_chunks: Number of chunks within @copy */
 	int num_chunks;
 	/** @ktime: Kernel time the snapshot was taken */
