@@ -3851,6 +3851,12 @@ int xe_gem_mmap_offset_ioctl(struct drm_device *dev, void *data,
 	if (XE_IOCTL_DBG(xe, !gem_obj))
 		return -ENOENT;
 
+	/* Imported dma-bufs have no mmap offset since CPU access is rejected. */
+	if (XE_IOCTL_DBG(xe, !drm_vma_node_size(&gem_obj->vma_node))) {
+		xe_bo_put(gem_to_xe_bo(gem_obj));
+		return -EINVAL;
+	}
+
 	/* The mmap offset was set up at BO allocation time. */
 	args->offset = drm_vma_node_offset_addr(&gem_obj->vma_node);
 
