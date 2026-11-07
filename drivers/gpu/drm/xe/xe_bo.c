@@ -1178,7 +1178,7 @@ static int xe_bo_move(struct ttm_buffer_object *ttm_bo, bool evict,
 	}
 
 	if ((move_lacks_source && !needs_clear)) {
-		ttm_bo_move_null(ttm_bo, new_mem);
+		ttm_bo_move_null_drop_tt(ttm_bo, new_mem);
 		goto out;
 	}
 
@@ -1313,7 +1313,7 @@ static int xe_bo_move(struct ttm_buffer_object *ttm_bo, bool evict,
 						new_mem);
 		if (ret) {
 			dma_fence_wait(fence, false);
-			ttm_bo_move_null(ttm_bo, new_mem);
+			ttm_bo_move_null_drop_tt(ttm_bo, new_mem);
 			ret = 0;
 		}
 	} else {
@@ -1324,7 +1324,7 @@ static int xe_bo_move(struct ttm_buffer_object *ttm_bo, bool evict,
 		 */
 		dma_resv_add_fence(ttm_bo->base.resv, fence,
 				   DMA_RESV_USAGE_KERNEL);
-		ttm_bo_move_null(ttm_bo, new_mem);
+		ttm_bo_move_null_drop_tt(ttm_bo, new_mem);
 	}
 
 	/*
