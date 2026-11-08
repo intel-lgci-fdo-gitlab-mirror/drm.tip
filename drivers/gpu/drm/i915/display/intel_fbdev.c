@@ -324,8 +324,6 @@ int intel_fbdev_driver_fbdev_probe(struct drm_fb_helper *helper,
 	} else {
 		drm_dbg_kms(display->drm, "re-using BIOS fb\n");
 		prealloc = true;
-		sizes->fb_width = fb->base.width;
-		sizes->fb_height = fb->base.height;
 	}
 
 	obj = intel_fb_bo(&fb->base);
