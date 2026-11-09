@@ -269,11 +269,9 @@ static int send_page_offline_cmd(struct xe_device *xe, u64 page_address,
 	request.action = action;
 
 	if (action == XE_RAS_PAGE_ACTION_OFFLINE)
-		xe_log_err(xe, DEVICE_MEMORY, 0, "Requesting firmware to offline page 0x%llx\n",
-			   page_address);
+		xe_dbg(xe, "Requesting firmware to offline page 0x%llx\n", page_address);
 	else
-		xe_log_err(xe, DEVICE_MEMORY, 0, "Requesting firmware to remove page 0x%llx from queue\n",
-			   page_address);
+		xe_dbg(xe, "Requesting firmware to remove page 0x%llx from queue\n", page_address);
 
 	xe_sysctrl_create_command(&command, XE_SYSCTRL_GROUP_GFSP, XE_SYSCTRL_CMD_PAGE_OFFLINE,
 				  &request, sizeof(request), &response, sizeof(response));
@@ -326,7 +324,7 @@ static int handle_page_offline(struct xe_device *xe, u64 page_address, bool noti
 	/* User policy set to disable page offlining */
 	if (xe_ras_get_disable_vram_page_offline(xe)) {
 		action = XE_RAS_PAGE_ACTION_REMOVE;
-		xe_log_err(xe, DEVICE_MEMORY, -EOPNOTSUPP, "User policy set to disable page offlining\n");
+		xe_info(xe, "User policy set to disable page offlining\n");
 		goto notify;
 	}
 
@@ -346,14 +344,12 @@ static int handle_page_offline(struct xe_device *xe, u64 page_address, bool noti
 	switch (ret) {
 	case 0:
 		action = XE_RAS_PAGE_ACTION_REMOVE;
-		xe_log_err(xe, DEVICE_MEMORY, ret,
-			   "Poison detected at physical address 0x%llx, page soft-offlined\n",
-			   page_address);
+		xe_info(xe, "Poison detected at physical address 0x%llx, page soft-offlined\n",
+			page_address);
 		break;
 	case -EIO:
-		xe_log_err(xe, DEVICE_MEMORY, ret,
-			   "Poison detected at physical address 0x%llx, page belongs to critical BO and cannot be soft-offlined\n",
-			   page_address);
+		xe_err(xe, "Poison detected at physical address 0x%llx, page belongs to critical BO and cannot be soft-offlined\n",
+		       page_address);
 		return ret;
 	case -EEXIST:
 		if (xa_load(&state->offlined_pages, page_address >> XE_PTE_SHIFT))
@@ -361,18 +357,16 @@ static int handle_page_offline(struct xe_device *xe, u64 page_address, bool noti
 		else
 			action = XE_RAS_PAGE_ACTION_OFFLINE;
 
-		xe_log_err(xe, DEVICE_MEMORY, ret,
-			   "Double-bit ECC error detected at physical address 0x%llx, page soft-offlined\n",
-			   page_address);
+		xe_info(xe, "Double-bit ECC error detected at physical address 0x%llx, page soft-offlined\n",
+			page_address);
 		break;
 	case -ENOMEM:
-		xe_log_err(xe, DEVICE_MEMORY, ret,
-			   "Poison detected at physical address 0x%llx, failed to soft-offline\n",
-			   page_address);
+		xe_err(xe, "Poison detected at physical address 0x%llx, failed to soft-offline\n",
+		       page_address);
 		return ret;
 	default:
-		xe_log_err(xe, DEVICE_MEMORY, ret, "Failed to handle address fault at physical address 0x%llx\n",
-			   page_address);
+		xe_err(xe, "Failed to handle address fault at physical address 0x%llx: %d\n",
+		       page_address, ret);
 		return 0;
 	}
 
