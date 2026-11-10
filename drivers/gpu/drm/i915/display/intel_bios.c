@@ -1448,6 +1448,12 @@ parse_edp_fast_link_params(struct intel_display *display,
 	const struct edp_fast_link_params *edp_link_params =
 		&edp->fast_link_params[panel_type];
 
+	if (display->vbt.version < 182 ||
+	    !panel_bool(edp->fast_link_training, panel_type))
+		return;
+
+	panel->vbt.edp.fast_link_training = true;
+
 	if (display->vbt.version >= 224) {
 		panel->vbt.edp.rate =
 			edp->edp_fast_link_training_rate[panel_type] * 20;
@@ -1526,6 +1532,29 @@ parse_edp_fast_link_params(struct intel_display *display,
 			    edp_link_params->vswing);
 		break;
 	}
+
+	/*
+	 * The fast link training rate is limited by the eDP max port link
+	 * rate: FLT rate = min(FLT rate, eDP max port link rate).
+	 */
+	if (panel->vbt.edp.rate && panel->vbt.edp.max_link_rate)
+		panel->vbt.edp.rate = min(panel->vbt.edp.rate,
+					  panel->vbt.edp.max_link_rate);
+
+	/*
+	 * The VBT default fast link training lane count is 1, while hardly
+	 * any eDP panel uses a single lane. Treat a lane count of 1 as not
+	 * specified, leaving the lane count selection to the driver, the
+	 * same way as a fast link training rate of 0.
+	 */
+	if (panel->vbt.edp.lanes == 1)
+		panel->vbt.edp.lanes = 0;
+
+	drm_dbg_kms(display->drm,
+		    "VBT eDP fast link training enabled: rate %d, lanes %d, vswing %d, pre-emphasis %d\n",
+		    panel->vbt.edp.rate, panel->vbt.edp.lanes,
+		    panel->vbt.edp.vswing >> DP_TRAIN_VOLTAGE_SWING_SHIFT,
+		    panel->vbt.edp.preemphasis >> DP_TRAIN_PRE_EMPHASIS_SHIFT);
 }
 
 static void
@@ -1555,8 +1584,6 @@ parse_edp(struct intel_display *display,
 	vbt_edp_to_pps_delays(&panel->vbt.edp.pps,
 			      &edp->power_seqs[panel_type]);
 
-	parse_edp_fast_link_params(display, panel, edp);
-
 	if (display->vbt.version >= 173) {
 		u8 vswing;
 
@@ -1576,6 +1603,9 @@ parse_edp(struct intel_display *display,
 	if (display->vbt.version >= 244)
 		panel->vbt.edp.max_link_rate =
 			edp->edp_max_port_link_rate[panel_type] * 20;
+
+	/* Depends on max_link_rate */
+	parse_edp_fast_link_params(display, panel, edp);
 
 	if (display->vbt.version >= 251)
 		panel->vbt.edp.dsc_disable =
