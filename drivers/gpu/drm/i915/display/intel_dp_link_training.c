@@ -422,6 +422,7 @@
  *
  * See also:
  *   - DOC: DisplayPort link training
+ *   - link_recovery_is_idle()
  *   - link_recovery_autoretrain_pending()
  *   - link_recovery_autoretrain_allowed()
  *   - link_recovery_has_no_fallback()
@@ -453,6 +454,12 @@ struct intel_dp_link_training {
 static struct intel_dp_link_training *connector_to_link_training(struct intel_connector *connector)
 {
 	return intel_attached_dp(connector)->link.training;
+}
+
+static bool
+link_recovery_is_idle(struct intel_dp_link_training *link_training)
+{
+	return link_training->recovery_state == INTEL_DP_LINK_RECOVERY_IDLE;
 }
 
 static void intel_dp_reset_lttpr_common_caps(struct intel_dp *intel_dp)
@@ -1025,6 +1032,71 @@ void intel_dp_set_signal_levels(struct intel_dp *intel_dp,
 		encoder->set_signal_levels(encoder, crtc_state);
 }
 
+/*
+ * Use the VBT eDP fast link training vswing/pre-emphasis levels as the
+ * starting point of link training, if the VBT enables fast link training
+ * for the panel and the link config matches the VBT fast link training
+ * params the levels were provided for. Only do this while link recovery
+ * is idle, so that the retry after a failed link training starts from
+ * the default levels.
+ */
+static bool
+intel_dp_use_vbt_fast_link_levels(struct intel_dp *intel_dp,
+				  const struct intel_crtc_state *crtc_state,
+				  enum drm_dp_phy dp_phy)
+{
+	const struct intel_panel *panel = &intel_dp->attached_connector->panel;
+
+	if (dp_phy != DP_PHY_DPRX || !intel_dp_is_edp(intel_dp) ||
+	    intel_dp_is_uhbr(crtc_state))
+		return false;
+
+	if (!panel->vbt.edp.fast_link_training)
+		return false;
+
+	if (panel->vbt.edp.rate &&
+	    panel->vbt.edp.rate != crtc_state->port_clock)
+		return false;
+
+	if (panel->vbt.edp.lanes &&
+	    panel->vbt.edp.lanes != crtc_state->lane_count)
+		return false;
+
+	return link_recovery_is_idle(intel_dp->link.training);
+}
+
+/*
+ * Clamp the VBT levels to the PHY limits in the same way as the levels
+ * requested by the sink in intel_dp_get_lane_adjust_vswing_preemph().
+ */
+static void
+intel_dp_init_train_set_from_vbt(struct intel_dp *intel_dp,
+				 const struct intel_crtc_state *crtc_state,
+				 enum drm_dp_phy dp_phy)
+{
+	const struct intel_panel *panel = &intel_dp->attached_connector->panel;
+	u8 v = panel->vbt.edp.vswing;
+	u8 p = panel->vbt.edp.preemphasis;
+	u8 preemph_max, voltage_max;
+
+	preemph_max = intel_dp_phy_preemph_max(intel_dp, dp_phy);
+	if (p >= preemph_max)
+		p = preemph_max | DP_TRAIN_MAX_PRE_EMPHASIS_REACHED;
+
+	v = min(v, dp_voltage_max(p));
+
+	voltage_max = intel_dp_phy_voltage_max(intel_dp, crtc_state, dp_phy);
+	if (v >= voltage_max)
+		v = voltage_max | DP_TRAIN_MAX_SWING_REACHED;
+
+	memset(intel_dp->train_set, v | p, sizeof(intel_dp->train_set));
+
+	lt_dbg(intel_dp, dp_phy,
+	       "Using VBT fast link training levels: vswing %d, pre-emphasis %d\n",
+	       (v & DP_TRAIN_VOLTAGE_SWING_MASK) >> DP_TRAIN_VOLTAGE_SWING_SHIFT,
+	       (p & DP_TRAIN_PRE_EMPHASIS_MASK) >> DP_TRAIN_PRE_EMPHASIS_SHIFT);
+}
+
 static bool
 intel_dp_reset_link_train(struct intel_dp *intel_dp,
 			  const struct intel_crtc_state *crtc_state,
@@ -1032,6 +1104,10 @@ intel_dp_reset_link_train(struct intel_dp *intel_dp,
 			  u8 dp_train_pat)
 {
 	memset(intel_dp->train_set, 0, sizeof(intel_dp->train_set));
+
+	if (intel_dp_use_vbt_fast_link_levels(intel_dp, crtc_state, dp_phy))
+		intel_dp_init_train_set_from_vbt(intel_dp, crtc_state, dp_phy);
+
 	intel_dp_set_signal_levels(intel_dp, crtc_state, dp_phy);
 	return intel_dp_set_link_train(intel_dp, crtc_state, dp_phy, dp_train_pat);
 }
