@@ -2093,6 +2093,22 @@ void xe_migrate_wait(struct xe_migrate *m)
 		dma_fence_wait(m->fence, false);
 }
 
+/**
+ * xe_migrate_can_blit() - Whether a migration context can issue blits
+ * @m: The migration context
+ *
+ * xe_migrate_copy() and xe_migrate_clear() emit blitter commands, which only
+ * the copy engine understands, and the copy engine lives on the primary GT.
+ * A tile without one can still update page tables, so its migration context
+ * is usable, but callers that want to move data have to do it themselves.
+ *
+ * Return: true if blit based copy and clear are available on @m.
+ */
+bool xe_migrate_can_blit(struct xe_migrate *m)
+{
+	return m->tile->primary_gt;
+}
+
 static u32 pte_update_cmd_size(u64 size)
 {
 	u32 num_dword;
