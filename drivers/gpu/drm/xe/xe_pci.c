@@ -1107,6 +1107,14 @@ static int xe_info_init(struct xe_device *xe,
 		xe->info.has_ctx_tlb_inval = graphics_desc->has_ctx_tlb_inval;
 		xe->info.has_usm = graphics_desc->has_usm;
 		xe->info.has_64bit_timestamp = graphics_desc->has_64bit_timestamp;
+	} else {
+		/*
+		 * Flat CCS comes from the device descriptor rather than from
+		 * the graphics IP, but it is still a graphics feature: its
+		 * layout is read back through the primary GT, which is not
+		 * there to be read.
+		 */
+		xe->info.has_flat_ccs = 0;
 	}
 
 	if (xe->info.platform != XE_PVC)
