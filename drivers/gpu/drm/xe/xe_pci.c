@@ -1029,11 +1029,11 @@ static int xe_probe_ips(struct xe_device *xe,
 	}
 
 	/*
-	 * If we couldn't detect the graphics IP, that's considered a fatal
-	 * error and we should abort driver load.  Failing to detect media
-	 * IP is non-fatal; we'll just proceed without enabling media support.
+	 * Either IP on its own is enough to go on with.  Only a device where
+	 * neither could be detected is a fatal error, since there would be
+	 * nothing left to drive.
 	 */
-	if (!probed_info->graphics_ip)
+	if (!probed_info->graphics_ip && !probed_info->media_ip)
 		return -ENODEV;
 
 	return 0;
@@ -1148,21 +1148,14 @@ static int xe_info_init(struct xe_device *xe,
 		if (IS_ERR(tile->primary_gt))
 			return PTR_ERR(tile->primary_gt);
 
-		/*
-		 * It's not currently possible to probe a device with the
-		 * primary GT disabled.  With some work, this may be future in
-		 * the possible for igpu platforms (although probably not for
-		 * dgpu's since access to the primary GT's BCS engines is
-		 * required for VRAM management).
-		 */
-		if (!tile->primary_gt) {
-			drm_err(&xe->drm, "Cannot probe device with without a primary GT\n");
-			return -ENODEV;
-		}
-
 		tile->media_gt = alloc_media_gt(tile, media_desc);
 		if (IS_ERR(tile->media_gt))
 			return PTR_ERR(tile->media_gt);
+
+		if (!tile->primary_gt && !tile->media_gt) {
+			xe_tile_err(tile, "Cannot probe tile without any GT\n");
+			return -ENODEV;
+		}
 	}
 
 	/*
