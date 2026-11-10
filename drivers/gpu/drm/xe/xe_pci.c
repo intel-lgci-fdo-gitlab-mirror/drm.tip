@@ -704,9 +704,21 @@ static const struct xe_ip *find_media_ip(unsigned int verx100)
 	return NULL;
 }
 
+static const struct xe_gmdid_desc {
+	const char *name;
+	const struct xe_ip *(*find_ip)(unsigned int verx100);
+} gmdid_descs[] = {
+	[GMDID_GRAPHICS] = { "graphics", find_graphics_ip },
+	[GMDID_MEDIA] = { "media", find_media_ip },
+};
+
 /*
  * Read IP version from hardware and select graphics/media IP descriptors
  * based on the result.
+ *
+ * Each IP is detected independently and any of them may legitimately be fused
+ * off or otherwise absent, in which case its descriptor is left NULL.  Deciding
+ * whether the resulting combination is usable is up to the caller.
  */
 static int handle_gmdid(struct xe_device *xe,
 			const struct xe_ip **graphics_ip,
@@ -714,36 +726,38 @@ static int handle_gmdid(struct xe_device *xe,
 			u32 *graphics_revid,
 			u32 *media_revid)
 {
-	u32 ver;
-	int ret;
+	const struct xe_ip **ips[] = {
+		[GMDID_GRAPHICS] = graphics_ip,
+		[GMDID_MEDIA] = media_ip,
+	};
+	u32 *revids[] = {
+		[GMDID_GRAPHICS] = graphics_revid,
+		[GMDID_MEDIA] = media_revid,
+	};
 
-	*graphics_ip = NULL;
-	*media_ip = NULL;
+	for (enum xe_gmdid_type type = 0; type < ARRAY_SIZE(gmdid_descs); type++) {
+		const struct xe_gmdid_desc *desc = &gmdid_descs[type];
+		u32 ver;
+		int ret;
 
-	ret = read_gmdid(xe, GMDID_GRAPHICS, &ver, graphics_revid);
-	if (ret)
-		return ret;
+		*ips[type] = NULL;
+		*revids[type] = 0;
 
-	*graphics_ip = find_graphics_ip(ver);
-	if (!*graphics_ip) {
-		xe_log_err(xe, REGS, -EINVAL,
-			   "Hardware reports unknown graphics version %u.%02u\n",
-			   ver / 100, ver % 100);
-	}
+		ret = read_gmdid(xe, type, &ver, revids[type]);
+		if (ret)
+			return ret;
 
-	ret = read_gmdid(xe, GMDID_MEDIA, &ver, media_revid);
-	if (ret)
-		return ret;
+		/* The IP may legitimately be fused off / not present */
+		if (!ver) {
+			*revids[type] = 0;
+			continue;
+		}
 
-	/* Media may legitimately be fused off / not present */
-	if (ver == 0)
-		return 0;
-
-	*media_ip = find_media_ip(ver);
-	if (!*media_ip) {
-		xe_log_err(xe, REGS, -EINVAL,
-			   "Hardware reports unknown media version %u.%02u\n",
-			   ver / 100, ver % 100);
+		*ips[type] = desc->find_ip(ver);
+		if (!*ips[type])
+			xe_log_err(xe, REGS, -EINVAL,
+				   "Hardware reports unknown %s version %u.%02u\n",
+				   desc->name, ver / 100, ver % 100);
 	}
 
 	return 0;
