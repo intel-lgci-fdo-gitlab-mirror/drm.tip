@@ -706,11 +706,27 @@ static const struct xe_ip *find_media_ip(unsigned int verx100)
 
 static const struct xe_gmdid_desc {
 	const char *name;
+	u32 present;
 	const struct xe_ip *(*find_ip)(unsigned int verx100);
 } gmdid_descs[] = {
-	[GMDID_GRAPHICS] = { "graphics", find_graphics_ip },
-	[GMDID_MEDIA] = { "media", find_media_ip },
+	[GMDID_GRAPHICS] = { "graphics", GT_PRESENT, find_graphics_ip },
+	[GMDID_MEDIA] = { "media", IM_PRESENT, find_media_ip },
 };
+
+/*
+ * Besides the IP version in GMD_ID, hardware reports whether an IP is present
+ * at all through the fuse backed presence bits in GU_CNTL_PROTECTED.  Use
+ * those as a second level of verification, so an IP hardware says is not there
+ * is left alone whatever GMD_ID claims.
+ */
+static bool gt_fused(struct xe_device *xe, u32 present)
+{
+	/* VFs have no access to GU_CNTL_PROTECTED, so go by GMD_ID alone */
+	if (IS_SRIOV_VF(xe))
+		return false;
+
+	return !(xe_mmio_read32(xe_root_tile_mmio(xe), GU_CNTL_PROTECTED) & present);
+}
 
 /*
  * Read IP version from hardware and select graphics/media IP descriptors
@@ -749,6 +765,14 @@ static int handle_gmdid(struct xe_device *xe,
 
 		/* The IP may legitimately be fused off / not present */
 		if (!ver) {
+			*revids[type] = 0;
+			continue;
+		}
+
+		if (gt_fused(xe, desc->present)) {
+			xe_log_info(xe, REGS,
+				    "Hardware reports the %s IP is not present, ignoring version %u.%02u\n",
+				    desc->name, ver / 100, ver % 100);
 			*revids[type] = 0;
 			continue;
 		}
