@@ -709,6 +709,20 @@ static int __guc_add_request(struct intel_guc *guc, struct i915_request *rq)
 	 * request resubmitted after the context was banned.
 	 */
 	if (unlikely(!intel_context_is_schedulable(ce))) {
+		struct i915_request *pos;
+
+		/*
+		 * The dequeue only passes the last of the merged requests, and
+		 * the context won't run again to write the others' breadcrumbs:
+		 * complete them all, once the context is off the HW.
+		 */
+		spin_lock(&ce->guc_state.lock);
+		if (!context_enabled(ce) && !context_pending_enable(ce) &&
+		    !context_pending_disable(ce))
+			list_for_each_entry(pos, &ce->guc_state.requests, sched.link)
+				i915_request_put(i915_request_mark_eio(pos));
+		spin_unlock(&ce->guc_state.lock);
+
 		i915_request_put(i915_request_mark_eio(rq));
 		intel_engine_signal_breadcrumbs(ce->engine);
 		return 0;
