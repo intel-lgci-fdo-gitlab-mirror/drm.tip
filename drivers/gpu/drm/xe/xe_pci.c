@@ -902,6 +902,9 @@ static struct xe_gt *alloc_primary_gt(struct xe_tile *tile,
 	struct xe_device *xe = tile_to_xe(tile);
 	struct xe_gt *gt;
 
+	if (!graphics_desc)
+		return NULL;
+
 	if (!xe_configfs_primary_gt_allowed(to_pci_dev(xe->drm.dev))) {
 		xe_tile_info(tile, "Primary GT disabled via configfs\n");
 		return NULL;
@@ -1054,9 +1057,14 @@ static int xe_info_init(struct xe_device *xe,
 	xe->info.step.graphics = probed_info->step.graphics;
 	xe->info.step.media = probed_info->step.media;
 
-	xe->info.graphics_verx100 = graphics_ip->verx100;
-	xe->info.graphics_name = graphics_ip->name;
-	graphics_desc = graphics_ip->desc;
+	if (graphics_ip) {
+		xe->info.graphics_verx100 = graphics_ip->verx100;
+		xe->info.graphics_name = graphics_ip->name;
+		graphics_desc = graphics_ip->desc;
+	} else {
+		xe->info.graphics_name = "none";
+		graphics_desc = NULL;
+	}
 
 	if (media_ip) {
 		xe->info.media_verx100 = media_ip->verx100;
@@ -1067,16 +1075,19 @@ static int xe_info_init(struct xe_device *xe,
 		media_desc = NULL;
 	}
 
-	xe->info.has_access_counter = graphics_desc->has_access_counter;
-	xe->info.has_asid = graphics_desc->has_asid;
-	xe->info.has_atomic_enable_pte_bit = graphics_desc->has_atomic_enable_pte_bit;
+	if (graphics_desc) {
+		xe->info.has_access_counter = graphics_desc->has_access_counter;
+		xe->info.has_asid = graphics_desc->has_asid;
+		xe->info.has_atomic_enable_pte_bit = graphics_desc->has_atomic_enable_pte_bit;
+		xe->info.has_range_tlb_inval = graphics_desc->has_range_tlb_inval;
+		xe->info.has_ctx_tlb_inval = graphics_desc->has_ctx_tlb_inval;
+		xe->info.has_usm = graphics_desc->has_usm;
+		xe->info.has_64bit_timestamp = graphics_desc->has_64bit_timestamp;
+	}
+
 	if (xe->info.platform != XE_PVC)
 		xe->info.has_device_atomics_on_smem = 1;
 
-	xe->info.has_range_tlb_inval = graphics_desc->has_range_tlb_inval;
-	xe->info.has_ctx_tlb_inval = graphics_desc->has_ctx_tlb_inval;
-	xe->info.has_usm = graphics_desc->has_usm;
-	xe->info.has_64bit_timestamp = graphics_desc->has_64bit_timestamp;
 	xe->info.has_mem_copy_instr = GRAPHICS_VER(xe) >= 20;
 
 	if (IS_SRIOV_VF(xe)) {
