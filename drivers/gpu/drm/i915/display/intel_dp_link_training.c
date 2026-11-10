@@ -1800,12 +1800,23 @@ void intel_dp_stop_link_train(struct intel_dp *intel_dp,
 
 	intel_hpd_unblock(encoder);
 
-	if (!display->hotplug.ignore_long_hpd &&
-	    link_recovery_autoretrain_allowed(link_training)) {
-		int delay_ms = link_recovery_autoretrain_pending(link_training) ? 0 : 2000;
+	if (display->hotplug.ignore_long_hpd ||
+	    !link_recovery_autoretrain_allowed(link_training))
+		return;
 
-		intel_encoder_link_check_queue_work(encoder, delay_ms);
+	if (link_recovery_autoretrain_pending(link_training)) {
+		intel_encoder_link_check_queue_work(encoder, 0);
+		return;
 	}
+
+	/*
+	 * An eDP retrain power cycles the panel, which can retrigger
+	 * a transient link error after power-on, leading to a retrain loop.
+	 */
+	if (intel_dp_is_edp(intel_dp))
+		return;
+
+	intel_encoder_link_check_queue_work(encoder, 2000);
 }
 
 static bool
