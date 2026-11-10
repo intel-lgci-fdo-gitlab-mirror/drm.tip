@@ -37,6 +37,14 @@ MODULE_FIRMWARE("amdnpu/17f1_13/npu.sbin");
 MODULE_FIRMWARE("amdnpu/17f1_13/cert.sbin");
 MODULE_FIRMWARE("amdnpu/17f2_13/npu.sbin");
 MODULE_FIRMWARE("amdnpu/17f2_13/cert.sbin");
+MODULE_FIRMWARE("amdnpu/17f1_10/npu_l.sbin");
+MODULE_FIRMWARE("amdnpu/17f1_10/cert_l.sbin");
+MODULE_FIRMWARE("amdnpu/17f2_10/npu_l.sbin");
+MODULE_FIRMWARE("amdnpu/17f2_10/cert_l.sbin");
+MODULE_FIRMWARE("amdnpu/17f1_13/npu_l.sbin");
+MODULE_FIRMWARE("amdnpu/17f1_13/cert_l.sbin");
+MODULE_FIRMWARE("amdnpu/17f2_13/npu_l.sbin");
+MODULE_FIRMWARE("amdnpu/17f2_13/cert_l.sbin");
 
 /*
  * 0.0: Initial version
@@ -284,9 +292,9 @@ static void amdxdna_show_fdinfo(struct drm_printer *p, struct drm_file *filp)
 {
 	struct amdxdna_client *client = filp->driver_priv;
 	size_t heap_usage, external_usage, internal_usage;
-	char *drv_name = filp->minor->dev->driver->name;
+	char *drv_name = "amdxdna_accel_driver";
 
-	drm_printf(p, "drm-engine-npu:\t%llu ns\n",
+	drm_printf(p, "drm-engine-%s:\t%llu ns\n", drv_name,
 		   amdxdna_io_stats_busy_time_ns(client));
 
 	mutex_lock(&client->mm_lock);
