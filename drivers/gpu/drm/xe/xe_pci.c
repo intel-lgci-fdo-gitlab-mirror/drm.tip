@@ -616,7 +616,8 @@ enum xe_gmdid_type {
 	GMDID_MEDIA
 };
 
-static int read_gmdid(struct xe_device *xe, enum xe_gmdid_type type, u32 *ver, u32 *revid)
+static int read_gmdid(struct xe_device *xe, enum xe_gmdid_type type,
+		      u32 *ver, u32 *revid, u32 *raw)
 {
 	struct xe_mmio *mmio = xe_root_tile_mmio(xe);
 	struct xe_reg gmdid_reg = GMD_ID;
@@ -638,7 +639,7 @@ static int read_gmdid(struct xe_device *xe, enum xe_gmdid_type type, u32 *ver, u
 
 		/* Don't try to read media ver if media GT is not allowed */
 		if (type == GMDID_MEDIA && !xe_configfs_media_gt_allowed(to_pci_dev(xe->drm.dev))) {
-			*ver = *revid = 0;
+			*ver = *revid = *raw = 0;
 			return 0;
 		}
 
@@ -678,6 +679,7 @@ static int read_gmdid(struct xe_device *xe, enum xe_gmdid_type type, u32 *ver, u
 		val = xe_mmio_read32(mmio, gmdid_reg);
 	}
 
+	*raw = val;
 	*ver = REG_FIELD_GET(GMD_ID_ARCH_MASK, val) * 100 + REG_FIELD_GET(GMD_ID_RELEASE_MASK, val);
 	*revid = REG_FIELD_GET(GMD_ID_REVID, val);
 
@@ -712,7 +714,9 @@ static int handle_gmdid(struct xe_device *xe,
 			const struct xe_ip **graphics_ip,
 			const struct xe_ip **media_ip,
 			u32 *graphics_revid,
-			u32 *media_revid)
+			u32 *media_revid,
+			u32 *graphics_gmdid,
+			u32 *media_gmdid)
 {
 	u32 ver;
 	int ret;
@@ -720,7 +724,7 @@ static int handle_gmdid(struct xe_device *xe,
 	*graphics_ip = NULL;
 	*media_ip = NULL;
 
-	ret = read_gmdid(xe, GMDID_GRAPHICS, &ver, graphics_revid);
+	ret = read_gmdid(xe, GMDID_GRAPHICS, &ver, graphics_revid, graphics_gmdid);
 	if (ret)
 		return ret;
 
@@ -731,7 +735,7 @@ static int handle_gmdid(struct xe_device *xe,
 			   ver / 100, ver % 100);
 	}
 
-	ret = read_gmdid(xe, GMDID_MEDIA, &ver, media_revid);
+	ret = read_gmdid(xe, GMDID_MEDIA, &ver, media_revid, media_gmdid);
 	if (ret)
 		return ret;
 
@@ -756,6 +760,9 @@ struct xe_probed_info {
 	struct xe_step_info step;
 	const struct xe_ip *graphics_ip;
 	const struct xe_ip *media_ip;
+	/* Raw GMD_ID values; 0 on platforms without the register. */
+	u32 graphics_gmdid;
+	u32 media_gmdid;
 };
 
 /*
@@ -882,9 +889,23 @@ static void xe_probe_tile_count(struct xe_device *xe,
 	}
 }
 
+/*
+ * Record the GMD_ID value already probed for this GT's IP.
+ *
+ * Pre-GMD_ID platforms pass zero, matching a read of the unimplemented
+ * register. subip is GMD_ID[13:6]; those bits are reserved except on media
+ * version 35, and only xe_guc_using_main_gamctrl_queues() interprets them.
+ */
+static void init_gt_gmdid(struct xe_gt *gt, u32 raw)
+{
+	gt->info.gmdid.value = raw;
+	gt->info.gmdid.subip = REG_FIELD_GET(GMD_ID_SUBIP_FLAG_MASK, raw);
+}
+
 static struct xe_gt *alloc_primary_gt(struct xe_tile *tile,
 				      const struct xe_graphics_desc *graphics_desc,
-				      const struct xe_media_desc *media_desc)
+				      const struct xe_media_desc *media_desc,
+				      u32 gmdid_raw)
 {
 	struct xe_device *xe = tile_to_xe(tile);
 	struct xe_gt *gt;
@@ -928,11 +949,14 @@ static struct xe_gt *alloc_primary_gt(struct xe_tile *tile,
 	if (MEDIA_VER(xe) < 13 && media_desc)
 		gt->info.engine_mask |= media_desc->hw_engine_mask;
 
+	init_gt_gmdid(gt, gmdid_raw);
+
 	return gt;
 }
 
 static struct xe_gt *alloc_media_gt(struct xe_tile *tile,
-				    const struct xe_media_desc *media_desc)
+				    const struct xe_media_desc *media_desc,
+				    u32 gmdid_raw)
 {
 	struct xe_device *xe = tile_to_xe(tile);
 	struct xe_gt *gt;
@@ -954,6 +978,8 @@ static struct xe_gt *alloc_media_gt(struct xe_tile *tile,
 	gt->info.has_indirect_ring_state = media_desc->has_indirect_ring_state;
 	gt->info.has_uncorrectable_error_reporting = media_desc->has_uncorrectable_error_reporting;
 	gt->info.engine_mask = media_desc->hw_engine_mask;
+
+	init_gt_gmdid(gt, gmdid_raw);
 
 	return gt;
 }
@@ -981,7 +1007,9 @@ static int xe_probe_ips(struct xe_device *xe,
 		xe_assert(xe, !desc->pre_gmdid_media_ip);
 
 		err = handle_gmdid(xe, &probed_info->graphics_ip, &probed_info->media_ip,
-				   &graphics_revid, &media_revid);
+				   &graphics_revid, &media_revid,
+				   &probed_info->graphics_gmdid,
+				   &probed_info->media_gmdid);
 		if (err)
 			return err;
 
@@ -1088,7 +1116,8 @@ static int xe_info_init(struct xe_device *xe,
 		if (err)
 			return err;
 
-		tile->primary_gt = alloc_primary_gt(tile, graphics_desc, media_desc);
+		tile->primary_gt = alloc_primary_gt(tile, graphics_desc, media_desc,
+						    probed_info->graphics_gmdid);
 		if (IS_ERR(tile->primary_gt))
 			return PTR_ERR(tile->primary_gt);
 
@@ -1104,7 +1133,8 @@ static int xe_info_init(struct xe_device *xe,
 			return -ENODEV;
 		}
 
-		tile->media_gt = alloc_media_gt(tile, media_desc);
+		tile->media_gt = alloc_media_gt(tile, media_desc,
+						probed_info->media_gmdid);
 		if (IS_ERR(tile->media_gt))
 			return PTR_ERR(tile->media_gt);
 	}

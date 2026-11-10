@@ -534,19 +534,6 @@ static void dump_pat_on_error(struct xe_gt *gt)
 	xe_pat_dump(gt, &p);
 }
 
-/*
- * Store GMD_ID before GuC upload. Main GAMCTRL consumes the stored subunit
- * field during upload. Pre-MTL platforms do not implement the register, so
- * the read returns zero.
- */
-static void xe_gt_read_gmdid(struct xe_gt *gt)
-{
-	u32 raw = xe_mmio_read32(&gt->mmio, GMD_ID);
-
-	gt->info.gmdid.value = raw;
-	gt->info.gmdid.subip = REG_FIELD_GET(GMD_ID_SUBIP_FLAG_MASK, raw);
-}
-
 static int gt_init_with_gt_forcewake(struct xe_gt *gt)
 {
 	int err;
@@ -554,8 +541,6 @@ static int gt_init_with_gt_forcewake(struct xe_gt *gt)
 	CLASS(xe_force_wake, fw_ref)(gt_to_fw(gt), XE_FW_GT);
 	if (!fw_ref.domains)
 		return -ETIMEDOUT;
-
-	xe_gt_read_gmdid(gt);
 
 	err = xe_uc_init(&gt->uc);
 	if (err)
