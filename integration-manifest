@@ -1,0 +1,44 @@
+drm drm-fixes 7475ea8b58616b33c04afb976cf0fbaad9dd63fb
+	Linux 7.4-rc2
+drm-misc drm-misc-fixes 54d3ff1b5ac08d0e28029b93a1719ddd9ff670a4
+	drm/nouveau/gsp: only handle GSP interrupts routed to the host
+drm-rust drm-rust-fixes 6628e7d4c6b25c8d18f1345e3a20d21829aae7e4
+	Linux 7.4-rc1
+drm-intel drm-intel-fixes 7475ea8b58616b33c04afb976cf0fbaad9dd63fb
+	Linux 7.4-rc2
+drm-xe drm-xe-fixes eb1f465e9119f7680458218a63bbb8d32844908e
+	drm/xe/guc: Do not attribute a TDR disable to a pending suspend
+drm-amdgpu drm-amdgpu-fixes 6d1f901a83603a7d314e4a756b416b11d8dc7e35
+	drm/amdgpu: don't drop the gang dependency fence twice
+drm drm-next e7a265b7533b854893d7166f75989bb712bcd2cb
+	Merge tag 'drm-misc-next-2026-11-05' of https://gitlab.freedesktop.org/drm/misc/kernel into drm-next
+drm-misc drm-misc-next-fixes 9a96e169c9267af918d28fb291df948d83112807
+	drm/panthor: Move cache-flush after UPDATE(UNMAPPED)
+drm-rust drm-rust-next-fixes d511064b2e732b7152a542d589d07a4814c1b674
+	rust: drm: Remove unused flags argument from Registration::new()
+drm-intel drm-intel-next-fixes 6628e7d4c6b25c8d18f1345e3a20d21829aae7e4
+	Linux 7.4-rc1
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes fbb201890156e04b062c4488d1b500de52367684
+	drm/amd/display: refresh cached HDMI FreeSync state
+drm-misc drm-misc-next 38b490338f55f077a0e7f971c5aaacd6f3b16f42
+	drm/etnaviv: add the Allwinner T527 VIP9000 hardware database entry
+drm-rust drm-rust-next a7cdb17ca0d7ce67e9f3a52d39edd60f03223729
+	gpu: nova-core: use Alignment size constants
+drm-intel drm-intel-next 7b42cc130bec053d6989b849785c553f27b752ce
+	drm/i915/irq: Reorder GU_MISC vs. display in gen11_irq_postinstall()
+drm-intel drm-intel-gt-next 4e9db08db75f55c920986ac929cfd82a4ee99f41
+	drm/i915/gem: Reset err for each fence entry
+drm-xe drm-xe-next be082ef8157b7f247d7653ad1ebe9852dc36919a
+	drm/xe/pm: skip BO eviction on iGPU for non-hibernation sleep
+drm-amdgpu drm-amdgpu-next 5349075eac146ae0511d8929fc24451e4d9a4b7e
+	drm/amdgpu: Use feedback buffer for VCE destroy message
+drm-intel topic/core-for-CI 9fa2f96677178cdbfe83b7fc714c081312f482bf
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI 412b1c187cb161857a3fafdb51619668c15acdad
+	topic/xe-for-CI: Define GuC firmware for NVL-P
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
+drm topic/pci-vgaarb-rework 93d41424caf7569ab50092a922477e2a881232b4
+	PCI/VGA: pass a data pointer to be used in the decode callback (v2)
