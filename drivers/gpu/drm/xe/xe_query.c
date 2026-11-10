@@ -424,12 +424,11 @@ static int query_gt_list(struct xe_device *xe, struct drm_xe_device_query *query
 			gt_list->gt_list[iter].near_mem_regions;
 
 		gt_list->gt_list[iter].ip_ver_major =
-			REG_FIELD_GET(GMD_ID_ARCH_MASK, gt->info.gmdid);
-		gt_list->gt_list[iter].ip_ver_minor =
-			REG_FIELD_GET(GMD_ID_RELEASE_MASK, gt->info.gmdid);
-		gt_list->gt_list[iter].ip_ver_rev =
-			REG_FIELD_GET(GMD_ID_REVID, gt->info.gmdid);
-
+				REG_FIELD_GET(GMD_ID_ARCH_MASK, gt->info.gmdid.value);
+			gt_list->gt_list[iter].ip_ver_minor =
+				REG_FIELD_GET(GMD_ID_RELEASE_MASK, gt->info.gmdid.value);
+			gt_list->gt_list[iter].ip_ver_rev =
+				REG_FIELD_GET(GMD_ID_REVID, gt->info.gmdid.value);
 		iter++;
 	}
 

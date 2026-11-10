@@ -1321,9 +1321,9 @@ void xe_device_snapshot_print(struct xe_device *xe, struct drm_printer *p)
 		drm_printf(p, "\tType: %s\n",
 			   gt->info.type == XE_GT_TYPE_MAIN ? "main" : "media");
 		drm_printf(p, "\tIP ver: %u.%u.%u\n",
-			   REG_FIELD_GET(GMD_ID_ARCH_MASK, gt->info.gmdid),
-			   REG_FIELD_GET(GMD_ID_RELEASE_MASK, gt->info.gmdid),
-			   REG_FIELD_GET(GMD_ID_REVID, gt->info.gmdid));
+			   REG_FIELD_GET(GMD_ID_ARCH_MASK, gt->info.gmdid.value),
+			   REG_FIELD_GET(GMD_ID_RELEASE_MASK, gt->info.gmdid.value),
+			   REG_FIELD_GET(GMD_ID_REVID, gt->info.gmdid.value));
 		drm_printf(p, "\tCS reference clock: %u\n", gt->info.reference_clock);
 	}
 }

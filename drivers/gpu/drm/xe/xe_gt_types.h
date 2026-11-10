@@ -121,6 +121,19 @@ enum xe_steering_type {
 		 struct xe_gt * : gt_to_tile(gt__)->xe)
 
 /**
+ * struct xe_gmdid - GMD_ID register contents
+ *
+ * Zero on platforms that do not implement GMD_ID, matching a read of the
+ * unimplemented register.
+ */
+struct xe_gmdid {
+	/** @value: GMD_ID register value */
+	u32 value;
+	/** @subip: GMD_ID[13:6]; subunit indicator on media version 35, else reserved */
+	u8 subip;
+};
+
+/**
  * struct xe_gt - A "Graphics Technology" unit of the GPU
  *
  * A GT ("Graphics Technology") is the subset of a GPU primarily responsible
@@ -151,8 +164,8 @@ struct xe_gt {
 		 * See @user_engines.mask
 		 */
 		u64 engine_mask;
-		/** @info.gmdid: raw GMD_ID value from hardware */
-		u32 gmdid;
+		/** @info.gmdid: GMD_ID register contents for this GT */
+		struct xe_gmdid gmdid;
 		/**
 		 * @info.multi_queue_engine_class_mask: Bitmask of engine classes with
 		 * multi queue support enabled.
