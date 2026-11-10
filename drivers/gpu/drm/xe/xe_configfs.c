@@ -111,15 +111,14 @@
  *	# echo 'primary' > /sys/kernel/config/xe/0000:03:00.0/gt_types_allowed
  *
  * Allow only the media GT of each tile to be initialized and used,
- * effectively disabling the primary GT.  **This configuration will cause
- * device probe failure on all current platforms, but may be allowed on
- * igpu platforms in the future**::
+ * effectively disabling the primary GT.  Note that only media workloads
+ * are usable in this configuration::
  *
  *	# echo 'media' > /sys/kernel/config/xe/0000:03:00.0/gt_types_allowed
  *
  * Disable all GTs.  Only other GPU IP (such as display) is potentially usable.
  * **This configuration will cause device probe failure on all current
- * platforms, but may be allowed on igpu platforms in the future**::
+ * platforms**::
  *
  *	# echo '' > /sys/kernel/config/xe/0000:03:00.0/gt_types_allowed
  *
