@@ -7,9 +7,6 @@
 #include <drm/intel/gtt_view_types.h>
 #include <drm/ttm/ttm_bo.h>
 
-/* FIXME move intel_remapped_info_size() & co. to parent interface? */
-#include "intel_fb.h"
-
 #include "xe_bo.h"
 #include "xe_device.h"
 #include "xe_display_vma.h"

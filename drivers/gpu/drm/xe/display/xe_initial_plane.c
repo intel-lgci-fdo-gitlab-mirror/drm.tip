@@ -4,10 +4,11 @@
  */
 
 #include <drm/intel/display_parent_interface.h>
+#include <drm/intel/gtt_view_types.h>
 
 #include "regs/xe_gtt_defs.h"
 
-/* FIXME move intel_remapped_info_size() & co. */
+/* FIXME move intel_framebuffer_init() out */
 #include "intel_fb.h"
 
 /* FIXME move intel_initial_plane_config */

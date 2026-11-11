@@ -28,7 +28,8 @@
 #include <drm/drm_gem.h>
 #include <drm/drm_print.h>
 
-#include "display/intel_fb.h"
+#include <drm/intel/gtt_view_types.h>
+
 #include "display/intel_frontbuffer.h"
 #include "gem/i915_gem_lmem.h"
 #include "gem/i915_gem_object_frontbuffer.h"
