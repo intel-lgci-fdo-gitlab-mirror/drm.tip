@@ -6,6 +6,8 @@
  * Author: Rafael J. Wysocki <rafael.j.wysocki@intel.com>
  */
 
+#include <asm/cpu_device_id.h>
+
 #include "cpufreq_governor.h"
 
 struct od_policy_dbs_info {
@@ -26,8 +28,6 @@ struct od_dbs_tuners {
 };
 
 #ifdef CONFIG_X86
-#include <asm/cpu_device_id.h>
-
 /*
  * Not all CPUs want IO time to be accounted as busy; this depends on
  * how efficient idling at a higher frequency/voltage is.
