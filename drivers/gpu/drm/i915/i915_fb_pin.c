@@ -259,9 +259,9 @@ static int i915_fb_pin_dpt_pin(struct drm_gem_object *_obj,
 	struct i915_vma *ggtt_vma, *dpt_vma;
 	struct intel_dpt *dpt;
 
-	dpt = i915_dpt_lookup(obj, pin_params->view);
-	if (drm_WARN_ON(obj->base.dev, !dpt))
-		return -EINVAL;
+	dpt = i915_dpt_instance(obj, pin_params->view);
+	if (IS_ERR(dpt))
+		return PTR_ERR(dpt);
 
 	ggtt_vma = i915_dpt_pin_to_ggtt(dpt, pin_params->alignment / 512);
 	if (IS_ERR(ggtt_vma))

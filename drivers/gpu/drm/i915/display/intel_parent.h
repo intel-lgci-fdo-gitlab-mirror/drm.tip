@@ -13,7 +13,6 @@ struct drm_gem_object;
 struct drm_scanout_buffer;
 struct i915_vma;
 struct intel_display;
-struct intel_dpt;
 struct intel_fb_pin_params;
 struct intel_frontbuffer;
 struct intel_gtt_view;
@@ -21,11 +20,6 @@ struct intel_hdcp_gsc_context;
 struct intel_panic;
 struct intel_stolen_node;
 struct iosys_map;
-
-/* dpt */
-int intel_parent_dpt_create(struct intel_display *display,
-			    struct drm_gem_object *obj,
-			    const struct intel_gtt_view *view);
 
 /* fb_pin */
 int intel_parent_fb_pin_ggtt_pin(struct intel_display *display,

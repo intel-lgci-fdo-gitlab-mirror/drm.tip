@@ -17,7 +17,6 @@ struct drm_plane_state;
 struct drm_scanout_buffer;
 struct fb_info;
 struct i915_vma;
-struct intel_dpt;
 struct intel_dsb_buffer;
 struct intel_frontbuffer;
 struct intel_gtt_view;
@@ -63,11 +62,6 @@ struct intel_display_bo_interface {
 	int (*fbdev_fill_info)(struct drm_gem_object *obj, struct fb_info *info, struct i915_vma *vma);
 	u32 (*fbdev_pitch_align)(u32 stride);
 #endif
-};
-
-struct intel_display_dpt_interface {
-	int (*create)(struct drm_gem_object *obj,
-		      const struct intel_gtt_view *view);
 };
 
 struct intel_display_dsb_interface {
@@ -246,9 +240,6 @@ struct intel_display_wa_interface {
 struct intel_display_parent_interface {
 	/** @bo: BO interface */
 	const struct intel_display_bo_interface *bo;
-
-	/** @dpt: DPT interface. Optional. */
-	const struct intel_display_dpt_interface *dpt;
 
 	/** @dsb: DSB buffer interface */
 	const struct intel_display_dsb_interface *dsb;

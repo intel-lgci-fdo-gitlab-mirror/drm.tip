@@ -59,7 +59,6 @@
 #include "display/intel_display_power.h"
 #include "display/intel_dmc.h"
 #include "display/intel_dp.h"
-#include "display/intel_dpt.h"
 #include "display/intel_fbdev.h"
 #include "display/intel_gmbus.h"
 #include "display/intel_hotplug.h"
@@ -92,7 +91,6 @@
 #include "i915_bo.h"
 #include "i915_debugfs.h"
 #include "i915_display_pc8.h"
-#include "i915_dpt.h"
 #include "i915_driver.h"
 #include "i915_drm_client.h"
 #include "i915_drv.h"
@@ -746,7 +744,6 @@ static bool vgpu_active(struct drm_device *drm)
 
 static const struct intel_display_parent_interface parent = {
 	.bo = &i915_display_bo_interface,
-	.dpt = &i915_display_dpt_interface,
 	.dsb = &i915_display_dsb_interface,
 	.fb_pin = &i915_display_fb_pin_interface,
 	.frontbuffer = &i915_display_frontbuffer_interface,

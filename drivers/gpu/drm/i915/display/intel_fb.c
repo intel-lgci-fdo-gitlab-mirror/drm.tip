@@ -2270,22 +2270,6 @@ int intel_framebuffer_init(struct intel_framebuffer *intel_fb,
 	if (ret)
 		goto err_bo_framebuffer_fini;
 
-	if (intel_fb_uses_dpt(fb)) {
-		struct drm_gem_object *obj = intel_fb_bo(&intel_fb->base);
-		const struct intel_gtt_view *view;
-
-		if (intel_fb_needs_pot_stride_remap(intel_fb))
-			view = &intel_fb->remapped_view.gtt;
-		else
-			view = &intel_fb->normal_view.gtt;
-
-		ret = intel_parent_dpt_create(display, obj, view);
-		if (ret) {
-			drm_dbg_kms(display->drm, "failed to create DPT\n");
-			goto err_bo_framebuffer_fini;
-		}
-	}
-
 	ret = drm_framebuffer_init(display->drm, fb, &intel_fb_funcs);
 	if (ret) {
 		drm_err(display->drm, "framebuffer init failed %d\n", ret);
