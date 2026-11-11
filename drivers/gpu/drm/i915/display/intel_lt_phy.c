@@ -1360,7 +1360,8 @@ static u64 mul_q32_u32(u64 a_q32, u32 b)
 }
 
 static bool
-calculate_target_dco_and_loop_cnt(u32 frequency_khz, u64 *target_dco_mhz, u32 *loop_cnt)
+calculate_target_dco_and_loop_cnt(u32 frequency_khz, u64 *target_dco_mhz, u32 *loop_cnt,
+				  u32 *dco_min_freq_used)
 {
 	u32 ppm_value = 1;
 	u32 dco_min_freq = DCO_MIN_FREQ_MHZ;
@@ -1401,6 +1402,7 @@ calculate_target_dco_and_loop_cnt(u32 frequency_khz, u64 *target_dco_mhz, u32 *l
 								 scale);
 					*target_dco_mhz = temp0 * scale;
 					*loop_cnt = y;
+					*dco_min_freq_used = dco_min_freq;
 					return true;
 				}
 			}
@@ -1548,7 +1550,9 @@ intel_lt_phy_calculate_hdmi_state(struct intel_lt_phy_pll_state *lt_state,
 		(ndiv << 9) + (1 << 4);
 	p.bias_trim.val = (csel2fo_ovrd_en << 30) + (csel2fo << 24);
 	p.ssc_inj.val = 0;
-	found = calculate_target_dco_and_loop_cnt(frequency_khz, &target_dco_mhz, &loop_cnt);
+	/* dco_fmin becomes the lower limit of the DCO range the solution is in */
+	found = calculate_target_dco_and_loop_cnt(frequency_khz, &target_dco_mhz, &loop_cnt,
+						  &dco_fmin);
 	if (!found)
 		return -EINVAL;
 
