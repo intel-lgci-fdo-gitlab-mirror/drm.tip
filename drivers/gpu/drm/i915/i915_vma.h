@@ -204,25 +204,19 @@ static inline void i915_vma_put(struct i915_vma *vma)
 	i915_gem_object_put(vma->obj);
 }
 
+/* a is never NULL, b may be NULL (assumed normal view) or not */
 static inline long
-i915_vma_compare(struct i915_vma *vma,
-		 struct i915_address_space *vm,
-		 const struct intel_gtt_view *view)
+intel_gtt_view_compare(const struct intel_gtt_view *a,
+		       const struct intel_gtt_view *b)
 {
 	ptrdiff_t cmp;
 
-	GEM_BUG_ON(view && !i915_is_ggtt_or_dpt(vm));
-
-	cmp = ptrdiff(vma->vm, vm);
-	if (cmp)
-		return cmp;
-
 	BUILD_BUG_ON(INTEL_GTT_VIEW_NORMAL != 0);
-	cmp = vma->gtt_view.type;
-	if (!view)
+	cmp = a->type;
+	if (!b)
 		return cmp;
 
-	cmp -= view->type;
+	cmp -= b->type;
 	if (cmp)
 		return cmp;
 
@@ -241,11 +235,27 @@ i915_vma_compare(struct i915_vma *vma,
 	BUILD_BUG_ON(INTEL_GTT_VIEW_NORMAL >= INTEL_GTT_VIEW_PARTIAL);
 	BUILD_BUG_ON(INTEL_GTT_VIEW_PARTIAL >= INTEL_GTT_VIEW_ROTATED);
 	BUILD_BUG_ON(INTEL_GTT_VIEW_ROTATED >= INTEL_GTT_VIEW_REMAPPED);
-	BUILD_BUG_ON(offsetof(typeof(*view), rotated) !=
-		     offsetof(typeof(*view), partial));
-	BUILD_BUG_ON(offsetof(typeof(*view), rotated) !=
-		     offsetof(typeof(*view), remapped));
-	return memcmp(&vma->gtt_view.partial, &view->partial, view->type);
+	BUILD_BUG_ON(offsetof(typeof(*b), rotated) !=
+		     offsetof(typeof(*b), partial));
+	BUILD_BUG_ON(offsetof(typeof(*b), rotated) !=
+		     offsetof(typeof(*b), remapped));
+	return memcmp(&a->partial, &b->partial, b->type);
+}
+
+static inline long
+i915_vma_compare(struct i915_vma *vma,
+		 struct i915_address_space *vm,
+		 const struct intel_gtt_view *view)
+{
+	ptrdiff_t cmp;
+
+	GEM_BUG_ON(view && !i915_is_ggtt_or_dpt(vm));
+
+	cmp = ptrdiff(vma->vm, vm);
+	if (cmp)
+		return cmp;
+
+	return intel_gtt_view_compare(&vma->gtt_view, view);
 }
 
 struct i915_vma_work *i915_vma_work(void);
