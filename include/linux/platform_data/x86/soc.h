@@ -9,12 +9,11 @@
 #define __PLATFORM_DATA_X86_SOC_H
 
 #include <linux/types.h>
-
-#if IS_ENABLED(CONFIG_X86)
-
 #include <linux/device-id/x86_cpu.h>
 
 #include <asm/cpu_device_id.h>
+
+#if IS_ENABLED(CONFIG_X86)
 
 #define SOC_INTEL_IS_CPU(soc, type)				\
 static inline bool soc_intel_is_##soc(void)			\
