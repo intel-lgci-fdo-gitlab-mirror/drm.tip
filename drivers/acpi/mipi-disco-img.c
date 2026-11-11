@@ -30,6 +30,8 @@
 
 #include <media/v4l2-fwnode.h>
 
+#include <asm/cpu_device_id.h>
+
 #include "internal.h"
 
 static LIST_HEAD(acpi_mipi_crs_csi2_list);
@@ -724,9 +726,6 @@ void acpi_mipi_crs_csi2_cleanup(void)
 }
 
 #ifdef CONFIG_X86
-#include <asm/cpu_device_id.h>
-#include <asm/intel-family.h>
-
 /* CPU matches for Dell generations with broken ACPI MIPI DISCO info */
 static const struct x86_cpu_id dell_broken_mipi_disco_cpu_gens[] = {
 	X86_MATCH_VFM(INTEL_TIGERLAKE, NULL),
