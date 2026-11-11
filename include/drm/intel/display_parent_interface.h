@@ -66,9 +66,8 @@ struct intel_display_bo_interface {
 };
 
 struct intel_display_dpt_interface {
-	struct intel_dpt *(*create)(struct drm_gem_object *obj,
-				    const struct intel_gtt_view *view);
-	void (*destroy)(struct intel_dpt *dpt);
+	int (*create)(struct drm_gem_object *obj,
+		      const struct intel_gtt_view *view);
 };
 
 struct intel_display_dsb_interface {
@@ -90,13 +89,11 @@ struct intel_display_fb_pin_interface {
 	void (*ggtt_unpin)(struct i915_vma *ggtt_vma,
 			   int fence_id);
 	int (*dpt_pin)(struct drm_gem_object *obj,
-		       struct intel_dpt *dpt,
 		       const struct intel_fb_pin_params *pin_params,
-		       struct i915_vma **out_dpt_vma,
 		       struct i915_vma **out_ggtt_vma,
 		       u32 *out_offset);
-	void (*dpt_unpin)(struct intel_dpt *dpt,
-			  struct i915_vma *dpt_vma,
+	void (*dpt_unpin)(struct drm_gem_object *obj,
+			  const struct intel_gtt_view *view,
 			  struct i915_vma *ggtt_vma);
 	struct i915_vma *(*reuse_vma)(struct i915_vma *old_ggtt_vma,
 				      struct drm_gem_object *old_obj,

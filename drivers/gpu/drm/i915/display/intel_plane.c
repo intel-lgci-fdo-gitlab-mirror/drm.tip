@@ -137,7 +137,6 @@ intel_plane_duplicate_state(struct drm_plane *plane)
 	__drm_atomic_helper_plane_duplicate_state(plane, &intel_state->uapi);
 
 	intel_state->ggtt_vma = NULL;
-	intel_state->dpt_vma = NULL;
 	intel_state->fence_id = -1;
 	intel_state->damage = DRM_RECT_INIT(0, 0, 0, 0);
 	intel_state->psr2_sel_fetch_area = DRM_RECT_INIT(0, 0, 0, 0);
@@ -173,7 +172,6 @@ intel_plane_destroy_state(struct drm_plane *plane,
 	struct intel_plane_state *plane_state = to_intel_plane_state(state);
 
 	drm_WARN_ON(plane->dev, plane_state->ggtt_vma);
-	drm_WARN_ON(plane->dev, plane_state->dpt_vma);
 
 	__drm_atomic_helper_plane_destroy_state(&plane_state->uapi);
 	if (plane_state->hw.fb)
@@ -1371,7 +1369,6 @@ int intel_plane_pin_fb(struct intel_plane_state *plane_state,
 	const struct intel_framebuffer *old_fb =
 		to_intel_framebuffer(old_plane_state->hw.fb);
 	struct i915_vma *ggtt_vma = NULL;
-	struct i915_vma *dpt_vma = NULL;
 	int fence_id = -1;
 	u32 offset = 0;
 	int ret;
@@ -1410,14 +1407,12 @@ int intel_plane_pin_fb(struct intel_plane_state *plane_state,
 		};
 
 		ret = intel_parent_fb_pin_dpt_pin(display, intel_fb_bo(&fb->base),
-						  fb->dpt, &pin_params,
-						  &dpt_vma, &ggtt_vma, &offset);
+						  &pin_params, &ggtt_vma, &offset);
 	}
 	if (ret)
 		return ret;
 
 got_vma:
-	plane_state->dpt_vma = dpt_vma;
 	plane_state->ggtt_vma = ggtt_vma;
 	plane_state->fence_id = fence_id;
 
@@ -1440,11 +1435,11 @@ void intel_plane_unpin_fb(struct intel_plane_state *old_plane_state)
 		old_plane_state->ggtt_vma = NULL;
 		old_plane_state->fence_id = -1;
 	} else {
-		intel_parent_fb_pin_dpt_unpin(display, fb->dpt,
-					      old_plane_state->dpt_vma,
+		intel_parent_fb_pin_dpt_unpin(display,
+					      intel_fb_bo(&fb->base),
+					      &old_plane_state->view.gtt,
 					      old_plane_state->ggtt_vma);
 
-		old_plane_state->dpt_vma = NULL;
 		old_plane_state->ggtt_vma = NULL;
 	}
 }

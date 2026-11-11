@@ -289,6 +289,12 @@ struct drm_i915_gem_object {
 	spinlock_t lut_lock; /* guards lut_list */
 
 	/**
+	 * @dpt_list: List of DPTs backed by this object
+	 */
+	struct list_head dpt_list;
+	spinlock_t dpt_lock; /* protects dpt_list */
+
+	/**
 	 * @obj_link: Link into @i915_gem_ww_ctx.obj_list
 	 *
 	 * When we lock this object through i915_gem_object_lock() with a

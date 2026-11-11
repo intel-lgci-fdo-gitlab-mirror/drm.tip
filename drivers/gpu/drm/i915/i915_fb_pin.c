@@ -15,11 +15,10 @@
 #include "i915_vma.h"
 
 static struct i915_vma *
-intel_fb_pin_to_dpt(struct drm_gem_object *_obj, struct intel_dpt *dpt,
+intel_fb_pin_to_dpt(struct drm_i915_gem_object *obj, struct intel_dpt *dpt,
 		    const struct intel_fb_pin_params *pin_params)
 {
-	struct drm_i915_private *i915 = to_i915(_obj->dev);
-	struct drm_i915_gem_object *obj = to_intel_bo(_obj);
+	struct drm_i915_private *i915 = to_i915(obj->base.dev);
 	struct i915_address_space *vm = i915_dpt_to_vm(dpt);
 	struct i915_gem_ww_ctx ww;
 	struct i915_vma *vma;
@@ -225,6 +224,8 @@ static int i915_fb_pin_ggtt_pin(struct drm_gem_object *obj,
 	if (IS_ERR(ggtt_vma))
 		return PTR_ERR(ggtt_vma);
 
+	drm_WARN_ON(obj->dev, ggtt_vma->vm->is_dpt);
+
 	*out_ggtt_vma = ggtt_vma;
 
 	/*
@@ -244,18 +245,23 @@ static int i915_fb_pin_ggtt_pin(struct drm_gem_object *obj,
 static void i915_fb_pin_ggtt_unpin(struct i915_vma *ggtt_vma,
 				   int fence_id)
 {
+	WARN_ON(ggtt_vma->vm->is_dpt);
+
 	intel_fb_unpin_vma(ggtt_vma, fence_id);
 }
 
-static int i915_fb_pin_dpt_pin(struct drm_gem_object *obj, struct intel_dpt *dpt,
+static int i915_fb_pin_dpt_pin(struct drm_gem_object *_obj,
 			       const struct intel_fb_pin_params *pin_params,
-			       struct i915_vma **out_dpt_vma,
 			       struct i915_vma **out_ggtt_vma,
 			       u32 *out_offset)
 {
+	struct drm_i915_gem_object *obj = to_intel_bo(_obj);
 	struct i915_vma *ggtt_vma, *dpt_vma;
+	struct intel_dpt *dpt;
 
-	WARN_ON(!dpt);
+	dpt = i915_dpt_lookup(obj, pin_params->view);
+	if (drm_WARN_ON(obj->base.dev, !dpt))
+		return -EINVAL;
 
 	ggtt_vma = i915_dpt_pin_to_ggtt(dpt, pin_params->alignment / 512);
 	if (IS_ERR(ggtt_vma))
@@ -267,20 +273,36 @@ static int i915_fb_pin_dpt_pin(struct drm_gem_object *obj, struct intel_dpt *dpt
 		return PTR_ERR(dpt_vma);
 	}
 
-	drm_WARN_ON(obj->dev, ggtt_vma == dpt_vma);
+	drm_WARN_ON(obj->base.dev, ggtt_vma == dpt_vma);
+	drm_WARN_ON(obj->base.dev, ggtt_vma->vm->is_dpt);
+	drm_WARN_ON(obj->base.dev, !dpt_vma->vm->is_dpt);
 
 	*out_ggtt_vma = ggtt_vma;
-	*out_dpt_vma = dpt_vma;
-
 	*out_offset = i915_ggtt_offset(ggtt_vma);
 
 	return 0;
 }
 
-static void i915_fb_pin_dpt_unpin(struct intel_dpt *dpt,
-				  struct i915_vma *dpt_vma,
+static void i915_fb_pin_dpt_unpin(struct drm_gem_object *_obj,
+				  const struct intel_gtt_view *view,
 				  struct i915_vma *ggtt_vma)
 {
+	struct drm_i915_gem_object *obj = to_intel_bo(_obj);
+	struct i915_vma *dpt_vma;
+	struct intel_dpt *dpt;
+
+	dpt = i915_dpt_lookup(obj, view);
+	if (drm_WARN_ON(obj->base.dev, !dpt))
+		return;
+
+	dpt_vma = i915_vma_lookup(obj, i915_dpt_to_vm(dpt), view);
+	if (drm_WARN_ON(obj->base.dev, !dpt_vma))
+		return;
+
+	drm_WARN_ON(obj->base.dev, ggtt_vma == dpt_vma);
+	drm_WARN_ON(obj->base.dev, ggtt_vma->vm->is_dpt);
+	drm_WARN_ON(obj->base.dev, !dpt_vma->vm->is_dpt);
+
 	intel_fb_unpin_vma(dpt_vma, -1);
 	i915_dpt_unpin_from_ggtt(dpt);
 }

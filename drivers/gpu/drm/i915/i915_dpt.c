@@ -20,16 +20,15 @@ struct intel_dpt {
 	struct drm_i915_gem_object *obj;
 	struct i915_vma *vma;
 	void __iomem *iomem;
+	struct intel_gtt_view view;
+	struct list_head obj_link;
 	struct list_head ggtt_link;
 };
 
-#define i915_is_dpt(vm) ((vm)->is_dpt)
-
-static inline struct intel_dpt *
-i915_vm_to_dpt(struct i915_address_space *vm)
+struct intel_dpt *i915_vm_to_dpt(struct i915_address_space *vm)
 {
 	BUILD_BUG_ON(offsetof(struct intel_dpt, vm));
-	drm_WARN_ON(&vm->i915->drm, !i915_is_dpt(vm));
+	drm_WARN_ON(&vm->i915->drm, !vm->is_dpt);
 	return container_of(vm, struct intel_dpt, vm);
 }
 
@@ -196,10 +195,66 @@ static void i915_dpt_free(struct intel_dpt *dpt)
 	i915_dpt_put(dpt);
 }
 
-static struct intel_dpt *i915_dpt_create(struct drm_gem_object *obj,
-					 const struct intel_gtt_view *view)
+static struct intel_dpt *__i915_dpt_lookup(struct drm_i915_gem_object *obj,
+					   const struct intel_gtt_view *view)
 {
-	struct drm_i915_private *i915 = to_i915(obj->dev);
+	struct intel_dpt *dpt;
+
+	lockdep_assert_held(&obj->dpt_lock);
+
+	list_for_each_entry(dpt, &obj->dpt_list, obj_link) {
+		if (!intel_gtt_view_compare(&dpt->view, view))
+			return dpt;
+	}
+
+	return NULL;
+}
+
+struct intel_dpt *i915_dpt_lookup(struct drm_i915_gem_object *obj,
+				  const struct intel_gtt_view *view)
+{
+	struct intel_dpt *dpt;
+
+	spin_lock(&obj->dpt_lock);
+	dpt = __i915_dpt_lookup(obj, view);
+	spin_unlock(&obj->dpt_lock);
+
+	return dpt;
+}
+
+static void i915_dpt_add(struct drm_i915_gem_object *obj,
+			 struct intel_dpt *new_dpt)
+{
+	struct drm_i915_private *i915 = to_i915(obj->base.dev);
+	struct i915_ggtt *ggtt = to_gt(i915)->ggtt;
+	struct intel_dpt *old_dpt;
+
+	spin_lock(&obj->dpt_lock);
+
+	/*
+	 * If someone else inserted a suitable DPT in the
+	 * meantime we keep that and throw away the new one.
+	 */
+	old_dpt = __i915_dpt_lookup(obj, &new_dpt->view);
+	if (old_dpt) {
+		spin_unlock(&obj->dpt_lock);
+		i915_dpt_free(new_dpt);
+		return;
+	}
+
+	list_add_tail(&new_dpt->obj_link, &obj->dpt_list);
+
+	spin_unlock(&obj->dpt_lock);
+
+	spin_lock(&ggtt->dpt_lock);
+	list_add_tail(&new_dpt->ggtt_link, &ggtt->dpt_list);
+	spin_unlock(&ggtt->dpt_lock);
+}
+
+static struct intel_dpt *dpt_create(struct drm_i915_gem_object *obj,
+				    const struct intel_gtt_view *view)
+{
+	struct drm_i915_private *i915 = to_i915(obj->base.dev);
 	struct i915_ggtt *ggtt = to_gt(i915)->ggtt;
 	struct drm_i915_gem_object *dpt_obj;
 	struct i915_address_space *vm;
@@ -211,7 +266,7 @@ static struct intel_dpt *i915_dpt_create(struct drm_gem_object *obj,
 		size = intel_remapped_info_size(&view->remapped);
 	} else {
 		drm_WARN_ON(&i915->drm, !intel_gtt_view_is_normal(view));
-		size = DIV_ROUND_UP_ULL(obj->size, I915_GTT_PAGE_SIZE);
+		size = DIV_ROUND_UP_ULL(obj->base.size, I915_GTT_PAGE_SIZE);
 	}
 
 	size = round_up(size * sizeof(gen8_pte_t), I915_GTT_PAGE_SIZE);
@@ -241,6 +296,8 @@ static struct intel_dpt *i915_dpt_create(struct drm_gem_object *obj,
 
 	vm = &dpt->vm;
 
+	dpt->view = *view;
+
 	vm->gt = to_gt(i915);
 	vm->i915 = i915;
 	vm->dma = i915->drm.dev;
@@ -262,22 +319,47 @@ static struct intel_dpt *i915_dpt_create(struct drm_gem_object *obj,
 	dpt->obj = dpt_obj;
 	dpt->obj->is_dpt = true;
 
-	spin_lock(&ggtt->dpt_lock);
-	list_add_tail(&dpt->ggtt_link, &ggtt->dpt_list);
-	spin_unlock(&ggtt->dpt_lock);
-
 	return dpt;
 }
 
-static void i915_dpt_destroy(struct intel_dpt *dpt)
+static int i915_dpt_create(struct drm_gem_object *_obj,
+			   const struct intel_gtt_view *view)
 {
-	struct i915_ggtt *ggtt = i915_dpt_to_vm(dpt)->gt->ggtt;
+	struct drm_i915_gem_object *obj = to_intel_bo(_obj);
+	struct intel_dpt *dpt;
+
+	/* already have one? */
+	dpt = i915_dpt_lookup(obj, view);
+	if (dpt)
+		return 0;
+
+	dpt = dpt_create(obj, view);
+	if (IS_ERR(dpt))
+		return PTR_ERR(dpt);
+
+	i915_dpt_add(obj, dpt);
+
+	return 0;
+}
+
+void i915_dpt_obj_free(struct drm_i915_gem_object *obj)
+{
+	struct drm_i915_private *i915 = to_i915(obj->base.dev);
+	struct i915_ggtt *ggtt = to_gt(i915)->ggtt;
+	struct intel_dpt *dpt, *next;
+	LIST_HEAD(dpt_list);
+
+	spin_lock(&obj->dpt_lock);
+	list_splice_init(&obj->dpt_list, &dpt_list);
+	spin_unlock(&obj->dpt_lock);
 
 	spin_lock(&ggtt->dpt_lock);
-	list_del_init(&dpt->ggtt_link);
+	list_for_each_entry(dpt, &dpt_list, obj_link)
+		list_del_init(&dpt->ggtt_link);
 	spin_unlock(&ggtt->dpt_lock);
 
-	i915_dpt_free(dpt);
+	list_for_each_entry_safe(dpt, next, &dpt_list, obj_link)
+		i915_dpt_free(dpt);
 }
 
 void i915_dpt_suspend(struct i915_ggtt *ggtt)
@@ -321,7 +403,7 @@ void i915_dpt_resume(struct i915_ggtt *ggtt)
 
 	/*
 	 * i915_ggtt_resume_vm() with evict_all==true
-	 * only does a quick sanity check, so OK to call
+	 * only does a sanity check, so OK to call
 	 * with ggtt->dpt_lock held.
 	 */
 	spin_lock(&ggtt->dpt_lock);
@@ -339,5 +421,4 @@ u64 i915_dpt_offset(struct i915_vma *dpt_vma)
 
 const struct intel_display_dpt_interface i915_display_dpt_interface = {
 	.create = i915_dpt_create,
-	.destroy = i915_dpt_destroy,
 };
