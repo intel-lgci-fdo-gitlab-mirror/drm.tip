@@ -28,9 +28,7 @@
 #include <linux/tpm.h>
 #include <linux/tpm_eventlog.h>
 
-#ifdef CONFIG_X86
 #include <asm/cpu_device_id.h>
-#endif
 
 #define TPM_MINOR		224	/* officially assigned */
 #define TPM_NUM_DEVICES		65536
