@@ -2557,7 +2557,7 @@ static void dm_test_update_plane_color_mgmt_colorop_bypass_pipeline(struct kunit
 }
 
 /**
- * dm_test_update_plane_color_mgmt_colorop_missing_multiplier - missing multiplier op falls back
+ * dm_test_update_plane_color_mgmt_colorop_missing_multiplier - missing multiplier op is rejected
  * @test: KUnit test context
  */
 static void dm_test_update_plane_color_mgmt_colorop_missing_multiplier(struct kunit *test)
@@ -2578,13 +2578,13 @@ static void dm_test_update_plane_color_mgmt_colorop_missing_multiplier(struct ku
 
 	KUNIT_EXPECT_EQ(test,
 			amdgpu_dm_update_plane_color_mgmt(f.crtc_state, &f.dm_plane_state->base, f.dc_plane_state),
-			0);
+			-EINVAL);
 	KUNIT_EXPECT_FALSE(test, f.dc_plane_state->cm.flags.bits.shaper_enable);
 	KUNIT_EXPECT_FALSE(test, f.dc_plane_state->cm.flags.bits.blend_enable);
 }
 
 /**
- * dm_test_update_plane_color_mgmt_colorop_missing_3x4 - missing 3x4 op falls back
+ * dm_test_update_plane_color_mgmt_colorop_missing_3x4 - missing 3x4 op is rejected
  * @test: KUnit test context
  */
 static void dm_test_update_plane_color_mgmt_colorop_missing_3x4(struct kunit *test)
@@ -2607,13 +2607,13 @@ static void dm_test_update_plane_color_mgmt_colorop_missing_3x4(struct kunit *te
 
 	KUNIT_EXPECT_EQ(test,
 			amdgpu_dm_update_plane_color_mgmt(f.crtc_state, &f.dm_plane_state->base, f.dc_plane_state),
-			0);
+			-EINVAL);
 	KUNIT_EXPECT_FALSE(test, f.dc_plane_state->cm.flags.bits.shaper_enable);
 	KUNIT_EXPECT_FALSE(test, f.dc_plane_state->cm.flags.bits.blend_enable);
 }
 
 /**
- * dm_test_update_plane_color_mgmt_colorop_truncated - truncated pipelines fall back
+ * dm_test_update_plane_color_mgmt_colorop_truncated - truncated pipelines are rejected
  * @test: KUnit test context
  *
  * Covers each pipeline exit after the 3x4 matrix while all present colorops
@@ -2658,7 +2658,8 @@ static void dm_test_update_plane_color_mgmt_colorop_truncated(struct kunit *test
 		memset(f.dc_plane_state, 0, sizeof(*f.dc_plane_state));
 
 		ret = amdgpu_dm_update_plane_color_mgmt(crtc_state, plane_state, dc_plane_state);
-		KUNIT_EXPECT_EQ_MSG(test, ret, 0, "pipeline length %d should fall back", count);
+		KUNIT_EXPECT_EQ_MSG(test, ret, -EINVAL,
+				    "pipeline length %d should be rejected", count);
 		KUNIT_EXPECT_FALSE(test, f.dc_plane_state->cm.flags.bits.shaper_enable);
 		KUNIT_EXPECT_FALSE(test, f.dc_plane_state->cm.flags.bits.lut3d_enable);
 		KUNIT_EXPECT_FALSE(test, f.dc_plane_state->cm.flags.bits.blend_enable);
@@ -2828,7 +2829,7 @@ static void dm_test_update_plane_color_mgmt_colorop_3dlut(struct kunit *test)
 }
 
 /**
- * dm_test_update_plane_color_mgmt_colorop_3dlut_no_data - empty 3D LUT falls back
+ * dm_test_update_plane_color_mgmt_colorop_3dlut_no_data - active 3D LUT without data is rejected
  * @test: KUnit test context
  */
 static void dm_test_update_plane_color_mgmt_colorop_3dlut_no_data(struct kunit *test)
@@ -2869,7 +2870,7 @@ static void dm_test_update_plane_color_mgmt_colorop_3dlut_no_data(struct kunit *
 
 	ret = amdgpu_dm_update_plane_color_mgmt(f.crtc_state, plane_state,
 						f.dc_plane_state);
-	KUNIT_EXPECT_EQ(test, ret, 0);
+	KUNIT_EXPECT_EQ(test, ret, -EINVAL);
 	KUNIT_EXPECT_FALSE(test, f.dc_plane_state->cm.flags.bits.lut3d_enable);
 }
 
