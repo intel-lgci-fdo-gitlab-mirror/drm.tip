@@ -1154,6 +1154,40 @@ static int intel_dp_max_tmds_clock(struct intel_dp *intel_dp)
 	return max_tmds_clock;
 }
 
+static bool intel_dp_is_hdmi_2_1_sink(struct intel_dp *intel_dp);
+static int intel_dp_hdmi_sink_max_frl(struct intel_dp *intel_dp);
+
+static int frl_required_bw(int clock, int bpc,
+			   enum intel_output_format sink_format)
+{
+	if (sink_format == INTEL_OUTPUT_FORMAT_YCBCR420)
+		clock /= 2;
+
+	return clock * bpc * 3;
+}
+
+/* Max HDMI FRL rate in Gbps if the PCON will use FRL to the sink, 0 for TMDS */
+static int intel_dp_hdmi_frl_max_bw(struct intel_dp *intel_dp)
+{
+	if (!(intel_dp->downstream_ports[2] & DP_PCON_SOURCE_CTL_MODE) ||
+	    !intel_dp_is_hdmi_2_1_sink(intel_dp))
+		return 0;
+
+	return min(intel_dp->dfp.pcon_max_frl_bw,
+		   intel_dp_hdmi_sink_max_frl(intel_dp));
+}
+
+/* Check the pixel data fits the FRL link, including the 16b/18b encoding overhead */
+static enum drm_mode_status
+intel_dp_frl_bw_valid(int max_frl_bw, int clock, int bpc,
+		      enum intel_output_format sink_format)
+{
+	u64 required_bw = (u64)frl_required_bw(clock, bpc, sink_format) * 18;
+	u64 available_bw = (u64)max_frl_bw * 1000000 * 16;
+
+	return required_bw > available_bw ? MODE_CLOCK_HIGH : MODE_OK;
+}
+
 static enum drm_mode_status
 intel_dp_tmds_clock_valid(struct intel_dp *intel_dp,
 			  int clock, int bpc,
@@ -1179,15 +1213,6 @@ intel_dp_tmds_clock_valid(struct intel_dp *intel_dp,
 	return MODE_OK;
 }
 
-static int frl_required_bw(int clock, int bpc,
-			   enum intel_output_format sink_format)
-{
-	if (sink_format == INTEL_OUTPUT_FORMAT_YCBCR420)
-		clock /= 2;
-
-	return clock * bpc * 3;
-}
-
 static enum drm_mode_status
 intel_dp_mode_valid_downstream(struct intel_connector *connector,
 			       const struct drm_display_mode *mode,
@@ -1195,23 +1220,14 @@ intel_dp_mode_valid_downstream(struct intel_connector *connector,
 			       enum intel_output_format sink_format)
 {
 	struct intel_dp *intel_dp = intel_attached_dp(connector);
+	int max_frl_bw;
 
-	/* If PCON supports FRL MODE, check FRL bandwidth constraints */
-	if (intel_dp->dfp.pcon_max_frl_bw) {
-		int target_bw, max_frl_bw;
-
+	/* If the PCON will use FRL, check FRL bandwidth constraints */
+	max_frl_bw = intel_dp_hdmi_frl_max_bw(intel_dp);
+	if (max_frl_bw) {
 		/* Assume 8bpc for the FRL bandwidth check */
-		target_bw = frl_required_bw(target_clock, 8, sink_format);
-
-		max_frl_bw = intel_dp->dfp.pcon_max_frl_bw;
-
-		/* converting bw from Gbps to Kbps*/
-		max_frl_bw = max_frl_bw * 1000000;
-
-		if (target_bw > max_frl_bw)
-			return MODE_CLOCK_HIGH;
-
-		return MODE_OK;
+		return intel_dp_frl_bw_valid(max_frl_bw, target_clock, 8,
+					     sink_format);
 	}
 
 	if (intel_dp->dfp.max_dotclock &&
@@ -1728,6 +1744,8 @@ static int intel_dp_hdmi_compute_bpc(struct intel_dp *intel_dp,
 				     int bpc, bool respect_downstream_limits)
 {
 	int clock = crtc_state->hw.adjusted_mode.crtc_clock;
+	int max_frl_bw = intel_dp_hdmi_frl_max_bw(intel_dp);
+	enum drm_mode_status status;
 
 	/*
 	 * Current bpc could already be below 8bpc due to
@@ -1745,10 +1763,20 @@ static int intel_dp_hdmi_compute_bpc(struct intel_dp *intel_dp,
 		bpc = 8;
 
 	for (; bpc >= 8; bpc -= 2) {
-		if (intel_hdmi_bpc_possible(crtc_state, bpc,
-					    intel_dp_has_hdmi_sink(intel_dp)) &&
-		    intel_dp_tmds_clock_valid(intel_dp, clock, bpc, crtc_state->sink_format,
-					      respect_downstream_limits) == MODE_OK)
+		if (!intel_hdmi_bpc_possible(crtc_state, bpc,
+					     intel_dp_has_hdmi_sink(intel_dp)))
+			continue;
+
+		/* The TMDS clock limits don't apply when the PCON uses FRL */
+		if (max_frl_bw && respect_downstream_limits)
+			status = intel_dp_frl_bw_valid(max_frl_bw, clock, bpc,
+						       crtc_state->sink_format);
+		else
+			status = intel_dp_tmds_clock_valid(intel_dp, clock, bpc,
+							   crtc_state->sink_format,
+							   respect_downstream_limits);
+
+		if (status == MODE_OK)
 			return bpc;
 	}
 
