@@ -6,10 +6,17 @@
 
 #include <linux/types.h>
 
+struct drm_i915_gem_object;
 struct i915_address_space;
 struct i915_ggtt;
 struct i915_vma;
 struct intel_dpt;
+struct intel_gtt_view;
+
+struct intel_dpt *i915_vm_to_dpt(struct i915_address_space *vm);
+void i915_dpt_obj_free(struct drm_i915_gem_object *obj);
+struct intel_dpt *i915_dpt_lookup(struct drm_i915_gem_object *obj,
+				  const struct intel_gtt_view *view);
 
 struct i915_address_space *i915_dpt_to_vm(struct intel_dpt *dpt);
 struct i915_vma *i915_dpt_pin_to_ggtt(struct intel_dpt *dpt, unsigned int alignment);

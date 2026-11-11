@@ -421,33 +421,27 @@ static void xe_fb_pin_ggtt_unpin(struct i915_vma *ggtt_vma,
 	__xe_unpin_fb_vma(ggtt_vma);
 }
 
-static int xe_fb_pin_dpt_pin(struct drm_gem_object *obj, struct intel_dpt *dpt,
+static int xe_fb_pin_dpt_pin(struct drm_gem_object *obj,
 			     const struct intel_fb_pin_params *pin_params,
-			     struct i915_vma **out_dpt_vma,
 			     struct i915_vma **out_ggtt_vma,
 			     u32 *out_offset)
 {
 	struct i915_vma *ggtt_vma;
 
-	WARN_ON(dpt);
-
 	ggtt_vma = __xe_pin_fb_vma(obj, true, pin_params);
 	if (IS_ERR(ggtt_vma))
 		return PTR_ERR(ggtt_vma);
 
-	*out_dpt_vma = NULL; /* not used on xe */
 	*out_ggtt_vma = ggtt_vma;
 	*out_offset = xe_ggtt_node_addr(ggtt_vma->node);
 
 	return 0;
 }
 
-static void xe_fb_pin_dpt_unpin(struct intel_dpt *dpt,
-				struct i915_vma *dpt_vma,
+static void xe_fb_pin_dpt_unpin(struct drm_gem_object *obj,
+				const struct intel_gtt_view *view,
 				struct i915_vma *ggtt_vma)
 {
-	WARN_ON(dpt || dpt_vma);
-
 	__xe_unpin_fb_vma(ggtt_vma);
 }
 

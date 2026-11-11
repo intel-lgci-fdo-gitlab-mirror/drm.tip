@@ -32,6 +32,7 @@
 #include "display/intel_frontbuffer.h"
 #include "pxp/intel_pxp.h"
 
+#include "i915_dpt.h"
 #include "i915_drv.h"
 #include "i915_file_private.h"
 #include "i915_gem_clflush.h"
@@ -115,6 +116,9 @@ void i915_gem_object_init(struct drm_i915_gem_object *obj,
 
 	INIT_LIST_HEAD(&obj->lut_list);
 	spin_lock_init(&obj->lut_lock);
+
+	INIT_LIST_HEAD(&obj->dpt_list);
+	spin_lock_init(&obj->dpt_lock);
 
 	spin_lock_init(&obj->mmo.lock);
 	obj->mmo.offsets = RB_ROOT;
@@ -401,6 +405,8 @@ void __i915_gem_free_object(struct drm_i915_gem_object *obj)
 
 	if (obj->shares_resv_from)
 		i915_vm_resv_put(obj->shares_resv_from);
+
+	i915_dpt_obj_free(obj);
 
 	__i915_gem_object_fini(obj);
 }

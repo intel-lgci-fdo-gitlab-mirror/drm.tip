@@ -23,10 +23,9 @@ struct intel_stolen_node;
 struct iosys_map;
 
 /* dpt */
-struct intel_dpt *intel_parent_dpt_create(struct intel_display *display,
-					  struct drm_gem_object *obj,
-					  const struct intel_gtt_view *view);
-void intel_parent_dpt_destroy(struct intel_display *display, struct intel_dpt *dpt);
+int intel_parent_dpt_create(struct intel_display *display,
+			    struct drm_gem_object *obj,
+			    const struct intel_gtt_view *view);
 
 /* fb_pin */
 int intel_parent_fb_pin_ggtt_pin(struct intel_display *display,
@@ -40,14 +39,12 @@ void intel_parent_fb_pin_ggtt_unpin(struct intel_display *display,
 				    int fence_id);
 int intel_parent_fb_pin_dpt_pin(struct intel_display *display,
 				struct drm_gem_object *obj,
-				struct intel_dpt *dpt,
 				const struct intel_fb_pin_params *pin_params,
-				struct i915_vma **out_dpt_vma,
 				struct i915_vma **out_ggtt_vma,
 				u32 *out_offset);
 void intel_parent_fb_pin_dpt_unpin(struct intel_display *display,
-				   struct intel_dpt *dpt,
-				   struct i915_vma *dpt_vma,
+				   struct drm_gem_object *obj,
+				   const struct intel_gtt_view *view,
 				   struct i915_vma *ggtt_vma);
 struct i915_vma *intel_parent_fb_pin_reuse_vma(struct intel_display *display,
 					       struct i915_vma *old_ggtt_vma,

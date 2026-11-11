@@ -2078,9 +2078,6 @@ static void intel_user_framebuffer_destroy(struct drm_framebuffer *fb)
 
 	drm_framebuffer_cleanup(fb);
 
-	if (intel_fb_uses_dpt(fb))
-		intel_parent_dpt_destroy(display, intel_fb->dpt);
-
 	intel_bo_framebuffer_fini(intel_fb_bo(fb));
 
 	intel_parent_frontbuffer_put(display, intel_fb->frontbuffer);
@@ -2276,34 +2273,27 @@ int intel_framebuffer_init(struct intel_framebuffer *intel_fb,
 	if (intel_fb_uses_dpt(fb)) {
 		struct drm_gem_object *obj = intel_fb_bo(&intel_fb->base);
 		const struct intel_gtt_view *view;
-		struct intel_dpt *dpt;
 
 		if (intel_fb_needs_pot_stride_remap(intel_fb))
 			view = &intel_fb->remapped_view.gtt;
 		else
 			view = &intel_fb->normal_view.gtt;
 
-		dpt = intel_parent_dpt_create(display, obj, view);
-		if (IS_ERR(dpt)) {
+		ret = intel_parent_dpt_create(display, obj, view);
+		if (ret) {
 			drm_dbg_kms(display->drm, "failed to create DPT\n");
-			ret = PTR_ERR(dpt);
 			goto err_bo_framebuffer_fini;
 		}
-
-		intel_fb->dpt = dpt;
 	}
 
 	ret = drm_framebuffer_init(display->drm, fb, &intel_fb_funcs);
 	if (ret) {
 		drm_err(display->drm, "framebuffer init failed %d\n", ret);
-		goto err_free_dpt;
+		goto err_bo_framebuffer_fini;
 	}
 
 	return 0;
 
-err_free_dpt:
-	if (intel_fb_uses_dpt(fb))
-		intel_parent_dpt_destroy(display, intel_fb->dpt);
 err_bo_framebuffer_fini:
 	intel_bo_framebuffer_fini(obj);
 err_frontbuffer_put:

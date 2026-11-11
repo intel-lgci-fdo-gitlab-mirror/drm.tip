@@ -147,8 +147,6 @@ struct intel_framebuffer {
 		struct intel_fb_view remapped_view;
 	};
 
-	struct intel_dpt *dpt;
-
 	unsigned int min_alignment;
 	unsigned int vtd_guard;
 
@@ -690,7 +688,6 @@ struct intel_plane_state {
 	} hw;
 
 	struct i915_vma *ggtt_vma;
-	struct i915_vma *dpt_vma;
 
 	struct intel_fb_view view;
 
