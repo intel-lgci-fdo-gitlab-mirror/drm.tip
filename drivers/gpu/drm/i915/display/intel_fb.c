@@ -2275,13 +2275,15 @@ int intel_framebuffer_init(struct intel_framebuffer *intel_fb,
 
 	if (intel_fb_uses_dpt(fb)) {
 		struct drm_gem_object *obj = intel_fb_bo(&intel_fb->base);
+		const struct intel_gtt_view *view;
 		struct intel_dpt *dpt;
-		size_t size = 0;
 
 		if (intel_fb_needs_pot_stride_remap(intel_fb))
-			size = intel_remapped_info_size(&intel_fb->remapped_view.gtt.remapped);
+			view = &intel_fb->remapped_view.gtt;
+		else
+			view = &intel_fb->normal_view.gtt;
 
-		dpt = intel_parent_dpt_create(display, obj, size);
+		dpt = intel_parent_dpt_create(display, obj, view);
 		if (IS_ERR(dpt)) {
 			drm_dbg_kms(display->drm, "failed to create DPT\n");
 			ret = PTR_ERR(dpt);

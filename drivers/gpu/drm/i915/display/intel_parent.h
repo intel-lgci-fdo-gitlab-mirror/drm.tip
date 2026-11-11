@@ -24,7 +24,8 @@ struct iosys_map;
 
 /* dpt */
 struct intel_dpt *intel_parent_dpt_create(struct intel_display *display,
-					  struct drm_gem_object *obj, size_t size);
+					  struct drm_gem_object *obj,
+					  const struct intel_gtt_view *view);
 void intel_parent_dpt_destroy(struct intel_display *display, struct intel_dpt *dpt);
 void intel_parent_dpt_suspend(struct intel_display *display, struct intel_dpt *dpt);
 void intel_parent_dpt_resume(struct intel_display *display, struct intel_dpt *dpt);

@@ -179,16 +179,22 @@ void i915_dpt_unpin_from_ggtt(struct intel_dpt *dpt)
 	i915_vma_put(dpt->vma);
 }
 
-static struct intel_dpt *i915_dpt_create(struct drm_gem_object *obj, size_t size)
+static struct intel_dpt *i915_dpt_create(struct drm_gem_object *obj,
+					 const struct intel_gtt_view *view)
 {
 	struct drm_i915_private *i915 = to_i915(obj->dev);
 	struct drm_i915_gem_object *dpt_obj;
 	struct i915_address_space *vm;
 	struct intel_dpt *dpt;
+	size_t size;
 	int ret;
 
-	if (!size)
+	if (intel_gtt_view_is_remapped(view)) {
+		size = intel_remapped_info_size(&view->remapped);
+	} else {
+		drm_WARN_ON(&i915->drm, !intel_gtt_view_is_normal(view));
 		size = DIV_ROUND_UP_ULL(obj->size, I915_GTT_PAGE_SIZE);
+	}
 
 	size = round_up(size * sizeof(gen8_pte_t), I915_GTT_PAGE_SIZE);
 
