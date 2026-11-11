@@ -22,6 +22,7 @@
 #include "intel_gt.h"
 #include "intel_gt_regs.h"
 #include "intel_ring.h"
+#include "i915_dpt.h"
 #include "i915_drv.h"
 #include "i915_pci.h"
 #include "i915_reg.h"
@@ -181,6 +182,9 @@ retry:
 void i915_ggtt_suspend(struct i915_ggtt *ggtt)
 {
 	struct intel_gt *gt;
+
+	/* must be called before ggtt is suspended */
+	i915_dpt_suspend(ggtt);
 
 	i915_ggtt_suspend_vm(&ggtt->vm, false);
 	ggtt->invalidate(ggtt);
@@ -1591,6 +1595,9 @@ struct i915_ggtt *i915_ggtt_create(struct drm_i915_private *i915)
 
 	INIT_LIST_HEAD(&ggtt->gt_list);
 
+	INIT_LIST_HEAD(&ggtt->dpt_list);
+	spin_lock_init(&ggtt->dpt_lock);
+
 	return ggtt;
 }
 
@@ -1679,4 +1686,7 @@ void i915_ggtt_resume(struct i915_ggtt *ggtt)
 		wbinvd_on_all_cpus();
 
 	intel_ggtt_restore_fences(ggtt);
+
+	/* must be called after ggtt is resumed */
+	i915_dpt_resume(ggtt);
 }

@@ -41,18 +41,6 @@ void intel_parent_dpt_destroy(struct intel_display *display, struct intel_dpt *d
 		display->parent->dpt->destroy(dpt);
 }
 
-void intel_parent_dpt_suspend(struct intel_display *display, struct intel_dpt *dpt)
-{
-	if (display->parent->dpt)
-		display->parent->dpt->suspend(dpt);
-}
-
-void intel_parent_dpt_resume(struct intel_display *display, struct intel_dpt *dpt)
-{
-	if (display->parent->dpt)
-		display->parent->dpt->resume(dpt);
-}
-
 /* fb_pin */
 int intel_parent_fb_pin_ggtt_pin(struct intel_display *display,
 				 struct drm_gem_object *obj,
