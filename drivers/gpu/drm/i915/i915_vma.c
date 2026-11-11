@@ -285,9 +285,9 @@ err_vma:
 }
 
 static struct i915_vma *
-i915_vma_lookup(struct drm_i915_gem_object *obj,
-	   struct i915_address_space *vm,
-	   const struct intel_gtt_view *view)
+__i915_vma_lookup(struct drm_i915_gem_object *obj,
+		  struct i915_address_space *vm,
+		  const struct intel_gtt_view *view)
 {
 	struct rb_node *rb;
 
@@ -310,6 +310,34 @@ i915_vma_lookup(struct drm_i915_gem_object *obj,
 }
 
 /**
+ * i915_vma_lookup - return the singleton instance of the VMA if it exists
+ * @obj: parent &struct drm_i915_gem_object to be mapped
+ * @vm: address space in which the mapping is located
+ * @view: additional mapping requirements
+ *
+ * i915_vma_lookup() look up an existinbg VMA of the @obj in the @vm with
+ * the same @view characteristics. If no match is not found NULL is returned.
+ *
+ * Returns the vma, or NULL.
+ */
+struct i915_vma *
+i915_vma_lookup(struct drm_i915_gem_object *obj,
+		struct i915_address_space *vm,
+		const struct intel_gtt_view *view)
+{
+	struct i915_vma *vma;
+
+	GEM_BUG_ON(view && !i915_is_ggtt_or_dpt(vm));
+	GEM_BUG_ON(!kref_read(&vm->ref));
+
+	spin_lock(&obj->vma.lock);
+	vma = __i915_vma_lookup(obj, vm, view);
+	spin_unlock(&obj->vma.lock);
+
+	return vma;
+}
+
+/**
  * i915_vma_instance - return the singleton instance of the VMA
  * @obj: parent &struct drm_i915_gem_object to be mapped
  * @vm: address space in which the mapping is located
@@ -329,12 +357,7 @@ i915_vma_instance(struct drm_i915_gem_object *obj,
 {
 	struct i915_vma *vma;
 
-	GEM_BUG_ON(view && !i915_is_ggtt_or_dpt(vm));
-	GEM_BUG_ON(!kref_read(&vm->ref));
-
-	spin_lock(&obj->vma.lock);
 	vma = i915_vma_lookup(obj, vm, view);
-	spin_unlock(&obj->vma.lock);
 
 	/* vma_create() will resolve the race if another creates the vma */
 	if (unlikely(!vma))
