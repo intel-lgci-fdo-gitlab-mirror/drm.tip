@@ -10,7 +10,9 @@
 
 #include "abi/guc_actions_abi.h"
 #include "xe_bo.h"
+#include "xe_configfs.h"
 #include "xe_device_types.h"
+#include "xe_gt_printk.h"
 #include "xe_gt_types.h"
 #include "xe_guc.h"
 #include "xe_map.h"
@@ -55,6 +57,7 @@ int xe_guc_hwconfig_init(struct xe_guc *guc)
 	struct xe_gt *gt = guc_to_gt(guc);
 	struct xe_tile *tile = gt_to_tile(gt);
 	struct xe_bo *bo;
+	void *blob;
 	u32 size;
 	int err;
 
@@ -68,24 +71,37 @@ int xe_guc_hwconfig_init(struct xe_guc *guc)
 	if (gt != xe_root_mmio_gt(xe))
 		return 0;
 
-	/* ADL_P, DG2+ supports hwconfig table */
-	if (GRAPHICS_VERx100(xe) < 1255 && xe->info.platform != XE_ALDERLAKE_P)
-		return 0;
+	size = xe_configfs_get_hwconfig(to_pci_dev(xe->drm.dev), &blob);
+	if (!size) {
+		/* ADL_P, DG2+ supports hwconfig table */
+		if (GRAPHICS_VERx100(xe) < 1255 && xe->info.platform != XE_ALDERLAKE_P)
+			return 0;
 
-	err = guc_hwconfig_size(guc, &size);
-	if (err)
-		return err;
-	if (!size)
-		return -EINVAL;
+		err = guc_hwconfig_size(guc, &size);
+		if (err)
+			return err;
+		if (!size)
+			return -EINVAL;
+	}
 
 	bo = xe_managed_bo_create_pin_map(xe, tile, PAGE_ALIGN(size),
 					  XE_BO_FLAG_SYSTEM |
 					  XE_BO_FLAG_GGTT |
 					  XE_BO_FLAG_GGTT_INVALIDATE);
-	if (IS_ERR(bo))
+	if (IS_ERR(bo)) {
+		kfree(blob);
 		return PTR_ERR(bo);
+	}
 	guc->hwconfig.bo = bo;
 	guc->hwconfig.size = size;
+
+	if (blob) {
+		xe_map_memcpy_to(xe, &bo->vmap, 0, blob, size);
+		kfree(blob);
+		xe_gt_info(gt, "Using hwconfig table override from configfs (%u bytes)\n",
+			   size);
+		return 0;
+	}
 
 	return guc_hwconfig_copy(guc);
 }

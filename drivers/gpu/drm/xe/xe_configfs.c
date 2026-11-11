@@ -63,7 +63,8 @@
  *	    ├── engines_allowed
  *	    ├── migrate_ulls_period_ms
  *	    ├── enable_psmi
- *	    └── disable_vram_page_offline
+ *	    ├── disable_vram_page_offline
+ *	    └── hwconfig
  *
  * After configuring the attributes as per next section, the device can be
  * probed with::
@@ -277,6 +278,22 @@
  *
  * This attribute can only be set before binding to the device.
  *
+ * Hwconfig:
+ * ---------
+ *
+ * Override the hardware configuration table normally obtained from the GuC
+ * with a user-provided binary blob. When set, the driver uses this table in
+ * place of the GuC one everywhere it is consumed, including the table
+ * reported to userspace by the DRM_XE_DEVICE_QUERY_HWCONFIG query. This also
+ * allows a table to be provided on platforms where the GuC exposes none.
+ *
+ * The blob is the raw hwconfig table, so its size must be a multiple of 4
+ * bytes. Writing a new blob replaces the previous one::
+ *
+ *	# cat hwconfig.bin > /sys/kernel/config/xe/0000:03:00.0/hwconfig
+ *
+ * This attribute can only be set before binding to the device.
+ *
  * Remove devices
  * ==============
  *
@@ -291,6 +308,12 @@ struct wa_bb {
 	u32 len; /* in dwords */
 };
 
+/* User-provided replacement for the GuC-provided hwconfig table */
+struct hwconfig_blob {
+	void *data;
+	size_t len; /* in bytes */
+};
+
 struct xe_config_group_device {
 	struct config_group group;
 	struct config_group sriov;
@@ -299,6 +322,7 @@ struct xe_config_group_device {
 		u64 gt_types_allowed;
 		u64 engines_allowed;
 		u32 migrate_ulls_period_ms;
+		struct hwconfig_blob hwconfig;
 		struct wa_bb ctx_restore_post_bb[XE_ENGINE_CLASS_MAX];
 		struct wa_bb ctx_restore_mid_bb[XE_ENGINE_CLASS_MAX];
 		bool survivability_mode;
@@ -937,6 +961,50 @@ static ssize_t ctx_restore_post_bb_store(struct config_item *item,
 	return wa_bb_store(dev->config.ctx_restore_post_bb, dev, data, sz);
 }
 
+static ssize_t hwconfig_read(struct config_item *item, void *buf, size_t count)
+{
+	struct xe_config_group_device *dev = to_xe_config_group_device(item);
+
+	guard(mutex)(&dev->lock);
+
+	if (!buf)
+		return dev->config.hwconfig.len;
+
+	count = min(count, dev->config.hwconfig.len);
+	memcpy(buf, dev->config.hwconfig.data, count);
+
+	return count;
+}
+
+static ssize_t hwconfig_write(struct config_item *item, const void *buf, size_t count)
+{
+	struct xe_config_group_device *dev = to_xe_config_group_device(item);
+	void *data = NULL;
+
+	/* The table is a sequence of dwords */
+	if (count % sizeof(u32))
+		return -EINVAL;
+
+	if (count) {
+		data = kmemdup(buf, count, GFP_KERNEL);
+		if (!data)
+			return -ENOMEM;
+	}
+
+	guard(mutex)(&dev->lock);
+
+	if (is_bound(dev)) {
+		kfree(data);
+		return -EBUSY;
+	}
+
+	kfree(dev->config.hwconfig.data);
+	dev->config.hwconfig.data = data;
+	dev->config.hwconfig.len = count;
+
+	return count;
+}
+
 CONFIGFS_ATTR(, ctx_restore_mid_bb);
 CONFIGFS_ATTR(, ctx_restore_post_bb);
 CONFIGFS_ATTR(, enable_multi_queue);
@@ -946,6 +1014,7 @@ CONFIGFS_ATTR(, disable_vram_page_offline);
 CONFIGFS_ATTR(, engines_allowed);
 CONFIGFS_ATTR(, gt_types_allowed);
 CONFIGFS_ATTR(, survivability_mode);
+CONFIGFS_BIN_ATTR(, hwconfig, NULL, SZ_64K);
 
 static struct configfs_attribute *xe_config_device_attrs[] = {
 	&attr_ctx_restore_mid_bb,
@@ -960,12 +1029,18 @@ static struct configfs_attribute *xe_config_device_attrs[] = {
 	NULL,
 };
 
+static const struct configfs_bin_attribute *const xe_config_device_bin_attrs[] = {
+	&attr_hwconfig,
+	NULL,
+};
+
 static void xe_config_device_release(struct config_item *item)
 {
 	struct xe_config_group_device *dev = to_xe_config_group_device(item);
 
 	mutex_destroy(&dev->lock);
 
+	kfree(dev->config.hwconfig.data);
 	kfree(dev->config.ctx_restore_mid_bb[0].cs);
 	kfree(dev->config.ctx_restore_post_bb[0].cs);
 	kfree(dev);
@@ -1001,6 +1076,7 @@ static const struct config_item_type xe_config_device_type = {
 	.ct_item_ops	= &xe_config_device_ops,
 	.ct_group_ops	= &xe_config_device_group_ops,
 	.ct_attrs	= xe_config_device_attrs,
+	.ct_bin_attrs	= xe_config_device_bin_attrs,
 	.ct_owner	= THIS_MODULE,
 };
 
@@ -1243,6 +1319,10 @@ static void dump_custom_dev_config(struct pci_dev *pdev,
 	PRI_CUSTOM_ATTR("%u", sriov.admin_only_pf);
 
 #undef PRI_CUSTOM_ATTR
+
+	if (dev->config.hwconfig.len)
+		pci_info(pdev, "configfs: hwconfig = %zu bytes\n",
+			 dev->config.hwconfig.len);
 }
 
 /**
@@ -1474,6 +1554,43 @@ u32 xe_configfs_get_ctx_restore_post_bb(struct pci_dev *pdev,
 
 	*cs = dev->config.ctx_restore_post_bb[class].cs;
 	len = dev->config.ctx_restore_post_bb[class].len;
+	config_group_put(&dev->group);
+
+	return len;
+}
+
+/**
+ * xe_configfs_get_hwconfig - get a copy of the configfs hwconfig blob
+ * @pdev: pci device
+ * @blob: pointer to store the newly allocated copy of the blob
+ *
+ * If a hwconfig table override was written to configfs for @pdev, allocate a
+ * copy of it and store the pointer in @blob. The caller takes ownership of it
+ * and is responsible for freeing it with kfree().
+ *
+ * Return: size in bytes of the blob stored in @blob, or 0 if no override is
+ *     set or it could not be copied.
+ */
+size_t xe_configfs_get_hwconfig(struct pci_dev *pdev, void **blob)
+{
+	struct xe_config_group_device *dev = find_xe_config_group_device(pdev);
+	size_t len = 0;
+
+	*blob = NULL;
+
+	if (!dev)
+		return 0;
+
+	scoped_guard(mutex, &dev->lock) {
+		if (!dev->config.hwconfig.len)
+			break;
+
+		*blob = kmemdup(dev->config.hwconfig.data,
+				dev->config.hwconfig.len, GFP_KERNEL);
+		if (*blob)
+			len = dev->config.hwconfig.len;
+	}
+
 	config_group_put(&dev->group);
 
 	return len;
