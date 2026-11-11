@@ -22,7 +22,7 @@ struct intel_dpt *i915_dpt_instance(struct drm_i915_gem_object *obj,
 
 struct i915_address_space *i915_dpt_to_vm(struct intel_dpt *dpt);
 struct i915_vma *i915_dpt_pin_to_ggtt(struct intel_dpt *dpt, unsigned int alignment);
-void i915_dpt_unpin_from_ggtt(struct intel_dpt *dpt);
+void i915_dpt_unpin_from_ggtt(struct i915_vma *vma);
 u64 i915_dpt_offset(struct i915_vma *dpt_vma);
 
 void i915_dpt_suspend(struct i915_ggtt *ggtt);

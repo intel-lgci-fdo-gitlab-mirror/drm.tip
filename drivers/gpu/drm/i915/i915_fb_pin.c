@@ -269,7 +269,7 @@ static int i915_fb_pin_dpt_pin(struct drm_gem_object *_obj,
 
 	dpt_vma = intel_fb_pin_to_dpt(obj, dpt, pin_params);
 	if (IS_ERR(dpt_vma)) {
-		i915_dpt_unpin_from_ggtt(dpt);
+		i915_dpt_unpin_from_ggtt(ggtt_vma);
 		return PTR_ERR(dpt_vma);
 	}
 
@@ -304,7 +304,7 @@ static void i915_fb_pin_dpt_unpin(struct drm_gem_object *_obj,
 	drm_WARN_ON(obj->base.dev, !dpt_vma->vm->is_dpt);
 
 	intel_fb_unpin_vma(dpt_vma, -1);
-	i915_dpt_unpin_from_ggtt(dpt);
+	i915_dpt_unpin_from_ggtt(ggtt_vma);
 }
 
 static void i915_fb_pin_get_map(struct i915_vma *vma, struct iosys_map *map)

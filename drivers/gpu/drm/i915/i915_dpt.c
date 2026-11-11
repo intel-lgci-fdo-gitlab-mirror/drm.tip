@@ -17,7 +17,6 @@ struct intel_dpt {
 	struct i915_address_space vm;
 
 	struct drm_i915_gem_object *obj;
-	struct i915_vma *vma;
 	void __iomem *iomem;
 	struct intel_gtt_view view;
 	struct list_head obj_link;
@@ -159,7 +158,6 @@ struct i915_vma *i915_dpt_pin_to_ggtt(struct intel_dpt *dpt, unsigned int alignm
 			continue;
 		}
 
-		dpt->vma = vma;
 		dpt->iomem = iomem;
 
 		i915_vma_get(vma);
@@ -172,10 +170,10 @@ struct i915_vma *i915_dpt_pin_to_ggtt(struct intel_dpt *dpt, unsigned int alignm
 	return err ? ERR_PTR(err) : vma;
 }
 
-void i915_dpt_unpin_from_ggtt(struct intel_dpt *dpt)
+void i915_dpt_unpin_from_ggtt(struct i915_vma *vma)
 {
-	i915_vma_unpin_iomap(dpt->vma);
-	i915_vma_put(dpt->vma);
+	i915_vma_unpin_iomap(vma);
+	i915_vma_put(vma);
 }
 
 static void i915_dpt_get(struct intel_dpt *dpt)
