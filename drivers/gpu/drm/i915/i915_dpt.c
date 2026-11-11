@@ -192,13 +192,10 @@ static struct intel_dpt *i915_dpt_create(struct drm_gem_object *obj, size_t size
 
 	size = round_up(size * sizeof(gen8_pte_t), I915_GTT_PAGE_SIZE);
 
-	dpt_obj = i915_gem_object_create_lmem(i915, size, I915_BO_ALLOC_CONTIGUOUS);
-	if (IS_ERR(dpt_obj) && i915_ggtt_has_aperture(to_gt(i915)->ggtt))
-		dpt_obj = i915_gem_object_create_stolen(i915, size);
-	if (IS_ERR(dpt_obj) && !HAS_LMEM(i915)) {
-		drm_dbg_kms(&i915->drm, "Allocating dpt from smem\n");
+	if (HAS_LMEM(i915))
+		dpt_obj = i915_gem_object_create_lmem(i915, size, I915_BO_ALLOC_CONTIGUOUS);
+	else
 		dpt_obj = i915_gem_object_create_shmem(i915, size);
-	}
 	if (IS_ERR(dpt_obj))
 		return ERR_CAST(dpt_obj);
 
