@@ -244,8 +244,7 @@ static int i915_fb_pin_ggtt_pin(struct drm_gem_object *obj,
 static void i915_fb_pin_ggtt_unpin(struct i915_vma *ggtt_vma,
 				   int fence_id)
 {
-	if (ggtt_vma)
-		intel_fb_unpin_vma(ggtt_vma, fence_id);
+	intel_fb_unpin_vma(ggtt_vma, fence_id);
 }
 
 static int i915_fb_pin_dpt_pin(struct drm_gem_object *obj, struct intel_dpt *dpt,
@@ -282,13 +281,8 @@ static void i915_fb_pin_dpt_unpin(struct intel_dpt *dpt,
 				  struct i915_vma *dpt_vma,
 				  struct i915_vma *ggtt_vma)
 {
-	WARN_ON(!dpt);
-	WARN_ON(!!dpt_vma != !!ggtt_vma);
-
-	if (dpt_vma)
-		intel_fb_unpin_vma(dpt_vma, -1);
-	if (ggtt_vma)
-		i915_dpt_unpin_from_ggtt(dpt);
+	intel_fb_unpin_vma(dpt_vma, -1);
+	i915_dpt_unpin_from_ggtt(dpt);
 }
 
 static void i915_fb_pin_get_map(struct i915_vma *vma, struct iosys_map *map)
