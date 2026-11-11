@@ -236,14 +236,28 @@ STATIC_IFN_KUNIT bool dm_plane_color_pipeline_active(struct drm_atomic_commit *s
 						     bool use_old)
 {
 	struct drm_colorop *colorop;
-	struct drm_colorop_state *old_colorop_state, *new_colorop_state;
-	int i;
+	struct drm_colorop_state *cstate;
+	struct drm_plane_state *plane_state = use_old ?
+					      drm_atomic_get_old_plane_state(state, plane) :
+					      drm_atomic_get_new_plane_state(state, plane);
 
-	for_each_oldnew_colorop_in_state(state, colorop, old_colorop_state, new_colorop_state, i) {
-		struct drm_colorop_state *cstate = use_old ? old_colorop_state : new_colorop_state;
+	if (drm_WARN_ON(plane->dev, !plane_state))
+		return false;
 
-		if (cstate->colorop->plane != plane)
-			continue;
+	/*
+	 * A commit may change only some colorops of a pipeline, and only those
+	 * have old and new states here. Telling whether the pipeline modifies
+	 * pixels requires every colorop of the selected pipeline, so fall back
+	 * to the committed state of the untouched ones; it's both their old
+	 * and new state.
+	 */
+	drm_for_each_colorop_in_pipeline(colorop, plane_state->color_pipeline) {
+		cstate = use_old ?
+			 drm_atomic_get_old_colorop_state(state, colorop) :
+			 drm_atomic_get_new_colorop_state(state, colorop);
+
+		if (!cstate)
+			cstate = colorop->state;
 		if (!cstate->bypass)
 			return true;
 	}
