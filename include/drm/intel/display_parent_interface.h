@@ -66,7 +66,8 @@ struct intel_display_bo_interface {
 };
 
 struct intel_display_dpt_interface {
-	struct intel_dpt *(*create)(struct drm_gem_object *obj, size_t size);
+	struct intel_dpt *(*create)(struct drm_gem_object *obj,
+				    const struct intel_gtt_view *view);
 	void (*destroy)(struct intel_dpt *dpt);
 	void (*suspend)(struct intel_dpt *dpt);
 	void (*resume)(struct intel_dpt *dpt);

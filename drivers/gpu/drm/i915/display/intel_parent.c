@@ -26,10 +26,11 @@
 
 /* dpt */
 struct intel_dpt *intel_parent_dpt_create(struct intel_display *display,
-					  struct drm_gem_object *obj, size_t size)
+					  struct drm_gem_object *obj,
+					  const struct intel_gtt_view *view)
 {
 	if (display->parent->dpt)
-		return display->parent->dpt->create(obj, size);
+		return display->parent->dpt->create(obj, view);
 
 	return NULL;
 }
