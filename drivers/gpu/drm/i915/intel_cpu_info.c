@@ -6,12 +6,11 @@
  * intel_device_info.h by having a separate file.
  */
 
+#include <asm/cpu_device_id.h>
+
 #include "intel_cpu_info.h"
 
 #ifdef CONFIG_X86
-#include <asm/cpu_device_id.h>
-#include <asm/intel-family.h>
-
 static const struct x86_cpu_id g8_cpu_ids[] = {
 	X86_MATCH_VFM(INTEL_ALDERLAKE,		NULL),
 	X86_MATCH_VFM(INTEL_ALDERLAKE_L,	NULL),
