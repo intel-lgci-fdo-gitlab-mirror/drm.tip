@@ -3186,7 +3186,12 @@ static bool context_cant_unblock(struct intel_context *ce)
 {
 	lockdep_assert_held(&ce->guc_state.lock);
 
+	/*
+	 * SCHED_STATE_BANNED alone isn't enough: the sched disable done
+	 * handler clears it. Revoke sets it for exiting contexts too.
+	 */
 	return (ce->guc_state.sched_state & SCHED_STATE_NO_UNBLOCK) ||
+		!intel_context_is_schedulable(ce) ||
 		context_guc_id_invalid(ce) ||
 		!ctx_id_mapped(ce_to_guc(ce), ce->guc_id.id) ||
 		!intel_context_is_pinned(ce);
