@@ -24,17 +24,6 @@
 #include "intel_display_core.h"
 #include "intel_parent.h"
 
-/* dpt */
-int intel_parent_dpt_create(struct intel_display *display,
-			    struct drm_gem_object *obj,
-			    const struct intel_gtt_view *view)
-{
-	if (display->parent->dpt)
-		return display->parent->dpt->create(obj, view);
-
-	return 0;
-}
-
 /* fb_pin */
 int intel_parent_fb_pin_ggtt_pin(struct intel_display *display,
 				 struct drm_gem_object *obj,

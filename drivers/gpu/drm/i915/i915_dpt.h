@@ -17,6 +17,8 @@ struct intel_dpt *i915_vm_to_dpt(struct i915_address_space *vm);
 void i915_dpt_obj_free(struct drm_i915_gem_object *obj);
 struct intel_dpt *i915_dpt_lookup(struct drm_i915_gem_object *obj,
 				  const struct intel_gtt_view *view);
+struct intel_dpt *i915_dpt_instance(struct drm_i915_gem_object *obj,
+				    const struct intel_gtt_view *view);
 
 struct i915_address_space *i915_dpt_to_vm(struct intel_dpt *dpt);
 struct i915_vma *i915_dpt_pin_to_ggtt(struct intel_dpt *dpt, unsigned int alignment);
@@ -25,7 +27,5 @@ u64 i915_dpt_offset(struct i915_vma *dpt_vma);
 
 void i915_dpt_suspend(struct i915_ggtt *ggtt);
 void i915_dpt_resume(struct i915_ggtt *ggtt);
-
-extern const struct intel_display_dpt_interface i915_display_dpt_interface;
 
 #endif /* __I915_DPT_H__ */

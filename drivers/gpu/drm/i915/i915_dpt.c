@@ -4,7 +4,6 @@
  */
 
 #include <drm/drm_print.h>
-#include <drm/intel/display_parent_interface.h>
 
 #include "gem/i915_gem_domain.h"
 #include "gem/i915_gem_internal.h"
@@ -222,8 +221,8 @@ struct intel_dpt *i915_dpt_lookup(struct drm_i915_gem_object *obj,
 	return dpt;
 }
 
-static void i915_dpt_add(struct drm_i915_gem_object *obj,
-			 struct intel_dpt *new_dpt)
+static struct intel_dpt *i915_dpt_add(struct drm_i915_gem_object *obj,
+				      struct intel_dpt *new_dpt)
 {
 	struct drm_i915_private *i915 = to_i915(obj->base.dev);
 	struct i915_ggtt *ggtt = to_gt(i915)->ggtt;
@@ -239,7 +238,7 @@ static void i915_dpt_add(struct drm_i915_gem_object *obj,
 	if (old_dpt) {
 		spin_unlock(&obj->dpt_lock);
 		i915_dpt_free(new_dpt);
-		return;
+		return old_dpt;
 	}
 
 	list_add_tail(&new_dpt->obj_link, &obj->dpt_list);
@@ -249,6 +248,8 @@ static void i915_dpt_add(struct drm_i915_gem_object *obj,
 	spin_lock(&ggtt->dpt_lock);
 	list_add_tail(&new_dpt->ggtt_link, &ggtt->dpt_list);
 	spin_unlock(&ggtt->dpt_lock);
+
+	return new_dpt;
 }
 
 static struct intel_dpt *dpt_create(struct drm_i915_gem_object *obj,
@@ -322,24 +323,21 @@ static struct intel_dpt *dpt_create(struct drm_i915_gem_object *obj,
 	return dpt;
 }
 
-static int i915_dpt_create(struct drm_gem_object *_obj,
-			   const struct intel_gtt_view *view)
+struct intel_dpt *i915_dpt_instance(struct drm_i915_gem_object *obj,
+				    const struct intel_gtt_view *view)
 {
-	struct drm_i915_gem_object *obj = to_intel_bo(_obj);
 	struct intel_dpt *dpt;
 
 	/* already have one? */
 	dpt = i915_dpt_lookup(obj, view);
 	if (dpt)
-		return 0;
+		return dpt;
 
 	dpt = dpt_create(obj, view);
 	if (IS_ERR(dpt))
-		return PTR_ERR(dpt);
+		return dpt;
 
-	i915_dpt_add(obj, dpt);
-
-	return 0;
+	return i915_dpt_add(obj, dpt);
 }
 
 void i915_dpt_obj_free(struct drm_i915_gem_object *obj)
@@ -418,7 +416,3 @@ u64 i915_dpt_offset(struct i915_vma *dpt_vma)
 {
 	return i915_vma_offset(dpt_vma);
 }
-
-const struct intel_display_dpt_interface i915_display_dpt_interface = {
-	.create = i915_dpt_create,
-};
