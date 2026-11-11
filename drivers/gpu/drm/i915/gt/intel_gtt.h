@@ -407,6 +407,10 @@ struct i915_ggtt {
 
 	/** List of GTs mapping this GGTT */
 	struct list_head gt_list;
+
+	/* List of DPTs create for this GGTT */
+	struct list_head dpt_list;
+	spinlock_t dpt_lock; /* protects dpt_list */
 };
 
 struct i915_ppgtt {

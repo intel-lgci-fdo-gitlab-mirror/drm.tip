@@ -766,7 +766,7 @@ static int __intel_display_driver_pm_suspend(struct intel_display *display, bool
 			display->restore.modeset_state = state;
 	}
 
-	/* ensure all DPT VMAs have been unpinned for intel_dpt_suspend() */
+	/* ensure all DPT VMAs have been unpinned for i915_dpt_suspend() */
 	flush_workqueue(display->wq.cleanup);
 
 	intel_dp_mst_suspend(display);

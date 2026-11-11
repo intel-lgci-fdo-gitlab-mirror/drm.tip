@@ -27,8 +27,6 @@ struct intel_dpt *intel_parent_dpt_create(struct intel_display *display,
 					  struct drm_gem_object *obj,
 					  const struct intel_gtt_view *view);
 void intel_parent_dpt_destroy(struct intel_display *display, struct intel_dpt *dpt);
-void intel_parent_dpt_suspend(struct intel_display *display, struct intel_dpt *dpt);
-void intel_parent_dpt_resume(struct intel_display *display, struct intel_dpt *dpt);
 
 /* fb_pin */
 int intel_parent_fb_pin_ggtt_pin(struct intel_display *display,

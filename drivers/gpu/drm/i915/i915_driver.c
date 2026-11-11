@@ -1084,8 +1084,6 @@ static int i915_drm_suspend(struct drm_device *dev)
 
 	intel_irq_suspend(dev_priv);
 
-	/* Must be called before GGTT is suspended. */
-	intel_dpt_suspend(display);
 	i915_ggtt_suspend(to_gt(dev_priv)->ggtt);
 
 	i9xx_display_sr_save(display);
@@ -1213,9 +1211,6 @@ static int i915_drm_resume(struct drm_device *dev)
 	for_each_gt(gt, dev_priv, i)
 		if (GRAPHICS_VER(gt->i915) >= 8)
 			setup_private_pat(gt);
-
-	/* Must be called after GGTT is resumed. */
-	intel_dpt_resume(display);
 
 	intel_dmc_resume(display);
 

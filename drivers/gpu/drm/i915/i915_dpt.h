@@ -7,6 +7,7 @@
 #include <linux/types.h>
 
 struct i915_address_space;
+struct i915_ggtt;
 struct i915_vma;
 struct intel_dpt;
 
@@ -14,6 +15,9 @@ struct i915_address_space *i915_dpt_to_vm(struct intel_dpt *dpt);
 struct i915_vma *i915_dpt_pin_to_ggtt(struct intel_dpt *dpt, unsigned int alignment);
 void i915_dpt_unpin_from_ggtt(struct intel_dpt *dpt);
 u64 i915_dpt_offset(struct i915_vma *dpt_vma);
+
+void i915_dpt_suspend(struct i915_ggtt *ggtt);
+void i915_dpt_resume(struct i915_ggtt *ggtt);
 
 extern const struct intel_display_dpt_interface i915_display_dpt_interface;
 
