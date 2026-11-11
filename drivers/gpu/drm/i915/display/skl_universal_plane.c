@@ -592,6 +592,15 @@ static u32 tgl_plane_min_alignment(struct intel_plane *plane,
 		return mult * 4 * 1024;
 
 	/*
+	 * FIXME MTL sees GGTT/ATS faults with async
+	 * flips unless we align to 32k at least.
+	 * Figure out what's going on here...
+	 */
+	if (display->platform.meteorlake &&
+	    intel_plane_can_async_flip(plane, fb->format, fb->modifier))
+		return mult * 32 * 1024;
+
+	/*
 	 * FIXME ADL sees GGTT/DMAR faults with async
 	 * flips unless we align to 16k at least.
 	 * Figure out what's going on here...
