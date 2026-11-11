@@ -55,7 +55,10 @@
  * enumerated 1D curves, 1D LUTs, 3D LUTs, matrices, etc. See the
  * &drm_colorop_type documentation for information on each type.
  *
- * If a colorop advertises the BYPASS property it can be bypassed.
+ * If a colorop advertises the BYPASS property it can be bypassed. If a
+ * colorop advertises DATA and BYPASS properties, BYPASS can only be set to
+ * false if DATA contains a blob. An atomic commit that leaves such a
+ * colorop enabled without a blob will fail, returning -EINVAL.
  *
  * Information about colorop and color pipeline design decisions can be
  * found at rfc/color_pipeline.rst, but note that this document will

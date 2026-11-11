@@ -283,8 +283,10 @@ struct drm_colorop_state {
 	/**
 	 * @data:
 	 *
-	 * Data blob for any TYPE that requires such a blob. The
-	 * interpretation of the blob is TYPE-specific.
+	 * Data blob for any TYPE that requires such a blob. The interpretation
+	 * of the blob is TYPE-specific. Whenever @bypass is false, @data must
+	 * be provided; otherwise, the atomic check will reject an active
+	 * colorop without a blob.
 	 *
 	 * See the &drm_colorop_type documentation for how blob is laid
 	 * out.
