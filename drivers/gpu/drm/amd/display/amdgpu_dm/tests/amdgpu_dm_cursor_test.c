@@ -179,11 +179,43 @@ static void dm_test_add_cursor_mode_colorop(struct kunit *test,
 	fixture->state->colorops[0].ptr = colorop;
 	fixture->state->colorops[0].old_state = old_colorop_state;
 	fixture->state->colorops[0].new_state = new_colorop_state;
+	colorop->index = 0;
 	colorop->plane = fixture->primary;
 	old_colorop_state->colorop = colorop;
 	old_colorop_state->bypass = old_bypass;
 	new_colorop_state->colorop = colorop;
 	new_colorop_state->bypass = new_bypass;
+
+	/* Colorop needs to be part of an active plane color pipeline */
+	fixture->old_primary_state->color_pipeline = colorop;
+	fixture->primary_state->color_pipeline = colorop;
+}
+
+/* Add plane to atomic commit state and make pipeline active by setting it to
+ * old/new_state color pipeline.
+ */
+static void dm_test_add_plane_to_commit(struct kunit *test,
+					struct drm_atomic_commit *state,
+					struct drm_plane *plane,
+					struct drm_colorop *pipeline)
+{
+	struct drm_plane_state *old_state;
+	struct drm_plane_state *new_state;
+	unsigned int i = drm_plane_index(plane);
+
+	old_state = kunit_kzalloc(test, sizeof(*old_state), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, old_state);
+	new_state = kunit_kzalloc(test, sizeof(*new_state), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, new_state);
+
+	old_state->plane = plane;
+	old_state->color_pipeline = pipeline;
+	*new_state = *old_state;
+	new_state->state = state;
+
+	state->planes[i].ptr = plane;
+	state->planes[i].old_state = old_state;
+	state->planes[i].new_state = new_state;
 }
 
 static int dm_test_get_cursor_mode(struct dm_cursor_mode_fixture *fixture,
@@ -447,14 +479,21 @@ static void dm_test_plane_color_pipeline_active(struct kunit *test)
 	KUNIT_ASSERT_NOT_NULL(test, new_colorop_state);
 	plane = kunit_kzalloc(test, sizeof(*plane), GFP_KERNEL);
 	KUNIT_ASSERT_NOT_NULL(test, plane);
+	state->planes = kunit_kzalloc(test, sizeof(*state->planes), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, state->planes);
 	state->colorops = kunit_kzalloc(test, sizeof(*state->colorops), GFP_KERNEL);
 	KUNIT_ASSERT_NOT_NULL(test, state->colorops);
 
+	adev->ddev.mode_config.num_total_plane = 1;
 	adev->ddev.mode_config.num_colorop = 1;
 	state->dev = &adev->ddev;
+	plane->dev = &adev->ddev;
+	plane->index = 0;
+	dm_test_add_plane_to_commit(test, state, plane, colorop);
 	state->colorops[0].ptr = colorop;
 	state->colorops[0].old_state = old_colorop_state;
 	state->colorops[0].new_state = new_colorop_state;
+	colorop->index = 0;
 	colorop->plane = plane;
 	old_colorop_state->colorop = colorop;
 	old_colorop_state->bypass = true;
@@ -488,13 +527,23 @@ static void dm_test_plane_color_pipeline_ignores_other_plane(struct kunit *test)
 	KUNIT_ASSERT_NOT_NULL(test, colorop_plane);
 	other_plane = kunit_kzalloc(test, sizeof(*other_plane), GFP_KERNEL);
 	KUNIT_ASSERT_NOT_NULL(test, other_plane);
+	state->planes = kunit_kcalloc(test, 2, sizeof(*state->planes), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, state->planes);
 	state->colorops = kunit_kzalloc(test, sizeof(*state->colorops), GFP_KERNEL);
 	KUNIT_ASSERT_NOT_NULL(test, state->colorops);
 
+	adev->ddev.mode_config.num_total_plane = 2;
 	adev->ddev.mode_config.num_colorop = 1;
 	state->dev = &adev->ddev;
+	colorop_plane->dev = &adev->ddev;
+	colorop_plane->index = 0;
+	other_plane->dev = &adev->ddev;
+	other_plane->index = 1;
+	dm_test_add_plane_to_commit(test, state, colorop_plane, colorop);
+	dm_test_add_plane_to_commit(test, state, other_plane, NULL);
 	state->colorops[0].ptr = colorop;
 	state->colorops[0].new_state = colorop_state;
+	colorop->index = 0;
 	colorop->plane = colorop_plane;
 	colorop_state->colorop = colorop;
 
