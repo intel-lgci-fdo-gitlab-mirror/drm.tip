@@ -1852,8 +1852,9 @@ struct dm_test_colorop_fixture {
  * @test: KUnit test context
  * @type: colorop type to assign
  *
- * Fabricates a minimal drm_atomic_commit with one colorop slot so that
- * for_each_new_colorop_in_state() finds exactly the colorop under test.
+ * Fabricates a minimal drm_atomic_commit with the colorop in the only colorop
+ * slot (index 0), so that drm_atomic_get_new_colorop_state() returns its new
+ * state.
  *
  * Returns: a populated fixture (by value).
  */
@@ -1870,6 +1871,7 @@ dm_test_colorop_setup(struct kunit *test, enum drm_colorop_type type)
 	f.colorop = kunit_kzalloc(test, sizeof(*f.colorop), GFP_KERNEL);
 	KUNIT_ASSERT_NOT_NULL(test, f.colorop);
 	f.colorop->dev = &f.adev->ddev;
+	f.colorop->index = 0;
 	f.colorop->type = type;
 
 	f.colorop_state = kunit_kzalloc(test, sizeof(*f.colorop_state), GFP_KERNEL);
@@ -1916,8 +1918,10 @@ static void dm_test_colorop_multiplier_applied(struct kunit *test)
 }
 
 /**
- * dm_test_colorop_multiplier_no_match - Non-multiplier colorop leaves hdr_mult untouched
+ * dm_test_colorop_multiplier_no_match - Non-multiplier colorop: return -EINVAL.
  * @test: KUnit test context
+ *
+ * left hdr_mult untouched
  */
 static void dm_test_colorop_multiplier_no_match(struct kunit *test)
 {
@@ -1928,7 +1932,7 @@ static void dm_test_colorop_multiplier_no_match(struct kunit *test)
 
 	KUNIT_EXPECT_EQ(test,
 			__set_dm_plane_colorop_multiplier(f.plane_state, f.dc_plane_state, f.colorop),
-			0);
+			-EINVAL);
 	KUNIT_EXPECT_EQ(test, f.dc_plane_state->hdr_mult.value, 0LL);
 }
 
@@ -2432,7 +2436,7 @@ static void dm_test_update_plane_color_mgmt_plane_ctm(struct kunit *test)
  * dm_test_colorop_pipeline_add - append one colorop to a fabricated pipeline
  * @test: KUnit test context
  * @f: color update fixture that owns the atomic state
- * @index: colorop array index to populate
+ * @index: colorop array index to populate, also used as the colorop index
  * @type: colorop type
  * @curve_1d_type: 1D curve type for DRM_COLOROP_1D_CURVE states
  * @bypass: bypass flag for the new colorop state
@@ -2452,6 +2456,7 @@ dm_test_colorop_pipeline_add(struct kunit *test,
 	colorop = kunit_kzalloc(test, sizeof(*colorop), GFP_KERNEL);
 	KUNIT_ASSERT_NOT_NULL(test, colorop);
 	colorop->dev = &f->adev->ddev;
+	colorop->index = index;
 	colorop->type = type;
 	colorop->size = MAX_COLOR_LUT_ENTRIES;
 

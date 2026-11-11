@@ -6064,19 +6064,6 @@ dm_update_plane_state(struct dc *dc,
 		if (ret)
 			goto out;
 
-		/*
-		 * Recreating the plane re-derives its DC color pipeline from the
-		 * colorop states in this commit. Pull the plane's colorops in so
-		 * the derivation sees the current pipeline; otherwise every stage
-		 * silently defaults to bypass (dropping YUV->RGB, shaper, 3D LUT
-		 * and regamma) when userspace didn't touch color in this commit.
-		 */
-		if (new_plane_state->color_pipeline) {
-			ret = drm_atomic_add_affected_colorops(state, plane);
-			if (ret)
-				goto out;
-		}
-
 		WARN_ON(dm_new_plane_state->dc_state);
 
 		dc_new_plane_state = dc_create_plane_state(dc);
