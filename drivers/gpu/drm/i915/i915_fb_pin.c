@@ -15,7 +15,7 @@
 #include "i915_vma.h"
 
 static struct i915_vma *
-intel_fb_pin_to_dpt(struct drm_i915_gem_object *obj, struct intel_dpt *dpt,
+intel_fb_pin_to_dpt(struct drm_i915_gem_object *obj, struct i915_dpt *dpt,
 		    const struct intel_fb_pin_params *pin_params)
 {
 	struct drm_i915_private *i915 = to_i915(obj->base.dev);
@@ -257,7 +257,7 @@ static int i915_fb_pin_dpt_pin(struct drm_gem_object *_obj,
 {
 	struct drm_i915_gem_object *obj = to_intel_bo(_obj);
 	struct i915_vma *ggtt_vma, *dpt_vma;
-	struct intel_dpt *dpt;
+	struct i915_dpt *dpt;
 
 	dpt = i915_dpt_instance(obj, pin_params->view);
 	if (IS_ERR(dpt))
@@ -289,7 +289,7 @@ static void i915_fb_pin_dpt_unpin(struct drm_gem_object *_obj,
 {
 	struct drm_i915_gem_object *obj = to_intel_bo(_obj);
 	struct i915_vma *dpt_vma;
-	struct intel_dpt *dpt;
+	struct i915_dpt *dpt;
 
 	dpt = i915_dpt_lookup(obj, view);
 	if (drm_WARN_ON(obj->base.dev, !dpt))
