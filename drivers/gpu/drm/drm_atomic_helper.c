@@ -3697,6 +3697,56 @@ void drm_atomic_helper_shutdown(struct drm_device *dev)
 }
 EXPORT_SYMBOL(drm_atomic_helper_shutdown);
 
+/*
+ * duplicate_plane_colorops - add colorops for plane
+ * @state: atomic state
+ * @plane: DRM plane
+ *
+ * Add the state of each colorop of a given @plane to @state, including
+ * colorops from color pipelines that are not currently active. This duplicated
+ * state is used to restore the hardware state later; furthermore, the
+ * drm_atomic_helper_resume() function, for instance, resets all colorop
+ * states before committing it, and any colorop that is omitted would lose its
+ * settings.
+ *
+ * Use this only in duplicated states: the drm_atomic_check_only() function
+ * rejects colorops from a pipeline that the atomic commit is neither enabling
+ * nor disabling it; this check is only bypassed when state->duplicated is set.
+ *
+ * Since acquiring a colorop state will always also acquire the w/w mutex of the
+ * current plane for that colorop (if there is any) adding all the colorop states for
+ * a plane will not reduce parallelism of atomic updates.
+ *
+ * Returns:
+ * 0 on success or can fail with -EDEADLK or -ENOMEM. When the error is EDEADLK
+ * then the w/w mutex code has detected a deadlock and the entire atomic
+ * sequence must be restarted. All other errors are fatal.
+ */
+static int
+duplicate_plane_colorops(struct drm_atomic_commit *state,
+			 struct drm_plane *plane)
+{
+	struct drm_colorop *colorop;
+	struct drm_colorop_state *colorop_state;
+
+	WARN_ON(!drm_atomic_get_new_plane_state(state, plane));
+
+	drm_dbg_atomic(plane->dev,
+		       "Adding all colorops for [PLANE:%d:%s] to %p\n",
+		       plane->base.id, plane->name, state);
+
+	drm_for_each_colorop(colorop, plane->dev) {
+		if (colorop->plane != plane)
+			continue;
+
+		colorop_state = drm_atomic_get_colorop_state(state, colorop);
+		if (IS_ERR(colorop_state))
+			return PTR_ERR(colorop_state);
+	}
+
+	return 0;
+}
+
 /**
  * drm_atomic_helper_duplicate_state - duplicate an atomic state object
  * @dev: DRM device
@@ -3758,7 +3808,7 @@ drm_atomic_helper_duplicate_state(struct drm_device *dev,
 			goto free;
 		}
 
-		err = drm_atomic_add_affected_colorops(state, plane);
+		err = duplicate_plane_colorops(state, plane);
 		if (err)
 			goto free;
 	}
