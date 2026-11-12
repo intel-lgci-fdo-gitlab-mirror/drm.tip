@@ -73,7 +73,7 @@ static void switch_virtual_execlist_slot(struct intel_vgpu_execlist *execlist)
 
 	execlist->running_slot = execlist->pending_slot;
 	execlist->pending_slot = NULL;
-	execlist->running_context = execlist->running_context ?
+	execlist->running_context = execlist->running_slot ?
 		&execlist->running_slot->ctx[0] : NULL;
 
 	gvt_dbg_el("[after] running slot %d/context %x pending slot %d\n",
