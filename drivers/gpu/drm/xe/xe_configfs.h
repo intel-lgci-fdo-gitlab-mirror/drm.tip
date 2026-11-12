@@ -5,6 +5,7 @@
 #ifndef _XE_CONFIGFS_H_
 #define _XE_CONFIGFS_H_
 
+#include <linux/bits.h>
 #include <linux/limits.h>
 #include <linux/types.h>
 
@@ -14,10 +15,21 @@
 
 struct pci_dev;
 
+/**
+ * DOC: survivability_mode configfs bits
+ *
+ * The survivability_mode attribute is a bitmap so that additional
+ * survivability behaviors can be requested independently in the future.
+ * %XE_CONFIGFS_SURVIVABILITY_ENABLE is currently the only defined bit, so
+ * the attribute still only accepts 0 and 1.
+ */
+#define XE_CONFIGFS_SURVIVABILITY_ENABLE	BIT(0)
+#define XE_CONFIGFS_SURVIVABILITY_MASK		XE_CONFIGFS_SURVIVABILITY_ENABLE
+
 int xe_configfs_init(void);
 void xe_configfs_exit(void);
 void xe_configfs_check_device(struct pci_dev *pdev);
-bool xe_configfs_get_survivability_mode(struct pci_dev *pdev);
+u8 xe_configfs_get_survivability_mode(struct pci_dev *pdev);
 bool xe_configfs_primary_gt_allowed(struct pci_dev *pdev);
 bool xe_configfs_media_gt_allowed(struct pci_dev *pdev);
 u64 xe_configfs_get_engines_allowed(struct pci_dev *pdev);

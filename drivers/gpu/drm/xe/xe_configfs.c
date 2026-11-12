@@ -78,8 +78,10 @@
  * Survivability mode:
  * -------------------
  *
- * Enable survivability mode on supported cards. This setting only takes
- * effect when probing the device. Example to enable it::
+ * Enable survivability mode on supported cards. This is a bitmap; bit 0
+ * enables survivability mode and is currently the only bit defined, so the
+ * only accepted values remain 0 and 1. This setting only takes effect when
+ * probing the device. Example to enable it::
  *
  *	# echo 1 > /sys/kernel/config/xe/0000:03:00.0/survivability_mode
  *
@@ -301,7 +303,7 @@ struct xe_config_group_device {
 		u32 migrate_ulls_period_ms;
 		struct wa_bb ctx_restore_post_bb[XE_ENGINE_CLASS_MAX];
 		struct wa_bb ctx_restore_mid_bb[XE_ENGINE_CLASS_MAX];
-		bool survivability_mode;
+		u8 survivability_mode;
 		bool enable_psmi;
 		bool enable_multi_queue;
 		bool enable_vram_page_offline;
@@ -323,7 +325,7 @@ static const struct xe_config_device device_defaults = {
 	.gt_types_allowed = U64_MAX,
 	.engines_allowed = U64_MAX,
 	.migrate_ulls_period_ms = 5,
-	.survivability_mode = false,
+	.survivability_mode = 0,
 	.enable_psmi = false,
 	.enable_multi_queue = true,
 	.enable_vram_page_offline = true,
@@ -407,18 +409,21 @@ static ssize_t survivability_mode_show(struct config_item *item, char *page)
 {
 	struct xe_config_device *dev = to_xe_config_device(item);
 
-	return sprintf(page, "%d\n", dev->survivability_mode);
+	return sprintf(page, "%u\n", dev->survivability_mode);
 }
 
 static ssize_t survivability_mode_store(struct config_item *item, const char *page, size_t len)
 {
 	struct xe_config_group_device *dev = to_xe_config_group_device(item);
-	bool survivability_mode;
+	u8 survivability_mode;
 	int ret;
 
-	ret = kstrtobool(page, &survivability_mode);
+	ret = kstrtou8(page, 0, &survivability_mode);
 	if (ret)
 		return ret;
+
+	if (survivability_mode & ~XE_CONFIGFS_SURVIVABILITY_MASK)
+		return -EINVAL;
 
 	guard(mutex)(&dev->lock);
 	if (is_bound(dev))
@@ -1243,7 +1248,7 @@ static void dump_custom_dev_config(struct pci_dev *pdev,
 	PRI_CUSTOM_ATTR("%d", enable_multi_queue);
 	PRI_CUSTOM_ATTR("%d", enable_psmi);
 	PRI_CUSTOM_ATTR("%d", enable_vram_page_offline);
-	PRI_CUSTOM_ATTR("%d", survivability_mode);
+	PRI_CUSTOM_ATTR("%u", survivability_mode);
 	PRI_CUSTOM_ATTR("%u", sriov.admin_only_pf);
 
 #undef PRI_CUSTOM_ATTR
@@ -1278,10 +1283,10 @@ void xe_configfs_check_device(struct pci_dev *pdev)
  *
  * Return: survivability_mode attribute in configfs
  */
-bool xe_configfs_get_survivability_mode(struct pci_dev *pdev)
+u8 xe_configfs_get_survivability_mode(struct pci_dev *pdev)
 {
 	struct xe_config_group_device *dev = find_xe_config_group_device(pdev);
-	bool mode;
+	u8 mode;
 
 	if (!dev)
 		return device_defaults.survivability_mode;

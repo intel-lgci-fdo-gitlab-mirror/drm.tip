@@ -309,7 +309,8 @@ static const struct attribute_group survivability_info_group = {
 static int create_survivability_sysfs(struct pci_dev *pdev)
 {
 	/* Survivability info is required if not enabled via configfs */
-	bool needs_info = !xe_configfs_get_survivability_mode(pdev);
+	bool needs_info = !(xe_configfs_get_survivability_mode(pdev) &
+			    XE_CONFIGFS_SURVIVABILITY_ENABLE);
 	struct xe_device *xe = pdev_to_xe_device(pdev);
 	struct device *dev = &pdev->dev;
 	int ret;
@@ -408,14 +409,14 @@ bool xe_survivability_mode_is_requested(struct xe_device *xe)
 	struct xe_mmio *mmio = xe_root_tile_mmio(xe);
 	struct pci_dev *pdev = to_pci_dev(xe->drm.dev);
 	u32 data;
-	bool survivability_mode;
+	u8 survivability_mode;
 
 	if (!IS_DGFX(xe) || IS_SRIOV_VF(xe) || xe->info.platform < XE_BATTLEMAGE)
 		return false;
 
 	survivability_mode = xe_configfs_get_survivability_mode(pdev);
 	/* Enable survivability mode if set via configfs */
-	if (survivability_mode)
+	if (survivability_mode & XE_CONFIGFS_SURVIVABILITY_ENABLE)
 		return true;
 
 	data = xe_mmio_read32(mmio, PCODE_SCRATCH(0));
