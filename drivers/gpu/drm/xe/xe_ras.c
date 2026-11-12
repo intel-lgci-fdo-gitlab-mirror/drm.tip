@@ -332,7 +332,12 @@ static int handle_page_offline(struct xe_device *xe, u64 page_address, bool noti
 
 	addr = ALIGN_DOWN(page_address, PAGE_SIZE);
 
-	ret = xe_ttm_vram_handle_addr_fault(xe, addr);
+	/*
+	 * Pages sourced from firmware's permanent (non-volatile) list are
+	 * already confirmed bad from a prior boot (notify_fw == false); mark
+	 * them HARD so they're never eligible for decay-based reinstatement.
+	 */
+	ret = xe_ttm_vram_handle_addr_fault(xe, addr, !notify_fw);
 
 	/*
 	 * Handle return code from address fault handling function:

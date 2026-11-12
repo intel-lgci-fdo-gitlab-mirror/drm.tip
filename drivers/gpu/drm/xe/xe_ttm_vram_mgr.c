@@ -837,7 +837,8 @@ static struct xe_bo *xe_ttm_vram_block_owner_get(struct xe_device *xe,
 }
 
 static int xe_ttm_vram_reserve_page_at_addr(struct xe_device *xe, u64 addr,
-					    struct xe_ttm_vram_mgr *vram_mgr, struct gpu_buddy *mm)
+					    struct xe_ttm_vram_mgr *vram_mgr, struct gpu_buddy *mm,
+					    bool permanent)
 {
 	struct xe_ttm_vram_offline_resource *nentry;
 	struct xe_bo *pbo_to_put = NULL;
@@ -859,7 +860,11 @@ static int xe_ttm_vram_reserve_page_at_addr(struct xe_device *xe, u64 addr,
 		INIT_LIST_HEAD(&nentry->blocks);
 		nentry->status = XE_PAGE_RESERVE_PENDING;
 		nentry->addr = addr;
-		nentry->mode = XE_PAGE_OFFLINE_SOFT;
+		/*
+		 * Pages reloaded from firmware's non-volatile permanent list are
+		 * already confirmed bad by a prior boot; never let them decay back in.
+		 */
+		nentry->mode = permanent ? XE_PAGE_OFFLINE_HARD : XE_PAGE_OFFLINE_SOFT;
 		nentry->last_seen = jiffies;
 
 		if (block) {
@@ -900,7 +905,7 @@ static int xe_ttm_vram_reserve_page_at_addr(struct xe_device *xe, u64 addr,
 			}
 			++vram_mgr->n_offlined_pages;
 			list_add(&nentry->offlined_link, &vram_mgr->offlined_pages);
-			if (vram_mgr->decay_interval_jiffies &&
+			if (!permanent && vram_mgr->decay_interval_jiffies &&
 			    !delayed_work_pending(&vram_mgr->decay_gc_work)) {
 				schedule_delayed_work(&vram_mgr->decay_gc_work,
 						      xe_ttm_vram_decay_gc_period(vram_mgr));
@@ -986,7 +991,7 @@ static struct xe_vram_region *xe_ttm_vram_addr_to_region(struct xe_device *xe, u
  * pending if the blocks backing it could not be freed immediately; the
  * reservation is then completed from xe_ttm_vram_mgr_del().
  */
-int xe_ttm_vram_handle_addr_fault(struct xe_device *xe, u64 addr)
+int xe_ttm_vram_handle_addr_fault(struct xe_device *xe, u64 addr, bool permanent)
 {
 	struct xe_ttm_vram_mgr *vram_mgr;
 	struct xe_vram_region *vr;
@@ -1023,7 +1028,7 @@ int xe_ttm_vram_handle_addr_fault(struct xe_device *xe, u64 addr)
 	}
 
 	/* Reserve page at address */
-	return xe_ttm_vram_reserve_page_at_addr(xe, addr - vr->dpa_base, vram_mgr, mm);
+	return xe_ttm_vram_reserve_page_at_addr(xe, addr - vr->dpa_base, vram_mgr, mm, permanent);
 }
 EXPORT_SYMBOL(xe_ttm_vram_handle_addr_fault);
 
@@ -1074,7 +1079,7 @@ int xe_ttm_vram_inject_fault(struct xe_device *xe)
 		 * test-only path.
 		 */
 		if (found)
-			return xe_ttm_vram_handle_addr_fault(xe, addr + vr->dpa_base);
+			return xe_ttm_vram_handle_addr_fault(xe, addr + vr->dpa_base, false);
 
 		cond_resched();
 		if (addr == 0)

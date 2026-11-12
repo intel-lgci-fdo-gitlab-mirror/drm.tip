@@ -119,7 +119,7 @@ static ssize_t inject_mempage_offline_trigger(struct file *f,
 		return xe_ttm_vram_inject_fault(xe) ?: size;
 
 	/* User provided PFN - convert to DPA and inject */
-	return xe_ttm_vram_handle_addr_fault(xe, pfn << PAGE_SHIFT) ?: size;
+		return xe_ttm_vram_handle_addr_fault(xe, pfn << PAGE_SHIFT, false) ?: size;
 }
 
 static const struct file_operations inject_mempage_offline_fops = {

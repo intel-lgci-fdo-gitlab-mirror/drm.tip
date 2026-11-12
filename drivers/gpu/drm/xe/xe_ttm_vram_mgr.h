@@ -31,7 +31,7 @@ u64 xe_ttm_vram_get_avail(struct ttm_resource_manager *man);
 u64 xe_ttm_vram_get_cpu_visible_size(struct ttm_resource_manager *man);
 void xe_ttm_vram_get_used(struct ttm_resource_manager *man,
 			  u64 *used, u64 *used_visible);
-int xe_ttm_vram_handle_addr_fault(struct xe_device *xe, u64 addr);
+int xe_ttm_vram_handle_addr_fault(struct xe_device *xe, u64 addr, bool permanent);
 int xe_ttm_vram_inject_fault(struct xe_device *xe);
 
 static inline struct xe_ttm_vram_mgr_resource *
