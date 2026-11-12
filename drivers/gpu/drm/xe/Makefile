@@ -168,6 +168,9 @@ xe-$(CONFIG_HWMON) += xe_hwmon.o
 
 xe-$(CONFIG_PERF_EVENTS) += xe_pmu.o
 xe-$(CONFIG_CONFIGFS_FS) += xe_configfs.o
+ifeq ($(CONFIG_CONFIGFS_FS),y)
+xe-$(CONFIG_DRM_XE_DEBUG) += xe_configfs_debug.o
+endif
 
 xe-$(CONFIG_UEFI_CPER) += xe_cper.o \
 			  xe_trace_cper.o
