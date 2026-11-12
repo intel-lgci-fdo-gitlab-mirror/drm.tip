@@ -373,17 +373,20 @@ static void xe_ttm_vram_decay_gc_worker(struct work_struct *work)
 	struct xe_device *xe = ttm_to_xe_device(mgr->manager.bdev);
 	unsigned long now = jiffies;
 	unsigned long decay;
+	bool soft_remaining = false;
 
 	mutex_lock(&mgr->lock);
 	decay = mgr->decay_interval_jiffies;
 	if (!decay)
-		goto reschedule;
+		goto unlock;
 
 	list_for_each_entry_safe(pos, n, &mgr->offlined_pages, offlined_link) {
 		if (pos->mode != XE_PAGE_OFFLINE_SOFT)
 			continue;
-		if (!time_after(now, pos->last_seen + decay))
+		if (!time_after(now, pos->last_seen + decay)) {
+			soft_remaining = true;
 			continue;
+		}
 
 		list_del(&pos->offlined_link);
 		xe_ttm_vram_buddy_free(mgr, &pos->blocks, pos->used_visible_size);
@@ -394,9 +397,11 @@ static void xe_ttm_vram_decay_gc_worker(struct work_struct *work)
 		kfree(pos);
 	}
 
-reschedule:
-	schedule_delayed_work(&mgr->decay_gc_work,
-			      xe_ttm_vram_decay_gc_period(mgr));
+	/* Nothing left to track; re-armed on demand when a new SOFT entry appears */
+	if (soft_remaining)
+		schedule_delayed_work(&mgr->decay_gc_work,
+				      xe_ttm_vram_decay_gc_period(mgr));
+unlock:
 	mutex_unlock(&mgr->lock);
 }
 
