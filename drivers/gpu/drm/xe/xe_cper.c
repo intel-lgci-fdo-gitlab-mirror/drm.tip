@@ -258,7 +258,12 @@ static void cper_emit_sw_err(struct xe_device *xe, int cper_sev, enum xe_sigid s
 	union xe_cper_error_class error_class = {};
 	struct xe_cper_intel_hdr ihdr = {};
 	struct xe_cper_driver_error_class *driver = &error_class.driver;
+	char *msg = kvasprintf(GFP_KERNEL, vaf->fmt, *vaf->va);
 	u64 timestamp = ktime_get_real_ns();
+	size_t msg_len;
+
+	if (!msg)
+		return;
 
 	driver->error_type = cper_sev;
 	driver->error_component = component;
@@ -266,7 +271,11 @@ static void cper_emit_sw_err(struct xe_device *xe, int cper_sev, enum xe_sigid s
 	if (IS_ERR(data))
 		driver->cause = -PTR_ERR(data);
 
+	msg_len = strlen(msg) + 1;
+
 	cper_init_intel_hdr(xe, &error_class, timestamp, sigid, 1, &ihdr);
+	cper_record_emit(xe, cper_sev, &INTEL_CPER_NOTIFY_DRV_ERROR, &ihdr, msg, msg_len);
+	kfree(msg);
 }
 
 /**
