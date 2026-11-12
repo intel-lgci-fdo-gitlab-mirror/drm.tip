@@ -328,7 +328,7 @@ static int handle_page_offline(struct xe_device *xe, u64 page_address, bool noti
 	}
 
 	/* User policy set to disable page offlining */
-	if (xe_ras_get_disable_vram_page_offline(xe)) {
+	if (!xe_ras_get_enable_vram_page_offline(xe)) {
 		action = XE_RAS_PAGE_ACTION_REMOVE;
 		xe_log_err(xe, DEVICE_MEMORY, -EOPNOTSUPP, "User policy set to disable page offlining\n");
 		goto notify;
@@ -1265,14 +1265,14 @@ static void ras_fini(void *arg)
 }
 
 /**
- * xe_ras_get_disable_vram_page_offline - Get the vram page offline user policy
+ * xe_ras_get_enable_vram_page_offline - Get the vram page offline user policy
  * @xe: xe device instance
  *
- * Return: true if the vram page offline policy is disabled, false otherwise.
+ * Return: true if the vram page offline policy is enabled, false otherwise.
  */
-bool xe_ras_get_disable_vram_page_offline(struct xe_device *xe)
+bool xe_ras_get_enable_vram_page_offline(struct xe_device *xe)
 {
-	return xe->ras.state.disable_vram_page_offline;
+	return xe->ras.state.enable_vram_page_offline;
 }
 
 /**
@@ -1319,17 +1319,19 @@ int xe_ras_init(struct xe_device *xe)
 	struct xe_ras_state *state = &xe->ras.state;
 	int ret;
 
+	state->enable_vram_page_offline = true;
+
 	xe_drm_ras_init(xe);
 
 	if (!xe->info.has_sysctrl)
 		return 0;
 
 	/*
-	 * TODO: Replace with xe->info.has_disable_vram_page_offline once the feature flag is
+	 * TODO: Replace with xe->info.has_vram_page_offline once the feature flag is
 	 * plumbed through device info.
 	 */
-	xe->ras.state.disable_vram_page_offline =
-		xe_configfs_get_disable_vram_page_offline(to_pci_dev(xe->drm.dev));
+	xe->ras.state.enable_vram_page_offline =
+		xe_configfs_get_enable_vram_page_offline(to_pci_dev(xe->drm.dev));
 
 	if (IS_ENABLED(CONFIG_PCIEAER))
 		ras_usp_aer_init(xe);
