@@ -14,6 +14,16 @@
 #include "selftests/igt_atomic.h"
 #include "selftests/igt_spinner.h"
 
+static bool stolen_page_unused(struct intel_gt *gt, resource_size_t page)
+{
+	lockdep_assert_held(&gt->i915->mm.stolen_lock);
+
+	return __drm_mm_interval_first(&gt->i915->mm.stolen,
+					page << PAGE_SHIFT,
+					((page + 1) << PAGE_SHIFT) - 1) ==
+	       &gt->i915->mm.stolen.head_node;
+}
+
 static int
 __igt_reset_stolen(struct intel_gt *gt,
 		   intel_engine_mask_t mask,
@@ -26,6 +36,7 @@ __igt_reset_stolen(struct intel_gt *gt,
 	intel_wakeref_t wakeref;
 	enum intel_engine_id id;
 	struct igt_spinner spin;
+	unsigned long *poisoned;
 	long max, count;
 	void *tmp;
 	u32 *crc;
@@ -34,7 +45,8 @@ __igt_reset_stolen(struct intel_gt *gt,
 	if (!drm_mm_node_allocated(&ggtt->error_capture))
 		return 0;
 
-	num_pages = resource_size(dsm) >> PAGE_SHIFT;
+	num_pages = min_t(resource_size_t, resource_size(dsm),
+			  gt->i915->dsm.usable_size) >> PAGE_SHIFT;
 	if (!num_pages)
 		return 0;
 
@@ -42,10 +54,16 @@ __igt_reset_stolen(struct intel_gt *gt,
 	if (!crc)
 		return -ENOMEM;
 
+	poisoned = bitmap_zalloc(num_pages, GFP_KERNEL);
+	if (!poisoned) {
+		err = -ENOMEM;
+		goto err_crc;
+	}
+
 	tmp = kmalloc(PAGE_SIZE, GFP_KERNEL);
 	if (!tmp) {
 		err = -ENOMEM;
-		goto err_crc;
+		goto err_poisoned;
 	}
 
 	igt_global_reset_lock(gt);
@@ -79,6 +97,8 @@ __igt_reset_stolen(struct intel_gt *gt,
 		i915_request_add(rq);
 	}
 
+	mutex_lock(&gt->i915->mm.stolen_lock);
+
 	for (page = 0; page < num_pages; page++) {
 		dma_addr_t dma = (dma_addr_t)dsm->start + (page << PAGE_SHIFT);
 		void __iomem *s;
@@ -95,10 +115,10 @@ __igt_reset_stolen(struct intel_gt *gt,
 				      ggtt->error_capture.start,
 				      PAGE_SIZE);
 
-		if (!__drm_mm_interval_first(&gt->i915->mm.stolen,
-					     page << PAGE_SHIFT,
-					     ((page + 1) << PAGE_SHIFT) - 1))
+		if (stolen_page_unused(gt, page)) {
 			memset_io(s, STACK_MAGIC, PAGE_SIZE);
+			__set_bit(page, poisoned);
+		}
 
 		in = (void __force *)s;
 		if (i915_memcpy_from_wc(tmp, in, PAGE_SIZE))
@@ -143,10 +163,13 @@ __igt_reset_stolen(struct intel_gt *gt,
 			in = tmp;
 		x = crc32_le(0, in, PAGE_SIZE);
 
-		if (x != crc[page] &&
-		    !__drm_mm_interval_first(&gt->i915->mm.stolen,
-					     page << PAGE_SHIFT,
-					     ((page + 1) << PAGE_SHIFT) - 1)) {
+		/*
+		 * Only check pages we poisoned: pages in use before the
+		 * reset (e.g. ring buffers) may legitimately be rewritten
+		 * and released during the reset.
+		 */
+		if (x != crc[page] && test_bit(page, poisoned) &&
+		    stolen_page_unused(gt, page)) {
 			pr_debug("unused stolen page %pa modified by GPU reset\n",
 				 &page);
 			if (count++ == 0)
@@ -158,6 +181,8 @@ __igt_reset_stolen(struct intel_gt *gt,
 	}
 	mb();
 	ggtt->vm.clear_range(&ggtt->vm, ggtt->error_capture.start, PAGE_SIZE);
+
+	mutex_unlock(&gt->i915->mm.stolen_lock);
 
 	if (count > 0) {
 		pr_info("%s reset clobbered %ld pages of stolen, last clobber at page %ld\n",
@@ -177,6 +202,8 @@ err_lock:
 	igt_global_reset_unlock(gt);
 
 	kfree(tmp);
+err_poisoned:
+	bitmap_free(poisoned);
 err_crc:
 	kfree(crc);
 	return err;
