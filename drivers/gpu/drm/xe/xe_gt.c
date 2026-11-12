@@ -685,11 +685,6 @@ static int gt_init_with_all_forcewake(struct xe_gt *gt)
 	if (err)
 		return err;
 
-	/* Last action registered here so devres drains resets before teardown */
-	err = devm_add_action_or_reset(xe->drm.dev, gt_worker_disable, gt);
-	if (err)
-		return err;
-
 	return 0;
 }
 
