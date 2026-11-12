@@ -820,7 +820,11 @@ static ssize_t parse_wa_bb_lines(const char *lines,
 	ssize_t dwords = 0, ret;
 	const char *p;
 
-	for (p = lines; *p; p++) {
+	/*
+	 * Each iteration consumes at least the engine class token if it doesn't
+	 * error out, so the loop always makes progress without advancing @p.
+	 */
+	for (p = lines; *p;) {
 		const struct engine_info *info = NULL;
 		u32 val, val2;
 
