@@ -7,7 +7,15 @@
 #define _XE_TTM_VRAM_MGR_TYPES_H_
 
 #include <linux/gpu_buddy.h>
+#include <linux/workqueue.h>
 #include <drm/ttm/ttm_device.h>
+
+#define XE_BAD_PAGE_DECAY_SECS_DEFAULT	(24 * 60 * 60)
+
+enum xe_page_offline_mode {
+	XE_PAGE_OFFLINE_SOFT = 0,
+	XE_PAGE_OFFLINE_HARD,
+};
 
 /**
  * struct xe_ttm_vram_mgr - Xe TTM VRAM manager
@@ -37,6 +45,10 @@ struct xe_ttm_vram_mgr {
 	struct mutex lock;
 	/** @mem_type: The TTM memory type */
 	u32 mem_type;
+	/** @decay_gc_work: reinstates expired soft-offlined pages */
+	struct delayed_work decay_gc_work;
+	/** @decay_interval_jiffies: soft-offline decay interval */
+	unsigned long decay_interval_jiffies;
 };
 
 /**
@@ -79,6 +91,10 @@ struct xe_ttm_vram_offline_resource {
 	u64 addr;
 	/** @status: buddy reservation status */
 	enum xe_page_reserve_status status;
+	/** @mode: soft or hard offline mode */
+	enum xe_page_offline_mode mode;
+	/** @last_seen: most recent hardware report time */
+	unsigned long last_seen;
 };
 
 #endif

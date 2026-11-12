@@ -355,6 +355,51 @@ static const struct ttm_resource_manager_func xe_ttm_vram_mgr_func = {
 	.debug	= xe_ttm_vram_mgr_debug
 };
 
+static unsigned long xe_ttm_vram_decay_gc_period(struct xe_ttm_vram_mgr *mgr)
+{
+	unsigned long period = mgr->decay_interval_jiffies / 8;
+
+	if (period < msecs_to_jiffies(60 * 1000))
+		period = msecs_to_jiffies(60 * 1000);
+	return period;
+}
+
+static void xe_ttm_vram_decay_gc_worker(struct work_struct *work)
+{
+	struct xe_ttm_vram_mgr *mgr = container_of(to_delayed_work(work),
+						   struct xe_ttm_vram_mgr,
+						   decay_gc_work);
+	struct xe_ttm_vram_offline_resource *pos, *n;
+	struct xe_device *xe = ttm_to_xe_device(mgr->manager.bdev);
+	unsigned long now = jiffies;
+	unsigned long decay;
+
+	mutex_lock(&mgr->lock);
+	decay = mgr->decay_interval_jiffies;
+	if (!decay)
+		goto reschedule;
+
+	list_for_each_entry_safe(pos, n, &mgr->offlined_pages, offlined_link) {
+		if (pos->mode != XE_PAGE_OFFLINE_SOFT)
+			continue;
+		if (!time_after(now, pos->last_seen + decay))
+			continue;
+
+		list_del(&pos->offlined_link);
+		xe_ttm_vram_buddy_free(mgr, &pos->blocks, pos->used_visible_size);
+		--mgr->n_offlined_pages;
+		drm_info(&xe->drm,
+			 "decay: reinstated soft-offlined page 0x%llx\n",
+			 pos->addr);
+		kfree(pos);
+	}
+
+reschedule:
+	schedule_delayed_work(&mgr->decay_gc_work,
+			      xe_ttm_vram_decay_gc_period(mgr));
+	mutex_unlock(&mgr->lock);
+}
+
 static const struct dmem_cgroup_ops xe_ttm_vram_mgr_dmem_ops;
 
 static int xe_ttm_vram_mgr_dmem_reclaim(struct dmem_cgroup_pool_state *pool,
@@ -415,6 +460,8 @@ static void xe_ttm_vram_mgr_fini(struct drm_device *dev, void *arg)
 	struct xe_ttm_vram_mgr *mgr = arg;
 	struct ttm_resource_manager *man = &mgr->manager;
 
+	cancel_delayed_work_sync(&mgr->decay_gc_work);
+
 	mutex_lock(&mgr->lock);
 	xe_ttm_vram_free_bad_pages(mgr);
 	mutex_unlock(&mgr->lock);
@@ -438,6 +485,7 @@ int __xe_ttm_vram_mgr_init(struct xe_device *xe, struct xe_ttm_vram_mgr *mgr,
 	struct ttm_resource_manager *man = &mgr->manager;
 	struct dmem_cgroup_region *cg;
 	const char *name;
+	u32 decay_secs;
 	int err;
 
 	man->func = &xe_ttm_vram_mgr_func;
@@ -447,6 +495,9 @@ int __xe_ttm_vram_mgr_init(struct xe_device *xe, struct xe_ttm_vram_mgr *mgr,
 		return err;
 	INIT_LIST_HEAD(&mgr->offlined_pages);
 	INIT_LIST_HEAD(&mgr->queued_pages);
+	INIT_DELAYED_WORK(&mgr->decay_gc_work, xe_ttm_vram_decay_gc_worker);
+	decay_secs = xe_configfs_get_bad_page_decay_secs(to_pci_dev(xe->drm.dev));
+	mgr->decay_interval_jiffies = secs_to_jiffies(decay_secs);
 	mgr->default_page_size = default_page_size;
 	mgr->visible_size = io_size;
 	mgr->visible_avail = io_size;
@@ -725,8 +776,12 @@ static bool xe_ttm_vram_page_already_processed(struct xe_ttm_vram_mgr *mgr,
 	lockdep_assert_held(&mgr->lock);
 
 	list_for_each_entry(pos, &mgr->offlined_pages, offlined_link) {
-		if (pos->addr == addr)
+		if (pos->addr == addr) {
+			if (pos->mode == XE_PAGE_OFFLINE_SOFT)
+				pos->mode = XE_PAGE_OFFLINE_HARD;
+			pos->last_seen = jiffies;
 			return true;
+		}
 	}
 
 	list_for_each_entry(pos, &mgr->queued_pages, queued_link) {
@@ -804,6 +859,8 @@ static int xe_ttm_vram_reserve_page_at_addr(struct xe_device *xe, u64 addr,
 		INIT_LIST_HEAD(&nentry->blocks);
 		nentry->status = XE_PAGE_RESERVE_PENDING;
 		nentry->addr = addr;
+		nentry->mode = XE_PAGE_OFFLINE_SOFT;
+		nentry->last_seen = jiffies;
 
 		if (block) {
 			pbo = xe_ttm_vram_block_owner_get(xe, block);
@@ -843,6 +900,11 @@ static int xe_ttm_vram_reserve_page_at_addr(struct xe_device *xe, u64 addr,
 			}
 			++vram_mgr->n_offlined_pages;
 			list_add(&nentry->offlined_link, &vram_mgr->offlined_pages);
+			if (vram_mgr->decay_interval_jiffies &&
+			    !delayed_work_pending(&vram_mgr->decay_gc_work)) {
+				schedule_delayed_work(&vram_mgr->decay_gc_work,
+						      xe_ttm_vram_decay_gc_period(vram_mgr));
+			}
 			return ret;
 		}
 	}

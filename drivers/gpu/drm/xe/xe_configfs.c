@@ -305,6 +305,7 @@ struct xe_config_group_device {
 		bool enable_psmi;
 		bool enable_multi_queue;
 		bool disable_vram_page_offline;
+		u32 bad_page_decay_secs;
 		struct {
 			unsigned int max_vfs;
 			bool admin_only_pf;
@@ -327,6 +328,7 @@ static const struct xe_config_device device_defaults = {
 	.enable_psmi = false,
 	.enable_multi_queue = true,
 	.disable_vram_page_offline = false,
+	.bad_page_decay_secs = 24 * 60 * 60,
 	.sriov = {
 		.max_vfs = XE_DEFAULT_MAX_VFS,
 		.admin_only_pf = XE_DEFAULT_ADMIN_ONLY_PF,
@@ -702,6 +704,36 @@ static ssize_t disable_vram_page_offline_store(struct config_item *item,
 	return len;
 }
 
+static ssize_t bad_page_decay_secs_show(struct config_item *item, char *page)
+{
+	struct xe_config_group_device *dev = to_xe_config_group_device(item);
+
+	return sprintf(page, "%u\n", dev->config.bad_page_decay_secs);
+}
+
+static ssize_t bad_page_decay_secs_store(struct config_item *item,
+					 const char *page, size_t len)
+{
+	struct xe_config_group_device *dev = to_xe_config_group_device(item);
+	u32 val;
+	int ret;
+
+	ret = kstrtou32(page, 0, &val);
+	if (ret)
+		return ret;
+
+	if (val > jiffies_to_msecs(MAX_JIFFY_OFFSET) / 1000)
+		return -EINVAL;
+
+	guard(mutex)(&dev->lock);
+	if (is_bound(dev))
+		return -EBUSY;
+
+	dev->config.bad_page_decay_secs = val;
+
+	return len;
+}
+
 static bool wa_bb_read_advance(bool dereference, char **p,
 			       const char *append, size_t len,
 			       size_t *max_size)
@@ -943,6 +975,7 @@ CONFIGFS_ATTR(, enable_multi_queue);
 CONFIGFS_ATTR(, migrate_ulls_period_ms);
 CONFIGFS_ATTR(, enable_psmi);
 CONFIGFS_ATTR(, disable_vram_page_offline);
+CONFIGFS_ATTR(, bad_page_decay_secs);
 CONFIGFS_ATTR(, engines_allowed);
 CONFIGFS_ATTR(, gt_types_allowed);
 CONFIGFS_ATTR(, survivability_mode);
@@ -954,6 +987,7 @@ static struct configfs_attribute *xe_config_device_attrs[] = {
 	&attr_migrate_ulls_period_ms,
 	&attr_enable_psmi,
 	&attr_disable_vram_page_offline,
+	&attr_bad_page_decay_secs,
 	&attr_engines_allowed,
 	&attr_gt_types_allowed,
 	&attr_survivability_mode,
@@ -1239,6 +1273,7 @@ static void dump_custom_dev_config(struct pci_dev *pdev,
 	PRI_CUSTOM_ATTR("%d", enable_multi_queue);
 	PRI_CUSTOM_ATTR("%d", enable_psmi);
 	PRI_CUSTOM_ATTR("%d", disable_vram_page_offline);
+	PRI_CUSTOM_ATTR("%u", bad_page_decay_secs);
 	PRI_CUSTOM_ATTR("%d", survivability_mode);
 	PRI_CUSTOM_ATTR("%u", sriov.admin_only_pf);
 
@@ -1422,6 +1457,26 @@ bool xe_configfs_get_disable_vram_page_offline(struct pci_dev *pdev)
 		return device_defaults.disable_vram_page_offline;
 
 	ret = dev->config.disable_vram_page_offline;
+	config_group_put(&dev->group);
+
+	return ret;
+}
+
+/**
+ * xe_configfs_get_bad_page_decay_secs - get configfs bad_page_decay_secs setting
+ * @pdev: pci device
+ *
+ * Return: bad_page_decay_secs setting in configfs
+ */
+u32 xe_configfs_get_bad_page_decay_secs(struct pci_dev *pdev)
+{
+	struct xe_config_group_device *dev = find_xe_config_group_device(pdev);
+	u32 ret;
+
+	if (!dev)
+		return device_defaults.bad_page_decay_secs;
+
+	ret = dev->config.bad_page_decay_secs;
 	config_group_put(&dev->group);
 
 	return ret;
