@@ -5,14 +5,19 @@
 
 #include <linux/pci.h>
 
+#include <generated/xe_device_wa_oob.h>
+
 #include "xe_device.h"
 #include "xe_gt.h"
+#include "xe_hw_error.h"
 #include "xe_log.h"
 #include "xe_pci.h"
+#include "xe_pcode.h"
 #include "xe_pm.h"
 #include "xe_printk.h"
 #include "xe_ras.h"
 #include "xe_survivability_mode.h"
+#include "xe_wa.h"
 #include "xe_wedge.h"
 
 static void prepare_device_for_reset(struct pci_dev *pdev)
@@ -54,6 +59,29 @@ static pci_ers_result_t ras_action_to_pci_result(struct pci_dev *pdev, u8 action
 	}
 }
 
+static bool is_aer_internal_error(struct pci_dev *pdev)
+{
+	struct pci_dev *usp;
+	u16 aer_cap;
+	u32 status;
+
+	usp = xe_pci_get_usp_dev(pdev);
+	if (!usp)
+		return false;
+
+	aer_cap = pci_find_ext_capability(usp, PCI_EXT_CAP_ID_ERR);
+	if (!aer_cap) {
+		dev_warn_once(&usp->dev, "AER capability unavailable\n");
+		return false;
+	}
+
+	pci_read_config_dword(usp, aer_cap + PCI_ERR_UNCOR_STATUS, &status);
+	if (PCI_POSSIBLE_ERROR(status))
+		return false;
+
+	return status & PCI_ERR_UNC_INTN;
+}
+
 static pci_ers_result_t xe_pci_error_detected(struct pci_dev *pdev, pci_channel_state_t state)
 {
 	struct xe_device *xe = pdev_to_xe_device(pdev);
@@ -63,8 +91,20 @@ static pci_ers_result_t xe_pci_error_detected(struct pci_dev *pdev, pci_channel_
 	if (state == pci_channel_io_perm_failure)
 		return PCI_ERS_RESULT_DISCONNECT;
 
-	/* If the device is already wedged or in survivability mode, do not attempt recovery */
-	if (xe_survivability_mode_is_boot_enabled(xe) || xe_wedged(xe))
+	/* If the device is already in survivability mode, do not attempt recovery */
+	if (xe_survivability_mode_is_boot_enabled(xe))
+		return PCI_ERS_RESULT_DISCONNECT;
+
+	/*
+	 * If non-fatal error processing is in progress when uncorrectable internal error occurs,
+	 * flush and disable the worker to prevent further processing, as a reset is imminent.
+	 */
+	if (XE_DEVICE_WA(xe, 14028434957) && is_aer_internal_error(pdev)) {
+		xe_ras_set_aer_internal_error(xe);
+		xe_hw_error_work_disable(xe);
+	}
+
+	if (xe_wedged(xe))
 		return PCI_ERS_RESULT_DISCONNECT;
 
 	switch (state) {
@@ -111,6 +151,11 @@ static pci_ers_result_t xe_pci_error_slot_reset(struct pci_dev *pdev)
 		xe_log_err_fatal(xe, PCI, err, "Cannot re-enable PCI device after reset\n");
 		return PCI_ERS_RESULT_DISCONNECT;
 	}
+
+	err = xe_pcode_ready(xe, true);
+	/* TODO: dump survivability info on pcode init failure */
+	if (err)
+		return PCI_ERS_RESULT_DISCONNECT;
 
 	/*
 	 * Secondary Bus Reset causes all VRAM state to be lost along with
