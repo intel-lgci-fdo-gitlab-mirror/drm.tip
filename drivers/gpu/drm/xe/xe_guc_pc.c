@@ -344,6 +344,21 @@ static void pc_set_cur_freq(struct xe_guc_pc *pc, u32 freq)
 	pc_set_manual_rp_ctrl(pc, false);
 }
 
+static int pc_set_ignore_eff_freq(struct xe_guc_pc *pc, u32 val)
+{
+	struct xe_gt *gt = pc_to_gt(pc);
+	int ret;
+
+	xe_device_assert_mem_access(pc_to_xe(pc));
+
+	ret = pc_action_set_param(pc, SLPC_PARAM_IGNORE_EFFICIENT_FREQUENCY, val);
+	if (ret)
+		xe_gt_err_once(gt, "Failed to set ignore_eff_freq to %u, %pe\n",
+			       val, ERR_PTR(ret));
+
+	return ret;
+}
+
 static int pc_set_min_freq(struct xe_guc_pc *pc, u32 freq)
 {
 	/*
@@ -352,13 +367,6 @@ static int pc_set_min_freq(struct xe_guc_pc *pc, u32 freq)
 	 */
 	if (freq < pc->rpn_freq || freq > pc->rp0_freq)
 		return -EINVAL;
-
-	/*
-	 * GuC policy is to elevate minimum frequency to the efficient levels
-	 * Our goal is to have the admin choices respected.
-	 */
-	pc_action_set_param(pc, SLPC_PARAM_IGNORE_EFFICIENT_FREQUENCY,
-			    freq < xe_guc_pc_get_rpe_freq(pc));
 
 	return pc_action_set_param(pc,
 				   SLPC_PARAM_GLOBAL_MIN_GT_UNSLICE_FREQ_MHZ,
@@ -1072,6 +1080,7 @@ void xe_guc_pc_remove_flush_freq_limit(struct xe_guc_pc *pc)
 static int pc_set_mert_freq_cap(struct xe_guc_pc *pc)
 {
 	int ret;
+	u32 mert_freq_cap;
 
 	if (!XE_GT_WA(pc_to_gt(pc), 22019338487))
 		return 0;
@@ -1090,6 +1099,14 @@ static int pc_set_mert_freq_cap(struct xe_guc_pc *pc)
 	/*
 	 * Ensure min and max are bound by MERT_FREQ_CAP until driver loads.
 	 */
+	mert_freq_cap = min(xe_guc_pc_get_rpe_freq(pc), pc_max_freq_cap(pc));
+	if (mert_freq_cap < xe_guc_pc_get_rpe_freq(pc) && pc->use_rpe) {
+		/* Temporarily let GuC drop min below RPe so the cap can be applied. */
+		ret = pc_set_ignore_eff_freq(pc, 1);
+		if (ret)
+			return ret;
+	}
+
 	ret = pc_set_min_freq(pc, min(xe_guc_pc_get_rpe_freq(pc), pc_max_freq_cap(pc)));
 	if (!ret)
 		ret = pc_set_max_freq(pc, min(pc->rp0_freq, pc_max_freq_cap(pc)));
@@ -1113,6 +1130,11 @@ int xe_guc_pc_restore_stashed_freq(struct xe_guc_pc *pc)
 
 	mutex_lock(&pc->freq_lock);
 	ret = pc_set_max_freq(pc, pc->stashed_max_freq);
+
+	/* Undo any temporary ignore_eff_freq override from pc_set_mert_freq_cap(). */
+	if (!ret)
+		ret = pc_set_ignore_eff_freq(pc, !pc->use_rpe);
+
 	if (!ret)
 		ret = pc_set_min_freq(pc, pc->stashed_min_freq);
 	mutex_unlock(&pc->freq_lock);
@@ -1162,6 +1184,28 @@ static int pc_action_set_strategy(struct xe_guc_pc *pc, u32 val)
 	ret = pc_action_set_param(pc,
 				  SLPC_PARAM_STRATEGIES,
 				  val);
+
+	return ret;
+}
+
+int xe_guc_pc_set_use_rpe(struct xe_guc_pc *pc, u32 val)
+{
+	int ret;
+
+	guard(mutex)(&pc->freq_lock);
+
+	/* Might be in the middle of a gt reset */
+	if (!pc->freq_ready)
+		return -EAGAIN;
+
+	/**
+	 * If use_rpe == 1, ignore_eff_freq = false. GuC elevates min_freq to
+	 * RPe when enabled, and resets it back to the previously set min
+	 * when disabled, so no explicit set_min_freq request is needed here.
+	 */
+	ret = pc_set_ignore_eff_freq(pc, !val);
+	if (!ret)
+		pc->use_rpe = val;
 
 	return ret;
 }
@@ -1314,6 +1358,10 @@ int xe_guc_pc_start(struct xe_guc_pc *pc)
 	if (ret)
 		return ret;
 
+	ret = pc_set_ignore_eff_freq(pc, !pc->use_rpe);
+	if (unlikely(ret))
+		return ret;
+
 	ret = pc_init_freqs(pc);
 	if (ret)
 		return ret;
@@ -1400,6 +1448,7 @@ int xe_guc_pc_init(struct xe_guc_pc *pc)
 	pc->bo = bo;
 
 	pc->power_profile = SLPC_POWER_PROFILE_BASE;
+	pc->use_rpe = true;
 
 	return devm_add_action_or_reset(xe->drm.dev, xe_guc_pc_fini_hw, pc);
 }

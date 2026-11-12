@@ -35,6 +35,8 @@ struct xe_guc_pc {
 	bool freq_ready;
 	/** @power_profile: Base or power_saving profile */
 	u32 power_profile;
+	/** @use_rpe: Toggle use of efficient frequency */
+	u32 use_rpe;
 };
 
 #endif	/* _XE_GUC_PC_TYPES_H_ */
