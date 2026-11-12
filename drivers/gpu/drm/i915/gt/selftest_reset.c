@@ -98,6 +98,7 @@ __igt_reset_stolen(struct intel_gt *gt,
 	}
 
 	mutex_lock(&gt->i915->mm.stolen_lock);
+	mutex_lock(&ggtt->error_mutex);
 
 	for (page = 0; page < num_pages; page++) {
 		dma_addr_t dma = (dma_addr_t)dsm->start + (page << PAGE_SHIFT);
@@ -182,6 +183,7 @@ __igt_reset_stolen(struct intel_gt *gt,
 	mb();
 	ggtt->vm.clear_range(&ggtt->vm, ggtt->error_capture.start, PAGE_SIZE);
 
+	mutex_unlock(&ggtt->error_mutex);
 	mutex_unlock(&gt->i915->mm.stolen_lock);
 
 	if (count > 0) {
