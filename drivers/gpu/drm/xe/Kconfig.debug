@@ -77,6 +77,7 @@ config DRM_XE_KUNIT_TEST
         tristate "KUnit tests for the drm xe driver" if !KUNIT_ALL_TESTS
 	depends on DRM_XE && KUNIT && DEBUG_FS
 	default KUNIT_ALL_TESTS
+	select UEFI_CPER if DRM_XE_KUNIT_TEST != n
 	select DRM_EXPORT_FOR_TESTS if m
 	help
 	  Choose this option to allow the driver to perform selftests under

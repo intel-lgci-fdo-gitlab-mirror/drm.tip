@@ -320,3 +320,7 @@ int xe_cper_sysfs_init(struct xe_device *xe)
 {
 	return devm_device_add_group(xe->drm.dev, &cper_group);
 }
+
+#if IS_ENABLED(CONFIG_DRM_XE_KUNIT_TEST)
+#include "tests/xe_cper_kunit.c"
+#endif
