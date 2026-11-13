@@ -24,6 +24,7 @@
 #include "xe_tile.h"
 #include "xe_tlb_inval.h"
 #include "xe_ttm_vram_mgr.h"
+#include "xe_userptr.h"
 #include "xe_vm.h"
 #include "xe_vm_types.h"
 #include "xe_vram_types.h"
@@ -850,6 +851,9 @@ static const struct drm_gpusvm_ops gpusvm_ops = {
 	.range_alloc = xe_svm_range_alloc,
 	.range_free = xe_svm_range_free,
 	.invalidate = xe_svm_invalidate,
+#if IS_ENABLED(CONFIG_DEBUG_FS)
+	.dma_map_account = xe_userptr_dma_map_account,
+#endif
 };
 
 static const unsigned long fault_chunk_sizes[] = {
@@ -947,8 +951,8 @@ int xe_svm_init(struct xe_vm *vm)
 		}
 	} else {
 		err = drm_gpusvm_init(&vm->svm.gpusvm, "Xe SVM (simple)",
-				      NULL, 0, 0, 0, NULL,
-				      NULL, 0);
+				      NULL, 0, 0, 0,
+				      xe_userptr_gpusvm_ops_get(), NULL, 0);
 		if (err)
 			goto out_err;
 	}

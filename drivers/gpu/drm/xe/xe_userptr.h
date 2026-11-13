@@ -98,6 +98,12 @@ struct xe_userptr {
 };
 
 #if IS_ENABLED(CONFIG_DRM_GPUSVM)
+
+#if IS_ENABLED(CONFIG_DEBUG_FS)
+void xe_userptr_dma_map_account(struct drm_gpusvm *gpusvm,
+				const struct drm_pagemap_addr *addr, int sign);
+#endif
+
 void xe_userptr_remove(struct xe_userptr_vma *uvma);
 int xe_userptr_setup(struct xe_userptr_vma *uvma, unsigned long start,
 		     unsigned long range);
@@ -108,6 +114,7 @@ int __xe_vm_userptr_needs_repin(struct xe_vm *vm);
 int xe_vm_userptr_check_repin(struct xe_vm *vm);
 int xe_vma_userptr_pin_pages(struct xe_userptr_vma *uvma);
 int xe_vma_userptr_check_repin(struct xe_userptr_vma *uvma);
+const struct drm_gpusvm_ops *xe_userptr_gpusvm_ops_get(void);
 #else
 static inline void xe_userptr_remove(struct xe_userptr_vma *uvma) {}
 
