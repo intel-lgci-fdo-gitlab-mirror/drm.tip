@@ -82,10 +82,42 @@ static void cper_test_guids_unique(struct kunit *test)
 	}
 }
 
+/*
+ * GUIDs are UUIDv5 (RFC 9562): version in byte 7, variant in byte 8.
+ */
+static void cper_test_guids_are_uuidv5(struct kunit *test)
+{
+	static const guid_t reserved[] = {
+		INTEL_CPER_CREATOR_XEKMD,
+		INTEL_CPER_NOTIFY_GPU_ERROR,
+		INTEL_CPER_SECTION_ACCEL_GENERIC,
+	};
+	unsigned int i, j;
+
+	for (i = 0; i < ARRAY_SIZE(xe_device_guids); i++) {
+		const struct xe_device_guid_entry *e = &xe_device_guids[i];
+
+		KUNIT_EXPECT_FALSE_MSG(test, guid_is_null(&e->guid),
+				       "PCI ID %#06x has a null GUID", e->device_id);
+		KUNIT_EXPECT_EQ_MSG(test, e->guid.b[7] >> 4, 5,
+				    "PCI ID %#06x GUID %pUl is not UUIDv5",
+				    e->device_id, &e->guid);
+		KUNIT_EXPECT_EQ_MSG(test, e->guid.b[8] & 0xc0, 0x80,
+				    "PCI ID %#06x GUID %pUl has wrong variant",
+				    e->device_id, &e->guid);
+
+		for (j = 0; j < ARRAY_SIZE(reserved); j++)
+			KUNIT_EXPECT_FALSE_MSG(test, guid_equal(&e->guid, &reserved[j]),
+					       "PCI ID %#06x GUID %pUl collides with a CPER type GUID",
+					       e->device_id, &e->guid);
+	}
+}
+
 static struct kunit_case xe_cper_test_cases[] = {
 	KUNIT_CASE(cper_test_pci_ids_have_guid),
 	KUNIT_CASE(cper_test_guids_have_pci_id),
 	KUNIT_CASE(cper_test_guids_unique),
+	KUNIT_CASE(cper_test_guids_are_uuidv5),
 	{}
 };
 
