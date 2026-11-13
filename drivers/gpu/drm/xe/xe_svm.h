@@ -101,6 +101,11 @@ static inline bool xe_svm_range_pages_valid(struct xe_svm_range *range)
 	return drm_gpusvm_pages_valid(range->base.gpusvm, &range->pages);
 }
 
+#if IS_ENABLED(CONFIG_DEBUG_FS)
+void xe_svm_dma_map_account(struct drm_gpusvm *gpusvm,
+			    const struct drm_pagemap_addr *addr, int sign);
+#endif
+
 int xe_devm_add(struct xe_tile *tile, struct xe_vram_region *vr);
 
 int xe_svm_init(struct xe_vm *vm);
@@ -249,6 +254,7 @@ struct drm_pagemap *xe_drm_pagemap_from_fd(int fd, u32 region_instance);
 
 #else
 #include <linux/interval_tree.h>
+#include "xe_userptr.h"
 #include "xe_vm.h"
 
 struct drm_pagemap_addr;
@@ -296,7 +302,8 @@ int xe_svm_init(struct xe_vm *vm)
 {
 #if IS_ENABLED(CONFIG_DRM_GPUSVM)
 	return drm_gpusvm_init(&vm->svm.gpusvm, "Xe SVM (simple)",
-			       NULL, 0, 0, 0, NULL, NULL, 0);
+			       NULL, 0, 0, 0,
+			       xe_userptr_gpusvm_ops_get(), NULL, 0);
 #else
 	return 0;
 #endif
