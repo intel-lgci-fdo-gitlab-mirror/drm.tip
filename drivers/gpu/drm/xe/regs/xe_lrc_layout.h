@@ -18,6 +18,7 @@
 #define CTX_TIMESTAMP_UDW		(0x24 + 1)
 #define CTX_INDIRECT_RING_STATE		(0x26 + 1)
 #define CTX_ACC_CTR_THOLD		(0x2a + 1)
+#define CTX_SYS_PASID			(0x2c + 1)
 #define CTX_ASID			(0x2e + 1)
 #define CTX_PDP0_UDW			(0x30 + 1)
 #define CTX_PDP0_LDW			(0x32 + 1)
@@ -47,5 +48,8 @@
 
 #define CTX_INDIRECT_CTX_OFFSET_MASK	REG_GENMASK(15, 6)
 #define CTX_INDIRECT_CTX_OFFSET_DEFAULT	REG_FIELD_PREP(CTX_INDIRECT_CTX_OFFSET_MASK, 0xd)
+
+/* CTX_SYS_PASID fields used for the per-context ATS enable knob */
+#define CTX_SYS_ATS_ENABLED		BIT(31)
 
 #endif

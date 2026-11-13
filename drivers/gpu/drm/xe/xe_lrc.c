@@ -1650,6 +1650,15 @@ int xe_lrc_ctx_init(struct xe_lrc *lrc, struct xe_hw_engine *hwe, struct xe_vm *
 	if (xe->info.has_asid && vm)
 		xe_lrc_write_ctx_reg(lrc, CTX_ASID, vm->usm.asid);
 
+	/*
+	 * HW debug validation-only override: program CTX_SYS_PASID to force
+	 * per-context ATS enable for newly created contexts.
+	 */
+	if (xe->enable_ctx_ats) {
+		xe_lrc_write_ctx_reg(lrc, CTX_SYS_PASID, CTX_SYS_ATS_ENABLED);
+		drm_dbg(&xe->drm, "LRC: context ATS enabled via debugfs enable_ctx_ats\n");
+	}
+
 	if (GRAPHICS_VER(xe) >= 20 && hwe->class == XE_ENGINE_CLASS_RENDER)
 		xe_lrc_set_gpgpu_preemption_level(lrc, gt);
 
