@@ -522,44 +522,25 @@ static const struct intel_mmio_funcs lnl_mmio_funcs = {
 	.check_for_unclaimed_mmio = hsw_check_for_unclaimed_mmio,
 };
 
-static bool driver_is_i915(void)
-{
-#ifdef I915
-	return true;
-#else
-	return false;
-#endif
-}
-
 void intel_de_init(struct intel_display *display)
 {
 	display->mmio.uncore = to_intel_uncore(display->drm);
 
 	spin_lock_init(&display->mmio.lock);
 
-	/*
-	 * TODO: enable unclaimed register detection
-	 * (ideally without the lock) for xe and get
-	 * rid of driver_is_i915().
-	 */
-	if (driver_is_i915()) {
-		if (DISPLAY_VER(display) >= 12)
-			display->mmio.funcs = &tgl_mmio_funcs;
-		else if (DISPLAY_VER(display) >= 9 ||
-			 display->platform.broadwell || display->platform.haswell)
-			display->mmio.funcs = &hsw_mmio_funcs;
-		else if (display->platform.valleyview || display->platform.cherryview)
-			display->mmio.funcs = &vlv_mmio_funcs;
-		else if (DISPLAY_VER(display) >= 6)
-			display->mmio.funcs = &snb_mmio_funcs;
-		else
-			display->mmio.funcs = &i9xx_mmio_funcs;
-	} else {
-		if (DISPLAY_VER(display) >= 20)
-			display->mmio.funcs = &lnl_mmio_funcs;
-		else
-			display->mmio.funcs = &tgl_mmio_funcs;
-	}
+	if (DISPLAY_VER(display) >= 20)
+		display->mmio.funcs = &lnl_mmio_funcs;
+	else if (DISPLAY_VER(display) >= 12)
+		display->mmio.funcs = &tgl_mmio_funcs;
+	else if (DISPLAY_VER(display) >= 9 ||
+		 display->platform.broadwell || display->platform.haswell)
+		display->mmio.funcs = &hsw_mmio_funcs;
+	else if (display->platform.valleyview || display->platform.cherryview)
+		display->mmio.funcs = &vlv_mmio_funcs;
+	else if (DISPLAY_VER(display) >= 6)
+		display->mmio.funcs = &snb_mmio_funcs;
+	else
+		display->mmio.funcs = &i9xx_mmio_funcs;
 
 	if (display->mmio.funcs->check_for_unclaimed_mmio)
 		WRITE_ONCE(display->mmio.unclaimed_mmio_check, true);
