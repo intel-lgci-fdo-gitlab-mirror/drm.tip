@@ -502,7 +502,7 @@ static const struct intel_mmio_funcs tgl_mmio_funcs = {
 	.check_for_unclaimed_mmio = hsw_check_for_unclaimed_mmio,
 };
 
-#define LNL_MMIO_FLAGS __MMIO_WAKELOCK
+#define LNL_MMIO_FLAGS (__MMIO_WAKELOCK | __MMIO_UNCLAIMED)
 
 static u32 lnl_mmio_read(struct intel_display *display, intel_reg_t reg)
 {
@@ -519,6 +519,7 @@ static void lnl_mmio_write(struct intel_display *display, intel_reg_t reg, u32 v
 static const struct intel_mmio_funcs lnl_mmio_funcs = {
 	.read = lnl_mmio_read,
 	.write = lnl_mmio_write,
+	.check_for_unclaimed_mmio = hsw_check_for_unclaimed_mmio,
 };
 
 static bool driver_is_i915(void)
@@ -557,7 +558,7 @@ void intel_de_init(struct intel_display *display)
 		if (DISPLAY_VER(display) >= 20)
 			display->mmio.funcs = &lnl_mmio_funcs;
 		else
-			display->mmio.funcs = &i9xx_mmio_funcs;
+			display->mmio.funcs = &tgl_mmio_funcs;
 	}
 
 	if (display->mmio.funcs->check_for_unclaimed_mmio)
