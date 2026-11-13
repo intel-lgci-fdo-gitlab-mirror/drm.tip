@@ -648,7 +648,7 @@ static int hmm_do_fault(struct mm_struct *mm,
 	unsigned long addr = hmm_vma_walk->last;
 	unsigned long end = hmm_vma_walk->end;
 	unsigned int required_fault = hmm_vma_walk->required_fault;
-	unsigned int fault_flags = FAULT_FLAG_REMOTE;
+	unsigned int fault_flags = FAULT_FLAG_REMOTE | FAULT_FLAG_NO_NUMA;
 	struct vm_area_struct *vma;
 
 	if (hmm_vma_walk->locked)

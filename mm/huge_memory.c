@@ -2361,6 +2361,9 @@ vm_fault_t do_huge_pmd_numa_page(struct vm_fault *vmf)
 	if (!folio)
 		goto out_map;
 
+	if (vmf->flags & FAULT_FLAG_NO_NUMA)
+		goto out_map;
+
 	nid = folio_nid(folio);
 
 	target_nid = numa_migrate_check(folio, vmf, haddr, &flags, writable,
