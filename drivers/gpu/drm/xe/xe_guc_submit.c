@@ -3306,12 +3306,18 @@ void xe_guc_submit_pause_abort(struct xe_guc *guc)
 	xa_for_each(&guc->submission_state.exec_queue_lookup, index, q) {
 		struct xe_gpu_scheduler *sched = &q->guc->sched;
 
-		/* Prevent redundant attempts to stop parallel queues */
-		if (q->guc->id != index)
+		/*
+		 * Prevent redundant attempts to stop parallel queues, and skip
+		 * queues already dropped to a zero refcount via their own
+		 * independent teardown (guc_exec_queue_fini(), xarray entry
+		 * not yet erased)
+		 */
+		if (q->guc->id != index || !kref_get_unless_zero(&q->refcount))
 			continue;
 
 		xe_sched_submission_start(sched);
 		guc_exec_queue_kill(q);
+		xe_exec_queue_put(q);
 	}
 	mutex_unlock(&guc->submission_state.lock);
 }
