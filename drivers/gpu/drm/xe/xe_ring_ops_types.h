@@ -25,9 +25,10 @@ struct xe_sched_job;
  * preamble (4), copy timestamp (8, its size on an SRIOV VF), start seqno
  * store (4), arbitration off (1), batch buffer starts (2 * 3), pre-parser
  * bracketed flush invalidate (6), seqno flush (4), user interrupt (3) and
- * postamble (7 + 5).
+ * postamble (7 + 7, the latter being the MI_SEMAPHORE_WAIT_64 form used
+ * where supported).
  */
-#define ULLS_JOB_SIZE_DW 48
+#define ULLS_JOB_SIZE_DW 50
 #define ULLS_JOB_SIZE_BYTES (ULLS_JOB_SIZE_DW * 4)
 
 /*
