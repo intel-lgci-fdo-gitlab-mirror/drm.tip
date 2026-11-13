@@ -76,7 +76,7 @@ config DRM_I915_DEBUG_MMIO
 	help
 	  By default, always enables the extra sanity checks (extra register
 	  reads) around every mmio (register) access that will slow the system
-	  down. This sets the default value of i915.mmio_debug to -1 and can
+	  down. This sets the default value of i915.mmio_debug to Y and can
 	  be overridden at module load.
 
 	  Recommended for driver developers only.

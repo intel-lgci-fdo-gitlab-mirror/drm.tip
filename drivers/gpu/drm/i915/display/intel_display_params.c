@@ -143,8 +143,8 @@ intel_display_param_named_unsafe(enable_dmc_wl, int, 0400,
 	"(-1=use per-chip default, 0=disabled, 1=enabled, 2=match any register, 3=always locked) "
 	"Default: -1");
 
-intel_display_param_named(mmio_debug, int, 0400,
-	"Enable the MMIO debug code for the first N failures (default: off). "
+intel_display_param_named(mmio_debug, bool, 0400,
+	"Enable MMIO debug code (default: false). "
 	"This may negatively affect performance.");
 
 __maybe_unused
