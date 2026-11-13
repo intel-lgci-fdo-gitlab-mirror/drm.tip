@@ -1021,7 +1021,13 @@ void intel_dp_set_signal_levels(struct intel_dp *intel_dp,
 		       TRAIN_SET_PREEMPH_ARGS(intel_dp->train_set));
 	}
 
-	if (intel_dp_phy_is_downstream_of_source(intel_dp, dp_phy))
+	/*
+	 * UHBR training uses intra-hop AUX replies at the DPRX address, even
+	 * with LTTPRs present. The requested FFE presets apply to the source
+	 * transmitter, unlike 8b/10b training of individual downstream PHYs.
+	 */
+	if (intel_dp_is_uhbr(crtc_state) ||
+	    intel_dp_phy_is_downstream_of_source(intel_dp, dp_phy))
 		encoder->set_signal_levels(encoder, crtc_state);
 }
 
