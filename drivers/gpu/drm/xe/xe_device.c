@@ -177,6 +177,7 @@ static void xe_file_close(struct drm_device *dev, struct drm_file *file)
 	struct xe_file *xef = file->driver_priv;
 	struct xe_vm *vm;
 	struct xe_exec_queue *q;
+	bool close_deferred = false;
 	unsigned long idx;
 
 	guard(xe_pm_runtime)(xe);
@@ -197,8 +198,21 @@ static void xe_file_close(struct drm_device *dev, struct drm_file *file)
 		xe_exec_queue_kill(q);
 		xe_exec_queue_put(q);
 	}
+
+	/* Start all bind queue teardown before closing the VMs. */
 	xa_for_each(&xef->vm.xa, idx, vm)
-		xe_vm_close_and_put(vm);
+		xe_vm_kill_bind_queues(vm);
+
+	/*
+	 * Do not wait in file close. Keep mappings alive until the remaining
+	 * exec queues have completed their asynchronous cleanup.
+	 */
+	xa_for_each(&xef->vm.xa, idx, vm)
+		close_deferred |= xe_vm_close_and_put_deferred(vm, 0);
+
+	if (close_deferred)
+		drm_dbg(&xe->drm,
+			"VM teardown deferred while exec queues are being stopped\n");
 
 	scoped_guard(mutex, &xef->mmio_gem.lock) {
 		if (xef->mmio_gem.pci_barrier) {
