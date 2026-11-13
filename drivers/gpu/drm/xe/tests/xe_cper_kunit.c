@@ -62,9 +62,30 @@ static void cper_test_guids_have_pci_id(struct kunit *test)
 				      i, xe_device_guids[i].device_id);
 }
 
+static void cper_test_guids_unique(struct kunit *test)
+{
+	unsigned int i, j;
+
+	for (i = 0; i < ARRAY_SIZE(xe_device_guids); i++) {
+		for (j = i + 1; j < ARRAY_SIZE(xe_device_guids); j++) {
+			KUNIT_EXPECT_NE_MSG(test, xe_device_guids[i].device_id,
+					    xe_device_guids[j].device_id,
+					    "duplicate PCI ID %#06x at [%u] and [%u]",
+					    xe_device_guids[i].device_id, i, j);
+			KUNIT_EXPECT_FALSE_MSG(test, guid_equal(&xe_device_guids[i].guid,
+								&xe_device_guids[j].guid),
+					       "duplicate GUID %pUl for PCI IDs %#06x and %#06x",
+					       &xe_device_guids[i].guid,
+					       xe_device_guids[i].device_id,
+					       xe_device_guids[j].device_id);
+		}
+	}
+}
+
 static struct kunit_case xe_cper_test_cases[] = {
 	KUNIT_CASE(cper_test_pci_ids_have_guid),
 	KUNIT_CASE(cper_test_guids_have_pci_id),
+	KUNIT_CASE(cper_test_guids_unique),
 	{}
 };
 
