@@ -593,6 +593,12 @@ struct xe_device {
 	/** @min_run_period_pf_ms: LR VM (page fault mode) timeslice */
 	u32 min_run_period_pf_ms;
 
+	/**
+	 * @enable_ctx_ats: HW debug validation-only knob (debugfs) to force the
+	 * per-context ATS enable bit on every LRC.
+	 */
+	bool enable_ctx_ats;
+
 #ifdef TEST_VM_OPS_ERROR
 	/**
 	 * @vm_inject_error_position: inject errors at different places in VM

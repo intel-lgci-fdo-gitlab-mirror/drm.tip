@@ -619,6 +619,40 @@ static const struct file_operations disable_late_binding_fops = {
 	.write = disable_late_binding_set,
 };
 
+static ssize_t enable_ctx_ats_show(struct file *f, char __user *ubuf,
+				   size_t size, loff_t *pos)
+{
+	struct xe_device *xe = file_inode(f)->i_private;
+	char buf[8];
+	int len;
+
+	len = scnprintf(buf, sizeof(buf), "%d\n", xe->enable_ctx_ats);
+
+	return simple_read_from_buffer(ubuf, size, pos, buf, len);
+}
+
+static ssize_t enable_ctx_ats_set(struct file *f, const char __user *ubuf,
+				  size_t size, loff_t *pos)
+{
+	struct xe_device *xe = file_inode(f)->i_private;
+	bool val;
+	ssize_t ret;
+
+	ret = kstrtobool_from_user(ubuf, size, &val);
+	if (ret)
+		return ret;
+
+	xe->enable_ctx_ats = val;
+
+	return size;
+}
+
+static const struct file_operations enable_ctx_ats_fops = {
+	.owner = THIS_MODULE,
+	.read = enable_ctx_ats_show,
+	.write = enable_ctx_ats_set,
+};
+
 #ifdef CONFIG_DRM_XE_DEBUG_PAGE_SIZE
 static const char * const page_size_alloc_mode_names[] = {
 	[XE_PAGE_SIZE_ALLOC_CTRL_MODE_NONE]    = "none",
@@ -735,6 +769,13 @@ void xe_debugfs_register(struct xe_device *xe)
 
 	debugfs_create_file("disable_late_binding", 0600, root, xe,
 			    &disable_late_binding_fops);
+
+	/*
+	 * HW debug validation-only knob: force the per-context ATS enable bit
+	 * on every LRC.
+	 */
+	if (!IS_SRIOV_VF(xe) && GRAPHICS_VER(xe) >= 20)
+		debugfs_create_file("enable_ctx_ats", 0600, root, xe, &enable_ctx_ats_fops);
 
 #ifdef CONFIG_DRM_XE_DEBUG_PAGE_SIZE
 	/*
