@@ -503,8 +503,16 @@ int drm_gpusvm_init(struct drm_gpusvm *gpusvm,
 			return -EINVAL;
 		mmgrab(mm);
 	} else {
-		/* No full SVM mode, only core drm_gpusvm_pages API. */
-		if (ops || num_chunks || mm_range || notifier_size)
+		/*
+		 * No full SVM mode, only core drm_gpusvm_pages API. A
+		 * restricted @ops that only implements the page-level hooks
+		 * (e.g. @dma_map_account) is allowed; the full-SVM hooks must
+		 * not be set.
+		 */
+		if (num_chunks || mm_range || notifier_size)
+			return -EINVAL;
+		if (ops && (ops->invalidate || ops->range_alloc ||
+			    ops->range_free))
 			return -EINVAL;
 	}
 
@@ -1240,9 +1248,12 @@ static void __drm_gpusvm_unmap_pages(struct drm_gpusvm *gpusvm,
 		struct drm_gpusvm_pages_flags flags = {
 			.__flags = svm_pages->flags.__flags,
 		};
+		bool contiguous;
 		const struct drm_pagemap_addr *addrs =
-			drm_gpusvm_pages_first_dma(svm_pages, NULL);
+			drm_gpusvm_pages_first_dma(svm_pages, &contiguous);
 		bool use_iova = dma_use_iova(&svm_pages->state);
+		bool needs_account = gpusvm->ops &&
+			gpusvm->ops->dma_map_account;
 
 		/*
 		 * IOVA is reserved for the whole range but only the linked
@@ -1260,14 +1271,18 @@ static void __drm_gpusvm_unmap_pages(struct drm_gpusvm *gpusvm,
 
 		/*
 		 * With IOVA and no device page the unlink above tore every
-		 * entry down, and that is also when the range may be folded
-		 * to one entry, which must not be walked per entry. dpagemap
-		 * is set before the first device_map(), so it is also right
-		 * on the error path, where the flags are not published yet.
+		 * entry down, but the per-entry walk is still needed when the
+		 * driver accounts the mappings. A folded (inline) mapping has
+		 * a single entry describing the whole range, so it must be
+		 * re-read for every iteration instead of indexed by @j.
+		 * dpagemap is set before the first device_map(), so it is also
+		 * right on the error path, where the flags are not published
+		 * yet.
 		 */
 		for (i = 0, j = 0;
-		     (!use_iova || dpagemap) && i < npages; j++) {
-			const struct drm_pagemap_addr *addr = &addrs[j];
+		     (!use_iova || dpagemap || needs_account) && i < npages; j++) {
+			const struct drm_pagemap_addr *addr =
+				contiguous ? &addrs[0] : &addrs[j];
 
 			if (addr->proto == DRM_INTERCONNECT_SYSTEM) {
 				/*
@@ -1283,6 +1298,10 @@ static void __drm_gpusvm_unmap_pages(struct drm_gpusvm *gpusvm,
 			} else if (dpagemap && dpagemap->ops->device_unmap)
 				dpagemap->ops->device_unmap(dpagemap,
 							    dev, addr);
+
+			if (needs_account)
+				gpusvm->ops->dma_map_account(gpusvm, addr, -1);
+
 			i += 1 << addr->order;
 		}
 
@@ -1705,6 +1724,10 @@ static int drm_gpusvm_dma_map_pages(struct drm_gpusvm *gpusvm,
 				(addr, DRM_INTERCONNECT_SYSTEM, order,
 				 dma_dir);
 		}
+		if (gpusvm->ops && gpusvm->ops->dma_map_account)
+			gpusvm->ops->dma_map_account(gpusvm,
+						     &svm_pages->dma_addr[j],
+						     1);
 		i += 1 << order;
 		num_dma_mapped = i;
 		flags.has_dma_mapping = true;
