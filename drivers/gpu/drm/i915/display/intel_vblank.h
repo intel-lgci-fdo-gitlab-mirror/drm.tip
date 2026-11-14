@@ -16,7 +16,7 @@ struct intel_crtc;
 struct intel_crtc_state;
 
 struct intel_vblank_evade_ctx {
-	struct intel_crtc *crtc;
+	struct intel_crtc *crtc, *scanline_crtc;
 	int min, max, vblank_start;
 	bool need_vlv_dsi_wa;
 };
