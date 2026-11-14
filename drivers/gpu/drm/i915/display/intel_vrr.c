@@ -416,8 +416,8 @@ int intel_vrr_compute_vmax(struct intel_connector *connector,
 	const struct drm_display_info *info = &connector->base.display_info;
 	int vmax;
 
-	vmax = adjusted_mode->crtc_clock * 1000 /
-		(adjusted_mode->crtc_htotal * info->monitor_range.min_vfreq);
+	vmax = div_u64(mul_u32_u32(adjusted_mode->crtc_clock, 1000),
+		       adjusted_mode->crtc_htotal * info->monitor_range.min_vfreq);
 	vmax = max_t(int, vmax, adjusted_mode->crtc_vtotal);
 
 	return vmax;
