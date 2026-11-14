@@ -19,6 +19,7 @@
 #include "intel_de.h"
 #include "intel_dip.h"
 #include "intel_dip_regs.h"
+#include "intel_display.h"
 #include "intel_display_limits.h"
 #include "intel_display_regs.h"
 #include "intel_display_types.h"
@@ -674,6 +675,10 @@ void intel_vrr_set_transcoder_timings(const struct intel_crtc_state *crtc_state)
 	if (!HAS_VRR(display))
 		return;
 
+	/* The joined pipes drive one transcoder, so program it once. */
+	if (intel_crtc_is_joiner_secondary(crtc_state))
+		return;
+
 	/*
 	 * Bspec says:
 	 * "(note: VRR needs to be programmed after
@@ -773,6 +778,13 @@ void intel_vrr_send_push(struct intel_dsb *dsb,
 	if (!crtc_state->vrr.enable && !intel_psr_use_trans_push(crtc_state))
 		return;
 
+	/*
+	 * A VRR push latches all joined pipes at once, it is up to the
+	 * primary to send it once every one of them has been armed.
+	 */
+	if (crtc_state->vrr.enable && intel_crtc_is_joiner_secondary(crtc_state))
+		return;
+
 	if (dsb)
 		intel_dsb_nonpost_start(dsb);
 
@@ -791,6 +803,9 @@ void intel_vrr_check_push_sent(struct intel_dsb *dsb,
 	enum transcoder cpu_transcoder = crtc_state->cpu_transcoder;
 
 	if (!crtc_state->vrr.enable)
+		return;
+
+	if (intel_crtc_is_joiner_secondary(crtc_state))
 		return;
 
 	/*
@@ -1005,6 +1020,9 @@ void intel_vrr_enable(const struct intel_crtc_state *crtc_state)
 	if (!crtc_state->vrr.enable)
 		return;
 
+	if (intel_crtc_is_joiner_secondary(crtc_state))
+		return;
+
 	intel_vrr_set_vrr_timings(crtc_state);
 	intel_vrr_enable_dc_balancing(crtc_state);
 
@@ -1017,6 +1035,9 @@ void intel_vrr_disable(const struct intel_crtc_state *old_crtc_state)
 	struct intel_display *display = to_intel_display(old_crtc_state);
 
 	if (!old_crtc_state->vrr.enable)
+		return;
+
+	if (intel_crtc_is_joiner_secondary(old_crtc_state))
 		return;
 
 	if (!intel_vrr_always_use_vrr_tg(display))
