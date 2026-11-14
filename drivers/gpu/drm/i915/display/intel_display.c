@@ -7078,46 +7078,29 @@ static void intel_pre_update_crtc(struct intel_atomic_state *state,
 	}
 }
 
-static void intel_update_crtc(struct intel_atomic_state *state,
-			      struct intel_crtc *crtc)
+static void commit_pipe_arm(struct intel_atomic_state *state,
+			    struct intel_crtc *crtc)
+{
+	const struct intel_crtc_state *new_crtc_state =
+		intel_atomic_get_new_crtc_state(state, crtc);
+
+	if (new_crtc_state->dsb_commit)
+		intel_dsb_commit(new_crtc_state->dsb_commit);
+
+	commit_pipe_pre_planes(state, crtc);
+
+	intel_crtc_planes_update_arm(NULL, state, crtc);
+
+	commit_pipe_post_planes(state, crtc);
+}
+
+static void intel_post_update_crtc(struct intel_atomic_state *state,
+				   struct intel_crtc *crtc)
 {
 	const struct intel_crtc_state *old_crtc_state =
 		intel_atomic_get_old_crtc_state(state, crtc);
 	struct intel_crtc_state *new_crtc_state =
 		intel_atomic_get_new_crtc_state(state, crtc);
-
-	switch (new_crtc_state->commit_type) {
-	case INTEL_COMMIT_FLIPQ:
-		intel_flipq_enable(new_crtc_state);
-
-		intel_crtc_prepare_vblank_event(new_crtc_state, &crtc->flipq_event);
-
-		intel_flipq_add(crtc, INTEL_FLIPQ_PLANE_1, 0, INTEL_DSB_0,
-				new_crtc_state->dsb_commit);
-		break;
-
-	case INTEL_COMMIT_DSB:
-		intel_crtc_prepare_vblank_event(new_crtc_state, &crtc->dsb_event);
-
-		intel_dsb_commit(new_crtc_state->dsb_commit);
-		break;
-
-	case INTEL_COMMIT_MMIO:
-		/* Perform vblank evasion around commit operation */
-		intel_pipe_update_start(state, crtc);
-
-		if (new_crtc_state->dsb_commit)
-			intel_dsb_commit(new_crtc_state->dsb_commit);
-
-		commit_pipe_pre_planes(state, crtc);
-
-		intel_crtc_planes_update_arm(NULL, state, crtc);
-
-		commit_pipe_post_planes(state, crtc);
-
-		intel_pipe_update_end(state, crtc);
-		break;
-	}
 
 	/*
 	 * VRR/Seamless M/N update may need to update frame timings.
@@ -7157,6 +7140,41 @@ static void intel_update_crtc(struct intel_atomic_state *state,
 		intel_cmtg_set_clk_select(new_crtc_state);
 		intel_cmtg_disable(new_crtc_state);
 	}
+}
+
+static void intel_update_crtc(struct intel_atomic_state *state,
+			      struct intel_crtc *crtc)
+{
+	struct intel_crtc_state *new_crtc_state =
+		intel_atomic_get_new_crtc_state(state, crtc);
+
+	switch (new_crtc_state->commit_type) {
+	case INTEL_COMMIT_FLIPQ:
+		intel_flipq_enable(new_crtc_state);
+
+		intel_crtc_prepare_vblank_event(new_crtc_state, &crtc->flipq_event);
+
+		intel_flipq_add(crtc, INTEL_FLIPQ_PLANE_1, 0, INTEL_DSB_0,
+				new_crtc_state->dsb_commit);
+		break;
+
+	case INTEL_COMMIT_DSB:
+		intel_crtc_prepare_vblank_event(new_crtc_state, &crtc->dsb_event);
+
+		intel_dsb_commit(new_crtc_state->dsb_commit);
+		break;
+
+	case INTEL_COMMIT_MMIO:
+		/* Perform vblank evasion around commit operation */
+		intel_pipe_update_start(state, crtc);
+
+		commit_pipe_arm(state, crtc);
+
+		intel_pipe_update_end(state, crtc);
+		break;
+	}
+
+	intel_post_update_crtc(state, crtc);
 }
 
 static void intel_old_crtc_state_disables(struct intel_atomic_state *state,
