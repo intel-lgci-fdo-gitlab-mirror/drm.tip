@@ -1237,10 +1237,21 @@ static void intel_pre_plane_update(struct intel_atomic_state *state,
 
 	intel_psr_pre_plane_update(state, crtc);
 
-	if (intel_crtc_vrr_disabling(state, crtc)) {
+	/* The joined pipes are handled in one go from the primary */
+	if (intel_crtc_vrr_disabling(state, crtc) &&
+	    !intel_crtc_is_joiner_secondary(old_crtc_state)) {
+		struct intel_crtc *pipe_crtc;
+
 		intel_vrr_disable(old_crtc_state);
 		intel_vrr_dcb_reset(old_crtc_state, crtc);
-		intel_crtc_update_active_timings(old_crtc_state, false);
+
+		for_each_intel_crtc_in_pipe_mask(display, pipe_crtc,
+						 intel_crtc_joined_pipe_mask(old_crtc_state)) {
+			const struct intel_crtc_state *old_pipe_crtc_state =
+				intel_atomic_get_old_crtc_state(state, pipe_crtc);
+
+			intel_crtc_update_active_timings(old_pipe_crtc_state, false);
+		}
 
 		/*
 		 * VRR is being disabled seamlessly (no modeset, Panel Replay
