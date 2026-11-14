@@ -450,6 +450,10 @@ intel_vrr_dc_balance_compute_config(struct intel_crtc_state *crtc_state)
 	    !crtc_state->vrr.enable || !display->params.enable_dc_balance)
 		return;
 
+	/* FIXME figure out DC balance with joined pipes */
+	if (crtc_state->joiner_pipes)
+		return;
+
 	crtc_state->vrr.dc_balance.vmax = crtc_state->vrr.vmax;
 	crtc_state->vrr.dc_balance.vmin = crtc_state->vrr.vmin;
 	crtc_state->vrr.dc_balance.max_increase =
@@ -495,21 +499,11 @@ intel_vrr_compute_config(struct intel_crtc_state *crtc_state,
 	crtc_state->vrr.in_range =
 		intel_vrr_is_in_range(connector, drm_mode_vrefresh(adjusted_mode));
 
-	/*
-	 * Allow fixed refresh rate with VRR Timing Generator.
-	 * For now set the vrr.in_range to 0, to allow fixed_rr but skip actual
-	 * VRR and LRR.
-	 * #TODO For actual VRR with joiner, we need to figure out how to
-	 * correctly sequence transcoder level stuff vs. pipe level stuff
-	 * in the commit.
-	 */
-	if (crtc_state->joiner_pipes)
-		crtc_state->vrr.in_range = false;
-
 	vmin = intel_vrr_compute_vmin(crtc_state);
 
 	if (crtc_state->vrr.in_range) {
-		if (HAS_LRR(display))
+		/* FIXME sequence the LRR timing update for joined pipes */
+		if (HAS_LRR(display) && !crtc_state->joiner_pipes)
 			crtc_state->update_lrr = true;
 		vmax = intel_vrr_compute_vmax(connector, adjusted_mode);
 	} else {
@@ -830,6 +824,19 @@ void intel_vrr_check_push_sent(struct intel_dsb *dsb,
 			drm_err(display->drm, "[CRTC:%d:%s] VRR push send still pending\n",
 				crtc->base.base.id, crtc->base.name);
 	}
+}
+
+/*
+ * A VRR push latches all joined pipes at once, so it may be sent only
+ * after every one of them has been armed. Each pipe runs its own DSB
+ * and nothing orders the DSBs of the joined pipes against each other,
+ * so they can't sequence that between themselves. Such commits take
+ * the MMIO path, where the joined pipes are armed inside one vblank
+ * evasion critical section.
+ */
+bool intel_vrr_needs_mmio_commit(const struct intel_crtc_state *crtc_state)
+{
+	return crtc_state->vrr.enable && crtc_state->joiner_pipes;
 }
 
 bool intel_vrr_is_push_sent(const struct intel_crtc_state *crtc_state)
