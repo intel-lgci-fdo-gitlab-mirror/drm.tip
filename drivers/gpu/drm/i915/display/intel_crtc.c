@@ -487,7 +487,7 @@ int intel_crtc_get_pipe_from_crtc_id_ioctl(struct drm_device *dev, void *data,
 	return 0;
 }
 
-static bool intel_crtc_needs_vblank_work(const struct intel_crtc_state *crtc_state)
+bool intel_crtc_needs_vblank_work(const struct intel_crtc_state *crtc_state)
 {
 	struct intel_display *display = to_intel_display(crtc_state);
 
