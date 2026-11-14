@@ -156,7 +156,15 @@ static void __xe_exec_queue_free(struct xe_exec_queue *q)
 
 	if (q->vm) {
 		xe_vm_remove_exec_queue(q->vm, q);
+		if (q->vm->xef)
+			xe_vm_remove_close_queue(q->vm);
 		xe_vm_put(q->vm);
+	}
+
+	if (q->user_vm) {
+		if (q->xef)
+			xe_vm_remove_close_queue(q->user_vm);
+		xe_vm_put(q->user_vm);
 	}
 
 	if (q->xef)
@@ -254,8 +262,12 @@ static struct xe_exec_queue *__xe_exec_queue_alloc(struct xe_device *xe,
 		}
 	}
 
-	if (vm)
+	if (vm) {
 		q->vm = xe_vm_get(vm);
+		/* vm->xef stays unchanged until final VM destruction. */
+		if (vm->xef)
+			xe_vm_add_close_queue(vm);
+	}
 
 	if (extensions) {
 		/*
@@ -691,11 +703,6 @@ void xe_exec_queue_destroy(struct kref *ref)
 	xe_exec_queue_last_fence_put_unlocked(q);
 	for_each_tlb_inval(q, i)
 		xe_exec_queue_tlb_inval_last_fence_put_unlocked(q, i);
-
-	if (q->user_vm) {
-		xe_vm_put(q->user_vm);
-		q->user_vm = NULL;
-	}
 
 	q->ops->destroy(q);
 }
@@ -1505,6 +1512,14 @@ int xe_exec_queue_create_ioctl(struct drm_device *dev, void *data,
 	}
 
 	q->xef = xe_file_get(xef);
+	/*
+	 * Track user bind queues until their final free. VM-owned bind
+	 * queues have no xef and must remain alive until xe_vm_close()
+	 * has waited for pending bind fences.
+	 */
+	if (q->user_vm)
+		xe_vm_add_close_queue(q->user_vm);
+
 	if (eci[0].engine_class != DRM_XE_ENGINE_CLASS_VM_BIND)
 		xe_vm_add_exec_queue(vm, q);
 

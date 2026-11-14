@@ -178,6 +178,7 @@ static void xe_file_close(struct drm_device *dev, struct drm_file *file)
 	struct xe_file *xef = file->driver_priv;
 	struct xe_vm *vm;
 	struct xe_exec_queue *q;
+	bool close_deferred = false;
 	unsigned long idx;
 
 	guard(xe_pm_runtime)(xe);
@@ -195,11 +196,26 @@ static void xe_file_close(struct drm_device *dev, struct drm_file *file)
 	xa_for_each(&xef->exec_queue.xa, idx, q) {
 		if (q->vm && q->hwe->hw_engine_group)
 			xe_hw_engine_group_del_exec_queue(q->hwe->hw_engine_group, q);
-		xe_exec_queue_kill(q);
+		/*
+		 * Killing a bind queue can force pending PT jobs to clear
+		 * mappings while hardware exec queues are still running.
+		 * Let bind jobs drain before their queue is destroyed.
+		 */
+		if (!(q->flags & EXEC_QUEUE_FLAG_VM))
+			xe_exec_queue_kill(q);
 		xe_exec_queue_put(q);
 	}
+
+	/*
+	 * Do not wait in file close. Keep mappings alive until the remaining
+	 * exec queues have completed their asynchronous cleanup.
+	 */
 	xa_for_each(&xef->vm.xa, idx, vm)
-		xe_vm_close_and_put(vm);
+		close_deferred |= xe_vm_close_and_put_deferred(vm);
+
+	if (close_deferred)
+		drm_dbg(&xe->drm,
+			"VM teardown deferred while exec queues are being stopped\n");
 
 	scoped_guard(mutex, &xef->mmio_gem.lock) {
 		if (xef->mmio_gem.pci_barrier) {
