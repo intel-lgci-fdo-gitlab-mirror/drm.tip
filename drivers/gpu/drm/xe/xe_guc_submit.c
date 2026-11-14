@@ -3310,8 +3310,25 @@ void xe_guc_submit_pause_abort(struct xe_guc *guc)
 		if (q->guc->id != index)
 			continue;
 
+		/*
+		 * Resume the scheduler unconditionally so any pending message
+		 * (e.g. STATIC_MSG_CLEANUP queued by a concurrent
+		 * guc_exec_queue_destroy()) still gets processed, even if q
+		 * is skipped below.
+		 */
 		xe_sched_submission_start(sched);
+
+		/*
+		 * q may have already dropped to a zero refcount via its own
+		 * independent teardown (guc_exec_queue_fini(), xarray entry
+		 * not yet erased); let that teardown finish via the resumed
+		 * scheduler instead of killing an object already being freed.
+		 */
+		if (!kref_get_unless_zero(&q->refcount))
+			continue;
+
 		guc_exec_queue_kill(q);
+		xe_exec_queue_put(q);
 	}
 	mutex_unlock(&guc->submission_state.lock);
 }
