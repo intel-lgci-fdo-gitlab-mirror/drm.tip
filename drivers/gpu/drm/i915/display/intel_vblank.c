@@ -11,6 +11,7 @@
 #include "intel_color.h"
 #include "intel_crtc.h"
 #include "intel_de.h"
+#include "intel_display.h"
 #include "intel_display_jiffies.h"
 #include "intel_display_regs.h"
 #include "intel_display_types.h"
@@ -683,6 +684,13 @@ void intel_vblank_evade_init(const struct intel_crtc_state *old_crtc_state,
 	/* TODO: maybe just use the active timings here? */
 	crtc_state = pre_commit_crtc_state(old_crtc_state, new_crtc_state);
 
+	/*
+	 * The scanline counter of a joiner secondary pipe has been
+	 * seen to wrap at 8192 lines (on ARL), which the VRR vmax can
+	 * exceed. The primary runs off the same timings and counts on.
+	 */
+	evade->scanline_crtc = intel_primary_crtc(crtc_state);
+
 	adjusted_mode = &crtc_state->hw.adjusted_mode;
 
 	if (crtc->mode_flags & I915_MODE_FLAG_VRR) {
@@ -738,7 +746,7 @@ int intel_vblank_evade(struct intel_vblank_evade_ctx *evade)
 		 */
 		prepare_to_wait(wq, &wait, TASK_UNINTERRUPTIBLE);
 
-		scanline = intel_get_crtc_scanline(crtc);
+		scanline = intel_get_crtc_scanline(evade->scanline_crtc);
 		if (scanline < evade->min || scanline > evade->max)
 			break;
 
@@ -774,7 +782,7 @@ int intel_vblank_evade(struct intel_vblank_evade_ctx *evade)
 	 * FIXME figure out if BXT+ DSI suffers from this as well
 	 */
 	while (evade->need_vlv_dsi_wa && scanline == evade->vblank_start)
-		scanline = intel_get_crtc_scanline(crtc);
+		scanline = intel_get_crtc_scanline(evade->scanline_crtc);
 
 	return scanline;
 }
