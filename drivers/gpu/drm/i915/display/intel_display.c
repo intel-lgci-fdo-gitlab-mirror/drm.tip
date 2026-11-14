@@ -7672,6 +7672,10 @@ intel_atomic_commit_type(struct intel_atomic_state *state,
 	if (new_crtc_state->do_async_flip)
 		return INTEL_COMMIT_MMIO;
 
+	/* TODO sequence the VRR push for joined pipes via DSB */
+	if (intel_vrr_needs_mmio_commit(new_crtc_state))
+		return INTEL_COMMIT_MMIO;
+
 	/* TODO handle VRR with flip queue */
 	if (intel_flipq_supported(display) &&
 	    !new_crtc_state->vrr.enable &&

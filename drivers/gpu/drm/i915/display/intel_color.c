@@ -2023,6 +2023,10 @@ void intel_color_prepare_commit(struct intel_atomic_state *state,
 	if (!crtc_state->pre_csc_lut && !crtc_state->post_csc_lut)
 		return;
 
+	/* TODO sequence the LUT load vs. the VRR push for joined pipes via DSB */
+	if (intel_vrr_needs_mmio_commit(crtc_state))
+		return;
+
 	if (HAS_DOUBLE_BUFFERED_LUT(display))
 		crtc_state->dsb_color = intel_dsb_prepare(state, crtc, INTEL_DSB_0, 1024);
 	else
