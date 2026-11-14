@@ -277,8 +277,8 @@ static int intel_panel_compute_config_vrr(struct intel_atomic_state *state,
 		int vsync_end_offset = adjusted_mode->vtotal - adjusted_mode->vsync_end;
 
 		adjusted_mode->vtotal =
-			DIV_ROUND_CLOSEST(adjusted_mode->clock * 1000,
-					  adjusted_mode->htotal * vrefresh);
+			DIV_ROUND_CLOSEST_ULL(mul_u32_u32(adjusted_mode->clock, 1000),
+					      adjusted_mode->htotal * vrefresh);
 
 		adjusted_mode->vsync_start = adjusted_mode->vtotal - vsync_start_offset;
 		adjusted_mode->vsync_end = adjusted_mode->vtotal - vsync_end_offset;
