@@ -7142,11 +7142,99 @@ static void intel_post_update_crtc(struct intel_atomic_state *state,
 	}
 }
 
+/*
+ * All joined pipes run off the transcoder of the primary, so one
+ * vblank latches every one of them, and with VRR the commit itself
+ * ends the frame with a push. The arming registers of all joined
+ * pipes then have to be written within a single vblank evasion
+ * critical section, with the push at its end, or the pipes may
+ * latch in different frames.
+ */
+static bool intel_crtc_needs_joined_update(struct intel_atomic_state *state,
+					   struct intel_crtc *crtc)
+{
+	struct intel_display *display = to_intel_display(state);
+	const struct intel_crtc_state *old_crtc_state =
+		intel_atomic_get_old_crtc_state(state, crtc);
+	const struct intel_crtc_state *new_crtc_state =
+		intel_atomic_get_new_crtc_state(state, crtc);
+	struct intel_crtc *pipe_crtc;
+
+	if (!new_crtc_state->joiner_pipes)
+		return false;
+
+	/* FIXME do this for the fixed refresh rate case as well */
+	if (!old_crtc_state->vrr.enable && !new_crtc_state->vrr.enable)
+		return false;
+
+	/* FIXME the cursor unpin works are set up per pipe */
+	if (state->base.legacy_cursor_update)
+		return false;
+
+	for_each_intel_crtc_in_pipe_mask(display, pipe_crtc,
+					 intel_crtc_joined_pipe_mask(new_crtc_state)) {
+		const struct intel_crtc_state *old_pipe_crtc_state =
+			intel_atomic_get_old_crtc_state(state, pipe_crtc);
+		const struct intel_crtc_state *new_pipe_crtc_state =
+			intel_atomic_get_new_crtc_state(state, pipe_crtc);
+
+		/* The DSB and the flip queue do their own vblank evasion */
+		if (new_pipe_crtc_state->commit_type != INTEL_COMMIT_MMIO)
+			return false;
+
+		if (intel_crtc_needs_modeset(new_pipe_crtc_state) ||
+		    new_pipe_crtc_state->do_async_flip)
+			return false;
+
+		/* FIXME the vblank work is set up per pipe */
+		if (intel_crtc_needs_vblank_work(new_pipe_crtc_state))
+			return false;
+
+		/*
+		 * A changed DDB allocation must be sequenced
+		 * against the other pipes one pipe at a time.
+		 */
+		if (!skl_ddb_entry_equal(&old_pipe_crtc_state->wm.skl.ddb,
+					 &new_pipe_crtc_state->wm.skl.ddb))
+			return false;
+	}
+
+	return true;
+}
+
+static void intel_update_joined_crtcs(struct intel_atomic_state *state,
+				      struct intel_crtc *primary_crtc)
+{
+	struct intel_display *display = to_intel_display(state);
+	const struct intel_crtc_state *new_crtc_state =
+		intel_atomic_get_new_crtc_state(state, primary_crtc);
+	u8 pipe_mask = intel_crtc_joined_pipe_mask(new_crtc_state);
+	struct intel_crtc *pipe_crtc;
+
+	/* Perform vblank evasion around the commit of all joined pipes */
+	intel_pipe_update_start(state, primary_crtc);
+
+	for_each_intel_crtc_in_pipe_mask_reverse(display, pipe_crtc, pipe_mask)
+		commit_pipe_arm(state, pipe_crtc);
+
+	intel_pipe_update_end(state, primary_crtc);
+
+	for_each_intel_crtc_in_pipe_mask_reverse(display, pipe_crtc, pipe_mask)
+		intel_post_update_crtc(state, pipe_crtc);
+}
+
 static void intel_update_crtc(struct intel_atomic_state *state,
 			      struct intel_crtc *crtc)
 {
 	struct intel_crtc_state *new_crtc_state =
 		intel_atomic_get_new_crtc_state(state, crtc);
+
+	if (intel_crtc_needs_joined_update(state, crtc)) {
+		/* The secondaries are committed along with the primary */
+		if (intel_crtc_is_joiner_primary(new_crtc_state))
+			intel_update_joined_crtcs(state, crtc);
+		return;
+	}
 
 	switch (new_crtc_state->commit_type) {
 	case INTEL_COMMIT_FLIPQ:
