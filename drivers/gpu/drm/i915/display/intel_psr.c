@@ -2615,7 +2615,7 @@ static u32 man_trk_ctl_partial_frame_bit_get(struct intel_display *display)
 	       PSR2_MAN_TRK_CTL_SF_PARTIAL_FRAME_UPDATE;
 }
 
-static u32 man_trk_ctl_continuos_full_frame(struct intel_display *display)
+static u32 man_trk_ctl_continuous_full_frame(struct intel_display *display)
 {
 	return display->platform.alderlake_p || DISPLAY_VER(display) >= 14 ?
 	       ADLP_PSR2_MAN_TRK_CTL_SF_CONTINUOS_FULL_FRAME :
@@ -2712,7 +2712,7 @@ static void psr2_man_trk_ctl_calc(struct intel_crtc_state *crtc_state,
 	val |= man_trk_ctl_partial_frame_bit_get(display);
 
 	if (full_update) {
-		val |= man_trk_ctl_continuos_full_frame(display);
+		val |= man_trk_ctl_continuous_full_frame(display);
 		goto exit;
 	}
 
@@ -3273,7 +3273,7 @@ void intel_psr2_panic_force_full_update(const struct intel_crtc_state *crtc_stat
 
 	/* SF partial frame enable has to be set even on full update */
 	val |= man_trk_ctl_partial_frame_bit_get(display);
-	val |= man_trk_ctl_continuos_full_frame(display);
+	val |= man_trk_ctl_continuous_full_frame(display);
 
 	/* Directly write the register */
 	intel_de_write_fw(display, PSR2_MAN_TRK_CTL(display, cpu_transcoder), val);
@@ -3725,7 +3725,7 @@ static void intel_psr_configure_full_frame_update(struct intel_dp *intel_dp)
 			       man_trk_ctl_enable_bit_get(display) |
 			       man_trk_ctl_partial_frame_bit_get(display) |
 			       man_trk_ctl_single_full_frame_bit_get(display) |
-			       man_trk_ctl_continuos_full_frame(display));
+			       man_trk_ctl_continuous_full_frame(display));
 }
 
 static void _psr_invalidate_handle(struct intel_dp *intel_dp)
