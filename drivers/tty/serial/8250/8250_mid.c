@@ -211,7 +211,6 @@ static void mid8250_set_termios(struct uart_port *p, struct ktermios *termios,
 				const struct ktermios *old)
 {
 	unsigned int baud = tty_termios_baud_rate(termios);
-	struct uart_8250_port *up = up_to_u8250p(p);
 	struct mid8250 *mid = p->private_data;
 	unsigned short ps = 16;
 	unsigned long fuart = baud * ps;
@@ -234,16 +233,11 @@ static void mid8250_set_termios(struct uart_port *p, struct ktermios *termios,
 	}
 
 	rational_best_approximation(fuart, mid->board->freq, w, w, &mul, &div);
+	p->uartclk = fuart * 16 / ps;		/* core uses ps = 16 always */
 
-	scoped_guard(spinlock_irq, &p->lock) {
-		p->uartclk = fuart * 16 / ps;	/* core uses ps = 16 always */
-
-		serial8250_wait_for_xmitr(up, UART_LSR_BOTH_EMPTY);
-
-		writel(ps, p->membase + INTEL_MID_UART_PS);	/* set PS */
-		writel(mul, p->membase + INTEL_MID_UART_MUL);	/* set MUL */
-		writel(div, p->membase + INTEL_MID_UART_DIV);
-	}
+	writel(ps, p->membase + INTEL_MID_UART_PS);		/* set PS */
+	writel(mul, p->membase + INTEL_MID_UART_MUL);		/* set MUL */
+	writel(div, p->membase + INTEL_MID_UART_DIV);
 
 	serial8250_do_set_termios(p, termios, old);
 }
