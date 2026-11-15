@@ -2743,7 +2743,7 @@ pl011_console_write_atomic(struct console *co, struct nbcon_write_context *wctxt
 				uap, REG_CR);
 	}
 
-	if (unlikely(!uap->console_line_ended && !nbcon_is_braille(co)))
+	if (!uap->console_line_ended)
 		uart_console_write(&uap->port, "\n", 1, pl011_console_putchar);
 	uart_console_write(&uap->port, wctxt->outbuf, wctxt->len, pl011_console_putchar);
 

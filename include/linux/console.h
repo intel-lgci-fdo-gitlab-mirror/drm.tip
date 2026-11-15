@@ -619,15 +619,6 @@ extern bool nbcon_allow_unsafe_takeover(void);
 extern bool nbcon_kdb_try_acquire(struct console *con,
 				  struct nbcon_write_context *wctxt);
 extern void nbcon_kdb_release(struct nbcon_write_context *wctxt);
-extern bool nbcon_write_context_is_braille(struct nbcon_write_context *wctxt);
-extern bool nbcon_braille_try_acquire(struct console *con,
-				      struct nbcon_write_context *wctxt);
-extern void nbcon_braille_release(struct nbcon_write_context *wctxt);
-
-static inline bool nbcon_is_braille(struct console *con)
-{
-	return con && (con->flags & CON_BRL);
-}
 
 /*
  * Check if the given console is currently capable and allowed to print
@@ -691,14 +682,8 @@ static inline void nbcon_reacquire_nobuf(struct nbcon_write_context *wctxt) { }
 static inline bool nbcon_kdb_try_acquire(struct console *con,
 					 struct nbcon_write_context *wctxt) { return false; }
 static inline void nbcon_kdb_release(struct nbcon_write_context *wctxt) { }
-static inline
-bool nbcon_write_context_is_braille(struct nbcon_write_context *wctxt) { return false; }
 static inline bool console_is_usable(struct console *con, short flags,
 				     bool use_atomic) { return false; }
-static inline bool nbcon_braille_try_acquire(struct console *con,
-					     struct nbcon_write_context *wctxt) { return false; }
-static inline void nbcon_braille_release(struct nbcon_write_context *wctxt) { }
-static inline bool nbcon_is_braille(struct console *con) { return false; }
 #endif
 
 extern int console_set_on_cmdline;
