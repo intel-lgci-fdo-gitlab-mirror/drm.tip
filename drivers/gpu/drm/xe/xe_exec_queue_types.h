@@ -92,6 +92,11 @@ struct xe_exec_queue_group {
 struct xe_exec_queue {
 	/** @xef: Back pointer to xe file if this is user created exec queue */
 	struct xe_file *xef;
+	/**
+	 * @user_closed: The queue handle has been destroyed. Allows user-fence
+	 * waits to abort without killing pending bind jobs.
+	 */
+	bool user_closed;
 
 	/** @gt: GT structure this exec queue can submit to */
 	struct xe_gt *gt;
@@ -110,6 +115,12 @@ struct xe_exec_queue {
 	 * only)
 	 */
 	struct xe_vm *user_vm;
+	/**
+	 * @user_vm_close_tracked: This user bind queue holds a close count on
+	 * @user_vm. Set under user_vm->lock before publishing the queue and
+	 * unchanged until final free. VM-owned bind queues are not counted.
+	 */
+	bool user_vm_close_tracked;
 
 	/** @class: class of this exec queue */
 	enum xe_engine_class class;
