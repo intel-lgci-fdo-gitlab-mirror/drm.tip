@@ -32,12 +32,32 @@
 static int send_tlb_inval(struct xe_guc *guc, const u32 *action, int len)
 {
 	struct xe_gt *gt = guc_to_gt(guc);
+	int ret;
 
 	xe_gt_assert(gt, action[1]);	/* Seqno */
 
 	xe_gt_stats_incr(gt, XE_GT_STATS_ID_TLB_INVAL, 1);
-	return xe_guc_ct_send(&guc->ct, action, len,
-			      G2H_LEN_DW_TLB_INVALIDATE, 1);
+	ret = xe_guc_ct_send(&guc->ct, action, len, G2H_LEN_DW_TLB_INVALIDATE, 1);
+
+	/*
+	 * CT state  Entered                    CT returns  Reported here
+	 * --------  -------------------------  ----------  -------------
+	 * STOPPED   xe_uc_stop()               -ECANCELED  -ECANCELED
+	 * DISABLED  before first GuC load,     -ENODEV     -ECANCELED
+	 *           xe_guc_sanitize(),
+	 *           runtime suspend
+	 *
+	 * In neither state can the request be delivered. A GT reset passes
+	 * through both, and the GuC is reloaded with all TLBs invalid before
+	 * the CT is enabled again, as it is on resume from system suspend, so
+	 * report it as cancelled rather than failed. Issuing one while runtime
+	 * suspended violates the PM rules and is already caught by
+	 * xe_tlb_inval_fence_init().
+	 */
+	if (ret == -ENODEV)
+		return -ECANCELED;
+
+	return ret;
 }
 
 #define MAKE_INVAL_OP_FLUSH(type, flush_cache)	((type << XE_GUC_TLB_INVAL_TYPE_SHIFT) | \
