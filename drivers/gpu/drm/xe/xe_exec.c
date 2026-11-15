@@ -233,6 +233,15 @@ retry:
 	if (err)
 		goto err_hw_exec_mode;
 
+	if (xe_vm_is_closed_or_banned(vm)) {
+		err = -ECANCELED;
+		if (write_locked)
+			up_write(&vm->lock);
+		else
+			up_read(&vm->lock);
+		goto err_hw_exec_mode;
+	}
+
 	if (write_locked) {
 		err = xe_vm_userptr_pin(vm);
 		downgrade_write(&vm->lock);

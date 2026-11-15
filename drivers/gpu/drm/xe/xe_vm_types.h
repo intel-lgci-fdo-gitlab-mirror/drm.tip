@@ -314,6 +314,22 @@ struct xe_vm {
 	 */
 	struct work_struct destroy_work;
 
+	/** @close: State used to defer VM teardown until exec queues are gone. */
+	struct {
+		/**
+		 * @close.num_exec_queues: User exec and user-created bind queues
+		 * that have not completed final free. Excludes the VM-owned bind
+		 * queue, which is released by xe_vm_close_and_put().
+		 */
+		atomic_t num_exec_queues;
+		/** @close.lock: Protects deferred and work scheduling. */
+		spinlock_t lock;
+		/** @close.deferred: VM close is waiting for queue teardown. */
+		bool deferred;
+		/** @close.work: Completes a deferred VM close. */
+		struct work_struct work;
+	} close;
+
 	/**
 	 * @rftree: range fence tree to track updates to page table structure.
 	 * Used to implement conflict tracking between independent bind engines.

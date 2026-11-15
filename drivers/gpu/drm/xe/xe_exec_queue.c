@@ -156,7 +156,15 @@ static void __xe_exec_queue_free(struct xe_exec_queue *q)
 
 	if (q->vm) {
 		xe_vm_remove_exec_queue(q->vm, q);
+		if (q->vm->xef)
+			xe_vm_remove_close_queue(q->vm);
 		xe_vm_put(q->vm);
+	}
+
+	if (q->user_vm) {
+		if (q->user_vm_close_tracked)
+			xe_vm_remove_close_queue(q->user_vm);
+		xe_vm_put(q->user_vm);
 	}
 
 	if (q->xef)
@@ -254,8 +262,12 @@ static struct xe_exec_queue *__xe_exec_queue_alloc(struct xe_device *xe,
 		}
 	}
 
-	if (vm)
+	if (vm) {
 		q->vm = xe_vm_get(vm);
+		/* vm->xef stays unchanged until final VM destruction. */
+		if (vm->xef)
+			xe_vm_add_close_queue(vm);
+	}
 
 	if (extensions) {
 		/*
@@ -691,11 +703,6 @@ void xe_exec_queue_destroy(struct kref *ref)
 	xe_exec_queue_last_fence_put_unlocked(q);
 	for_each_tlb_inval(q, i)
 		xe_exec_queue_tlb_inval_last_fence_put_unlocked(q, i);
-
-	if (q->user_vm) {
-		xe_vm_put(q->user_vm);
-		q->user_vm = NULL;
-	}
 
 	q->ops->destroy(q);
 }
@@ -1430,6 +1437,11 @@ int xe_exec_queue_create_ioctl(struct drm_device *dev, void *data,
 
 		q = xe_exec_queue_create_bind(xe, xe_device_get_root_tile(xe),
 					      vm, flags, args->extensions);
+		if (!IS_ERR(q)) {
+			/* Serialize close tracking with xe_vm_close_start(). */
+			q->user_vm_close_tracked = true;
+			xe_vm_add_close_queue(vm);
+		}
 		up_read(&vm->lock);
 		xe_vm_put(vm);
 		if (IS_ERR(q)) {
@@ -1505,6 +1517,7 @@ int xe_exec_queue_create_ioctl(struct drm_device *dev, void *data,
 	}
 
 	q->xef = xe_file_get(xef);
+
 	if (eci[0].engine_class != DRM_XE_ENGINE_CLASS_VM_BIND)
 		xe_vm_add_exec_queue(vm, q);
 
@@ -1696,7 +1709,12 @@ int xe_exec_queue_destroy_ioctl(struct drm_device *dev, void *data,
 	if (q->vm && q->hwe->hw_engine_group)
 		xe_hw_engine_group_del_exec_queue(q->hwe->hw_engine_group, q);
 
-	xe_exec_queue_kill(q);
+	/*
+	 * Let bind jobs drain. Killing their queue can turn pending PT binds
+	 * into PTE clears while hardware queues still use the VM.
+	 */
+	if (!(q->flags & EXEC_QUEUE_FLAG_VM))
+		xe_exec_queue_kill(q);
 
 	trace_xe_exec_queue_close(q);
 	xe_exec_queue_put(q);

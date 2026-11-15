@@ -110,6 +110,12 @@ struct xe_exec_queue {
 	 * only)
 	 */
 	struct xe_vm *user_vm;
+	/**
+	 * @user_vm_close_tracked: This user bind queue holds a close count on
+	 * @user_vm. Set under user_vm->lock before publishing the queue and
+	 * unchanged until final free. VM-owned bind queues are not counted.
+	 */
+	bool user_vm_close_tracked;
 
 	/** @class: class of this exec queue */
 	enum xe_engine_class class;
