@@ -6282,6 +6282,16 @@ static int intel_async_flip_check_uapi(struct intel_atomic_state *state,
 			continue;
 
 		/*
+		 * Userspace may add planes it doesn't change to the commit.
+		 * A plane that is disabled and stays disabled takes no part
+		 * in the async flip, unless it is in use as the Y plane of
+		 * a planar format on another plane.
+		 */
+		if (!old_plane_state->uapi.fb && !new_plane_state->uapi.fb &&
+		    !old_plane_state->planar_linked_plane)
+			continue;
+
+		/*
 		 * TODO: Async flip is only supported through the page flip IOCTL
 		 * as of now. So support currently added for primary plane only.
 		 * Support for other planes on platforms on which supports
@@ -6344,6 +6354,10 @@ static int intel_async_flip_check_hw(struct intel_atomic_state *state, struct in
 	for_each_oldnew_intel_plane_in_state(state, plane, old_plane_state,
 					     new_plane_state, i) {
 		if (plane->pipe != crtc->pipe)
+			continue;
+
+		/* Disabled planes that stay disabled take no part in the flip. */
+		if (!old_plane_state->hw.fb && !new_plane_state->hw.fb)
 			continue;
 
 		/*
