@@ -2061,6 +2061,84 @@ static void icl_fixup_mipi_sequences(struct intel_display *display,
 	}
 }
 
+/*
+ * Count the elements of a v3 MIPI sequence, and report whether all of
+ * them are GPIO or delay elements (i.e. nothing that needs the DSI host
+ * to be up, like sending a packet).
+ */
+static int mipi_seq_v3_count_elems(const u8 *seq, bool *gpio_delay_only)
+{
+	const u8 *p = seq + 5;	/* skip the sequence byte and the size */
+	const u8 *end = seq + 5 + *((const u32 *)(seq + 1));
+	int count = 0;
+
+	*gpio_delay_only = true;
+
+	while (p < end) {
+		u8 op = *p++;
+
+		if (op == MIPI_SEQ_ELEM_END)
+			break;
+		if (p >= end) {
+			*gpio_delay_only = false;
+			break;
+		}
+		if (op != MIPI_SEQ_ELEM_GPIO && op != MIPI_SEQ_ELEM_DELAY)
+			*gpio_delay_only = false;
+
+		p += 1 + *p;	/* length byte + payload */
+		count++;
+	}
+
+	return count;
+}
+
+/*
+ * Some GLK VBTs (e.g. Lenovo IdeaPad D330-10IGL) have an empty
+ * MIPI_SEQ_DEASSERT_RESET and do the whole panel reset pulse from
+ * MIPI_SEQ_INIT_OTP instead. INIT_OTP runs after the DSI host has been
+ * brought up, but the panel reset must happen before that. When
+ * INIT_OTP only contains GPIO and delay elements, run it as
+ * DEASSERT_RESET instead.
+ */
+static void glk_fixup_mipi_sequences(struct intel_display *display,
+				     struct intel_panel *panel)
+{
+	u8 *deassert = (u8 *)panel->vbt.dsi.sequence[MIPI_SEQ_DEASSERT_RESET];
+	u8 *init_otp = (u8 *)panel->vbt.dsi.sequence[MIPI_SEQ_INIT_OTP];
+	bool gpio_delay_only;
+
+	if (panel->vbt.dsi.seq_version != 3 ||
+	    panel->vbt.dsi.config->is_cmd_mode)
+		return;
+
+	if (!init_otp || !panel->vbt.dsi.sequence[MIPI_SEQ_ASSERT_RESET])
+		return;
+
+	/* Only if DEASSERT_RESET is missing or empty */
+	if (deassert && mipi_seq_v3_count_elems(deassert, &gpio_delay_only))
+		return;
+
+	/* And INIT_OTP only toggles GPIOs and waits */
+	if (!mipi_seq_v3_count_elems(init_otp, &gpio_delay_only) ||
+	    !gpio_delay_only)
+		return;
+
+	drm_dbg_kms(display->drm,
+		    "Running INIT_OTP (GPIO/delay only) as DEASSERT_RESET\n");
+
+	/* The sequence executor checks the id byte of each sequence */
+	init_otp[0] = MIPI_SEQ_DEASSERT_RESET;
+	panel->vbt.dsi.sequence[MIPI_SEQ_DEASSERT_RESET] = init_otp;
+
+	if (deassert) {
+		deassert[0] = MIPI_SEQ_INIT_OTP;
+		panel->vbt.dsi.sequence[MIPI_SEQ_INIT_OTP] = deassert;
+	} else {
+		panel->vbt.dsi.sequence[MIPI_SEQ_INIT_OTP] = NULL;
+	}
+}
+
 static void fixup_mipi_sequences(struct intel_display *display,
 				 struct intel_panel *panel)
 {
@@ -2068,6 +2146,8 @@ static void fixup_mipi_sequences(struct intel_display *display,
 		icl_fixup_mipi_sequences(display, panel);
 	else if (display->platform.valleyview)
 		vlv_fixup_mipi_sequences(display, panel);
+	else if (display->platform.geminilake)
+		glk_fixup_mipi_sequences(display, panel);
 }
 
 static void
