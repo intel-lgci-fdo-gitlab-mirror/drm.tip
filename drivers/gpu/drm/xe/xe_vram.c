@@ -42,6 +42,18 @@ static const char *stringify_vram_binding(enum xe_vram_binding binding)
 	return "Unknown";
 }
 
+static const char *stringify_vram_pool_purpose(enum xe_vram_pool_purpose purpose)
+{
+	switch (purpose) {
+	case XE_VRAM_POOL_GENERAL:
+		return "General";
+	case XE_VRAM_POOL_KERNEL:
+		return "Kernel";
+	}
+
+	return "Unknown";
+}
+
 static bool resource_is_valid(struct pci_dev *pdev, int bar)
 {
 	if (!pci_resource_flags(pdev, bar))
@@ -299,7 +311,8 @@ struct xe_vram_pool *xe_vram_region_default_pool(struct xe_vram_region *vram)
  * xe_vram_tile_alloc_kernel - Initialize the kernel VRAM pool of a tile
  * @tile: the &xe_tile, with its general purpose VRAM pool already allocated
  *
- * Kernel allocations use the general-purpose pool by default.
+ * Kernel allocations use the general-purpose pool by default. A separate
+ * kernel-only pool can be created explicitly with xe_vram_pool_create().
  *
  * Return: 0 on success, negative error code on failure.
  */
@@ -364,17 +377,86 @@ static int vram_region_init(struct xe_device *xe, struct xe_vram_region *vram,
 	vram->dpa_base = lmem_bar->dpa_base + offset;
 	vram->usable_size = usable_size;
 
+	print_vram_region_info(xe, vram);
+
 	/* The device aggregate only reports sizes, nothing is allocated from it */
 	if (vram->binding != XE_VRAM_BINDING_DEVICE) {
 		/* Until split, partitions[0] spans the whole usable range */
 		vram->partitions[0].offset = 0;
 		vram->partitions[0].size = usable_size;
 		vram->num_partitions = 1;
+		drm_info(&xe->drm,
+			 "Created %s[%u] VRAM pool[%u]: purpose=%s offset=0x%llx size=0x%llx\n",
+			 stringify_vram_binding(vram->binding), vram->id, 0,
+			 stringify_vram_pool_purpose(vram->partitions[0].purpose),
+			 vram->partitions[0].offset, vram->partitions[0].size);
 	}
 
-	print_vram_region_info(xe, vram);
-
 	return 0;
+}
+
+/**
+ * xe_vram_pool_create - Add a pool to a VRAM region
+ * @vram: the VRAM region
+ * @purpose: the purpose served by the new pool
+ * @size: the size of the new pool
+ *
+ * Add a pool at the bottom of @vram and shrink the default pool accordingly.
+ * Existing non-default pools stay at the bottom in creation order. All pools
+ * share the region, the TTM manager and the placement, while the VRAM manager
+ * backs each of them with a buddy allocator of its own.
+ *
+ * The bottom of a region is also where its CPU visible window starts, so on
+ * a small BAR device the new pool takes CPU visible memory away from the
+ * default pool.
+ *
+ * Creating a pool does not make allocations use it. BO placement resolves
+ * pools through the tile, so the caller has to publish the new pool there,
+ * e.g. in &xe_tile.mem.kernel_vram for a kernel-only pool.
+ *
+ * Return: the new pool, or NULL if the pool cannot be created, in particular
+ * once the TTM manager of @vram is initialized.
+ */
+struct xe_vram_pool *xe_vram_pool_create(struct xe_vram_region *vram,
+					 enum xe_vram_pool_purpose purpose, u64 size)
+{
+	struct xe_device *xe = vram->xe;
+	struct xe_vram_pool *pool;
+	u64 offset;
+
+	/* Splitting is only safe while no memory has been handed out yet */
+	if (ttm_resource_manager_used(&vram->ttm.manager))
+		return NULL;
+
+	/* A region without partitions, e.g. the device aggregate, cannot split */
+	if (!vram->num_partitions ||
+	    vram->num_partitions >= XE_VRAM_MAX_PARTITIONS)
+		return NULL;
+
+	if (!size || !IS_ALIGNED(size, XE_TTM_VRAM_MGR_PART_ALIGN))
+		return NULL;
+
+	if (size >= vram->partitions[0].size)
+		return NULL;
+
+	offset = vram->partitions[0].offset;
+	pool = &vram->partitions[vram->num_partitions];
+	*pool = (struct xe_vram_pool) {
+		.region = vram,
+		.offset = offset,
+		.size = size,
+		.purpose = purpose,
+	};
+	vram->partitions[0].offset += size;
+	vram->partitions[0].size -= size;
+	vram->num_partitions++;
+	drm_info(&xe->drm,
+		 "Created %s[%u] VRAM pool[%u]: purpose=%s offset=0x%llx size=0x%llx\n",
+		 stringify_vram_binding(vram->binding), vram->id,
+		 vram->num_partitions - 1,
+		 stringify_vram_pool_purpose(pool->purpose), pool->offset, pool->size);
+
+	return pool;
 }
 
 /**

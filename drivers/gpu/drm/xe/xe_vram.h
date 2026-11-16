@@ -21,6 +21,8 @@ int xe_vram_probe(struct xe_device *xe);
 struct xe_vram_region *xe_vram_region_alloc_device(struct xe_device *xe);
 struct xe_vram_region *xe_vram_region_alloc_tile(struct xe_device *xe, u8 id);
 struct xe_vram_pool *xe_vram_region_default_pool(struct xe_vram_region *vram);
+struct xe_vram_pool *xe_vram_pool_create(struct xe_vram_region *vram,
+					 enum xe_vram_pool_purpose purpose, u64 size);
 int xe_vram_tile_alloc_kernel(struct xe_tile *tile);
 
 void xe_vram_pool_place(const struct xe_vram_pool *pool, struct ttm_place *place);
