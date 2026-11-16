@@ -310,6 +310,20 @@ static unsigned int intel_dsb_tail(struct intel_dsb *dsb)
 	return dsb_buffer_ggtt_offset(dsb) + intel_dsb_size(dsb);
 }
 
+static bool intel_dsb_prev_ins_is_indexed_write(struct intel_dsb *dsb)
+{
+	u32 opcode = DSB_OPCODE_INDEXED_WRITE << DSB_OPCODE_SHIFT;
+	u32 prev_opcode;
+
+	/* Nothing emitted yet? */
+	if (dsb->free_pos == 0)
+		return false;
+
+	prev_opcode = dsb->ins[1] & ~DSB_REG_VALUE_MASK;
+
+	return prev_opcode == opcode;
+}
+
 static void intel_dsb_ins_align(struct intel_dsb *dsb)
 {
 	/*
@@ -338,20 +352,17 @@ static void intel_dsb_emit(struct intel_dsb *dsb, u32 ldw, u32 udw)
 	dsb_buffer_write(dsb, dsb->free_pos++, dsb->ins[1]);
 }
 
-static bool intel_dsb_prev_ins_is_indexed_write(struct intel_dsb *dsb,
-						intel_reg_t reg)
+static bool intel_dsb_prev_ins_is_indexed_write_to_reg(struct intel_dsb *dsb,
+						       intel_reg_t reg)
 {
-	u32 opcode = DSB_OPCODE_INDEXED_WRITE << DSB_OPCODE_SHIFT;
-	u32 prev_opcode, prev_reg;
+	u32 prev_reg;
 
-	/* Nothing emitted yet? */
-	if (dsb->free_pos == 0)
+	if (!intel_dsb_prev_ins_is_indexed_write(dsb))
 		return false;
 
-	prev_opcode = dsb->ins[1] & ~DSB_REG_VALUE_MASK;
 	prev_reg =  dsb->ins[1] & DSB_REG_VALUE_MASK;
 
-	return prev_opcode == opcode && prev_reg == intel_reg_offset(reg);
+	return prev_reg == intel_reg_offset(reg);
 }
 
 /**
@@ -386,7 +397,7 @@ void intel_dsb_reg_write_indexed(struct intel_dsb *dsb,
 	 * we are writing odd no of dwords, Zeros will be added in the end for
 	 * padding.
 	 */
-	if (!intel_dsb_prev_ins_is_indexed_write(dsb, reg))
+	if (!intel_dsb_prev_ins_is_indexed_write_to_reg(dsb, reg))
 		intel_dsb_emit(dsb, 0, /* count */
 			       (DSB_OPCODE_INDEXED_WRITE << DSB_OPCODE_SHIFT) |
 			       intel_reg_offset(reg));
