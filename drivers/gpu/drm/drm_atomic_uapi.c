@@ -1227,7 +1227,8 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 
 			if (old_val != prop_value) {
 				drm_dbg_atomic(prop->dev,
-					       "[PROP:%d:%s] No prop can be changed during async flip\n",
+					       "[CONNECTOR:%d:%s][PROP:%d:%s] Unsupported property change during async flip\n",
+					       connector->base.id, connector->name,
 					       prop->base.id, prop->name);
 				ret = -EINVAL;
 				break;
@@ -1257,7 +1258,8 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 
 			if (old_val != prop_value) {
 				drm_dbg_atomic(prop->dev,
-					       "[PROP:%d:%s] No prop can be changed during async flip\n",
+					       "[CRTC:%d:%s][PROP:%d:%s] Unsupported property change during async flip\n",
+					       crtc->base.id, crtc->name,
 					       prop->base.id, prop->name);
 				ret = -EINVAL;
 				break;
@@ -1293,7 +1295,8 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 			    prop != config->prop_in_fence_fd &&
 			    prop != config->prop_fb_damage_clips) {
 				drm_dbg_atomic(prop->dev,
-					       "[PROP:%d:%s] No prop can be changed during async flip\n",
+					       "[PLANE:%d:%s][PROP:%d:%s] Unsupported property change during async flip\n",
+					       plane->base.id, plane->name,
 					       prop->base.id, prop->name);
 				ret = -EINVAL;
 				break;
