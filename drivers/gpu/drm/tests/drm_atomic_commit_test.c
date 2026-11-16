@@ -5,9 +5,13 @@
  * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#include <linux/dma-fence.h>
+
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic_uapi.h>
+#include <drm/drm_file.h>
+#include <drm/drm_vblank.h>
 #include <drm/drm_kunit_helpers.h>
 #include <drm/drm_probe_helper.h>
 
@@ -378,6 +382,187 @@ KUNIT_ARRAY_PARAM(drm_check_in_clone_mode, drm_clone_mode_tests,
 KUNIT_ARRAY_PARAM(drm_check_valid_clones, drm_valid_clone_mode_tests,
 		  drm_check_valid_clones_desc);
 
+struct drm_event_test_ctx {
+	struct drm_atomic_test_priv *priv;
+	struct drm_modeset_acquire_ctx ctx;
+	struct drm_atomic_commit *state;
+	struct drm_crtc_state *crtc_state;
+	struct drm_crtc_commit *commit;
+};
+
+/*
+ * Set up a state with an enabled CRTC and run drm_atomic_helper_setup_commit()
+ * on it. Takes an extra reference on the CRTC commit, which the caller has to
+ * drop, so that the references held by the state and its event can be counted.
+ */
+static void drm_event_test_setup_commit(struct kunit *test,
+					struct drm_event_test_ctx *c,
+					struct drm_pending_vblank_event *event,
+					bool active)
+{
+	int ret;
+
+	c->priv = drm_atomic_test_init_drm_components(test, false);
+	KUNIT_ASSERT_NOT_NULL(test, c->priv);
+
+	drm_modeset_acquire_init(&c->ctx, 0);
+
+	c->state = drm_kunit_helper_atomic_state_alloc(test, &c->priv->drm,
+						       &c->ctx);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, c->state);
+
+	c->crtc_state = drm_atomic_get_crtc_state(c->state, c->priv->crtc);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, c->crtc_state);
+
+	c->crtc_state->enable = active;
+	c->crtc_state->active = active;
+	c->crtc_state->event = event;
+
+	ret = drm_atomic_helper_setup_commit(c->state, false);
+	KUNIT_ASSERT_EQ(test, ret, 0);
+
+	c->commit = c->crtc_state->commit;
+	KUNIT_ASSERT_NOT_NULL(test, c->commit);
+	if (active) {
+		KUNIT_ASSERT_NOT_NULL(test, c->crtc_state->event);
+		KUNIT_EXPECT_PTR_EQ(test, c->crtc_state->event->base.completion,
+				    &c->commit->flip_done);
+	}
+
+	drm_crtc_commit_get(c->commit);
+}
+
+static void drm_event_test_finish(struct drm_event_test_ctx *c)
+{
+	drm_crtc_commit_put(c->commit);
+	drm_modeset_drop_locks(&c->ctx);
+	drm_modeset_acquire_fini(&c->ctx);
+}
+
+/*
+ * Test that destroying a state whose commit was never queued throws away the
+ * event allocated by drm_atomic_helper_setup_commit(), and gives up the
+ * reference the event held on the commit.
+ */
+static void drm_test_event_abort_internal(struct kunit *test)
+{
+	struct drm_event_test_ctx c;
+
+	drm_event_test_setup_commit(test, &c, NULL, true);
+
+	/* state, crtcs[].commit and the event, plus the one taken above */
+	KUNIT_EXPECT_EQ(test, kref_read(&c.commit->ref), 4);
+
+	drm_atomic_commit_clear(c.state);
+
+	KUNIT_EXPECT_EQ(test, kref_read(&c.commit->ref), 1);
+	KUNIT_EXPECT_FALSE(test, try_wait_for_completion(&c.commit->flip_done));
+
+	drm_event_test_finish(&c);
+}
+
+/*
+ * Same as above, but with an event provided by the caller, like the atomic
+ * uapi does.
+ */
+static void drm_test_event_abort_user(struct kunit *test)
+{
+	struct drm_pending_vblank_event *event;
+	struct drm_event_test_ctx c;
+
+	event = kzalloc_obj(*event);
+	KUNIT_ASSERT_NOT_NULL(test, event);
+
+	drm_event_test_setup_commit(test, &c, event, true);
+	KUNIT_EXPECT_PTR_EQ(test, c.crtc_state->event, event);
+	KUNIT_EXPECT_EQ(test, kref_read(&c.commit->ref), 4);
+
+	/* the event is freed here */
+	drm_atomic_commit_clear(c.state);
+
+	KUNIT_EXPECT_EQ(test, kref_read(&c.commit->ref), 1);
+
+	drm_event_test_finish(&c);
+}
+
+static const char *drm_event_test_fence_name(struct dma_fence *fence)
+{
+	return "drm-event-test";
+}
+
+static const struct dma_fence_ops drm_event_test_fence_ops = {
+	.get_driver_name = drm_event_test_fence_name,
+	.get_timeline_name = drm_event_test_fence_name,
+};
+
+/*
+ * Test that an event from the atomic uapi (here with an out-fence) is thrown
+ * away with the state when the CRTC stays off. drm_atomic_helper_setup_commit()
+ * skips such CRTCs, so no driver is required to consume the event and nothing
+ * but the state destructor is left to free it. The fence reference tells
+ * whether the event got freed.
+ */
+static void drm_test_event_stays_off(struct kunit *test)
+{
+	struct drm_pending_vblank_event *event;
+	struct drm_event_test_ctx c;
+	struct dma_fence fence;
+	spinlock_t lock;
+
+	event = kzalloc_obj(*event);
+	KUNIT_ASSERT_NOT_NULL(test, event);
+
+	spin_lock_init(&lock);
+	dma_fence_init(&fence, &drm_event_test_fence_ops, &lock, 0, 0);
+	/* the event's reference; the one from dma_fence_init() stays ours */
+	event->base.fence = dma_fence_get(&fence);
+
+	drm_event_test_setup_commit(test, &c, event, false);
+
+	KUNIT_EXPECT_PTR_EQ(test, c.crtc_state->event, event);
+	KUNIT_EXPECT_NULL(test, event->base.completion);
+	KUNIT_EXPECT_TRUE(test, try_wait_for_completion(&c.commit->flip_done));
+	KUNIT_EXPECT_EQ(test, kref_read(&fence.refcount), 2);
+
+	/* the event is freed here */
+	drm_atomic_commit_clear(c.state);
+
+	KUNIT_EXPECT_EQ(test, kref_read(&fence.refcount), 1);
+	KUNIT_EXPECT_EQ(test, kref_read(&c.commit->ref), 1);
+
+	/* the last reference is not dropped, @fence is on the stack */
+	drm_event_test_finish(&c);
+}
+
+/*
+ * Test that an event which the driver consumed is not touched when the state
+ * is destroyed, and that sending it completes flip_done.
+ */
+static void drm_test_event_consumed(struct kunit *test)
+{
+	struct drm_pending_vblank_event *event;
+	struct drm_event_test_ctx c;
+
+	drm_event_test_setup_commit(test, &c, NULL, true);
+
+	event = c.crtc_state->event;
+	c.crtc_state->event = NULL;
+
+	spin_lock_irq(&c.priv->drm.event_lock);
+	drm_send_event_locked(&c.priv->drm, &event->base);
+	spin_unlock_irq(&c.priv->drm.event_lock);
+
+	KUNIT_EXPECT_TRUE(test, try_wait_for_completion(&c.commit->flip_done));
+	/* the event gave up its reference when it was sent */
+	KUNIT_EXPECT_EQ(test, kref_read(&c.commit->ref), 3);
+
+	drm_atomic_commit_clear(c.state);
+
+	KUNIT_EXPECT_EQ(test, kref_read(&c.commit->ref), 1);
+
+	drm_event_test_finish(&c);
+}
+
 static struct kunit_case drm_test_check_modeset_test[] = {
 	KUNIT_CASE(drm_test_check_connector_changed_modeset),
 	{}
@@ -391,6 +576,19 @@ static struct kunit_case drm_in_clone_mode_check_test[] = {
 	{}
 };
 
+static struct kunit_case drm_event_ownership_tests[] = {
+	KUNIT_CASE(drm_test_event_abort_internal),
+	KUNIT_CASE(drm_test_event_abort_user),
+	KUNIT_CASE(drm_test_event_stays_off),
+	KUNIT_CASE(drm_test_event_consumed),
+	{}
+};
+
+static struct kunit_suite drm_event_ownership_test_suite = {
+	.name = "drm_atomic_event_ownership",
+	.test_cases = drm_event_ownership_tests,
+};
+
 static struct kunit_suite drm_test_check_modeset_test_suite = {
 	.name = "drm_validate_modeset",
 	.test_cases = drm_test_check_modeset_test,
@@ -402,7 +600,8 @@ static struct kunit_suite drm_in_clone_mode_check_test_suite = {
 };
 
 kunit_test_suites(&drm_in_clone_mode_check_test_suite,
-		  &drm_test_check_modeset_test_suite);
+		  &drm_test_check_modeset_test_suite,
+		  &drm_event_ownership_test_suite);
 
 MODULE_AUTHOR("Jessica Zhang <quic_jesszhan@quicinc.com");
 MODULE_DESCRIPTION("Test cases for the drm_atomic_helper functions");
