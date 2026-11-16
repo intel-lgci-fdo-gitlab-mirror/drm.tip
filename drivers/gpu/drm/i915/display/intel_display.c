@@ -1190,6 +1190,42 @@ static void intel_crtc_disable_flip_done(struct intel_atomic_state *state,
 	}
 }
 
+static void intel_crtc_complete_noop_async_flip(struct intel_crtc_state *crtc_state)
+{
+	struct intel_display *display = to_intel_display(crtc_state);
+	struct intel_crtc *crtc = to_intel_crtc(crtc_state->uapi.crtc);
+
+	if (!crtc_state->do_async_flip)
+		return;
+
+	/*
+	 * If there are planes actually performing the async flip then
+	 * the commit will be completed via the flip done interrupt
+	 * handler. For a fully no-op "async flip" the commit must
+	 * be completed by hand as no interrupt will be raised.
+	 */
+	if (crtc_state->update_planes)
+		return;
+
+	if (crtc_state->uapi.event) {
+		spin_lock_irq(&display->drm->event_lock);
+		drm_crtc_send_vblank_event(&crtc->base,
+					   crtc_state->uapi.event);
+		spin_unlock_irq(&display->drm->event_lock);
+
+		crtc_state->uapi.event = NULL;
+	}
+}
+
+static void intel_atomic_complete_noop_async_flips(struct intel_atomic_state *state)
+{
+	struct intel_crtc_state *new_crtc_state;
+	struct intel_crtc *crtc;
+
+	for_each_new_intel_crtc_in_state(state, crtc, new_crtc_state)
+		intel_crtc_complete_noop_async_flip(new_crtc_state);
+}
+
 static void intel_crtc_async_flip_disable_wa(struct intel_atomic_state *state,
 					     struct intel_crtc *crtc)
 {
@@ -7851,6 +7887,8 @@ static void intel_atomic_commit_tail(struct intel_atomic_state *state)
 
 	if (intel_display_power_dc3co_allowed(display))
 		intel_cmtg_program(state);
+
+	intel_atomic_complete_noop_async_flips(state);
 
 	intel_wait_for_vblank_workers(state);
 
