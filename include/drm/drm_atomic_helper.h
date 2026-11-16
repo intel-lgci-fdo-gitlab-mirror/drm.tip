@@ -214,7 +214,7 @@ int drm_atomic_helper_page_flip_target(
 	drm_for_each_plane_mask(plane, (crtc_state)->state->dev, (crtc_state)->plane_mask)
 
 /**
- * drm_atomic_crtc_state_for_each_plane_state - iterate over attached planes in new state
+ * __drm_atomic_crtc_state_for_each_plane_state_unsafe - iterate over attached planes in new state
  * @plane: the loop cursor
  * @plane_state: loop cursor for the plane's state, must be const
  * @crtc_state: the incoming CRTC state
@@ -227,12 +227,16 @@ int drm_atomic_helper_page_flip_target(
  * Compared to just drm_atomic_crtc_state_for_each_plane() this also fills in a
  * const plane_state. This is useful when a driver just wants to peek at other
  * active planes on this CRTC, but does not need to change it.
+ *
+ * WARNING:
+ * This is generally unsafe to use. See
+ * __drm_atomic_get_current_plane_state_unsafe() for further details.
  */
-#define drm_atomic_crtc_state_for_each_plane_state(plane, plane_state, crtc_state) \
+#define __drm_atomic_crtc_state_for_each_plane_state_unsafe(plane, plane_state, crtc_state) \
 	drm_for_each_plane_mask(plane, (crtc_state)->state->dev, (crtc_state)->plane_mask) \
 		for_each_if ((plane_state = \
-			      __drm_atomic_get_current_plane_state((crtc_state)->state, \
-								   plane)))
+			      __drm_atomic_get_current_plane_state_unsafe((crtc_state)->state, \
+									  plane)))
 
 /**
  * drm_atomic_plane_enabling - check whether a plane is being enabled

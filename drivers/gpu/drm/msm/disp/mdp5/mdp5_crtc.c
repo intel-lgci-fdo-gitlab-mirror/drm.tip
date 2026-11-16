@@ -711,7 +711,7 @@ static int mdp5_crtc_atomic_check(struct drm_crtc *crtc,
 
 	DBG("%s: check", crtc->name);
 
-	drm_atomic_crtc_state_for_each_plane_state(plane, pstate, crtc_state) {
+	__drm_atomic_crtc_state_for_each_plane_state_unsafe(plane, pstate, crtc_state) {
 		struct mdp5_plane_state *mdp5_pstate =
 				to_mdp5_plane_state(pstate);
 

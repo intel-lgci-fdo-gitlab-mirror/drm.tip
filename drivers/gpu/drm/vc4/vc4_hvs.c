@@ -806,7 +806,7 @@ int vc4_hvs_atomic_check(struct drm_crtc *crtc, struct drm_atomic_commit *state)
 	if (hweight32(crtc_state->connector_mask) > 1)
 		return -EINVAL;
 
-	drm_atomic_crtc_state_for_each_plane_state(plane, plane_state, crtc_state) {
+	__drm_atomic_crtc_state_for_each_plane_state_unsafe(plane, plane_state, crtc_state) {
 		u32 plane_dlist_count = vc4_plane_dlist_size(plane_state);
 
 		drm_dbg_driver(dev, "[CRTC:%d:%s] Found [PLANE:%d:%s] with DLIST size: %u\n",
