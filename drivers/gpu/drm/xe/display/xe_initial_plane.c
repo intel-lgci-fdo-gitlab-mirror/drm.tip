@@ -85,7 +85,7 @@ initial_plane_bo(struct xe_device *xe,
 			    &phys_base);
 	} else {
 		struct ttm_resource_manager *stolen;
-		u64 pte;
+		u64 pte, pte_addr, stolen_base;
 
 		stolen = ttm_manager_type(&xe->ttm, XE_PL_STOLEN);
 		if (!stolen) {
@@ -100,7 +100,28 @@ initial_plane_bo(struct xe_device *xe,
 			return NULL;
 		}
 
-		phys_base = base;
+		/*
+		 * The plane surface is a GGTT address, which equals the offset
+		 * into stolen only if the BIOS maps stolen 1:1 into the GGTT.
+		 * Get the offset from the PTE instead, and discard the FB if
+		 * it isn't in stolen.
+		 */
+		stolen_base = xe_ttm_stolen_gpu_offset(xe);
+		pte_addr = pte & XE_PAGE_ADDR_MASK(XE_PTE_SHIFT);
+		if (pte_addr < stolen_base ||
+		    pte_addr - stolen_base >= (u64)stolen->size << PAGE_SHIFT) {
+			drm_dbg_kms(&xe->drm,
+				    "Initial plane programming using invalid range, PTE address=0x%llx\n",
+				    pte_addr);
+			return NULL;
+		}
+
+		phys_base = pte_addr - stolen_base;
+
+		drm_dbg_kms(&xe->drm,
+			    "Initial plane GGTT address 0x%x, PTE 0x%llx -> stolen offset %pa\n",
+			    base, pte, &phys_base);
+
 		flags |= XE_BO_FLAG_STOLEN;
 
 		if (IS_ENABLED(CONFIG_FRAMEBUFFER_CONSOLE) &&
