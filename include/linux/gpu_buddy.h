@@ -141,6 +141,7 @@ struct gpu_buddy_block {
 	unsigned int subtree_max_alignment;
 	struct list_head tmp_link;
 	bool has_clear;
+	bool subtree_has_dirty;
 };
 
 /* Order-zero must be at least SZ_4K */
