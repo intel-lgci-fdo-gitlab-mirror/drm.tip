@@ -1568,7 +1568,7 @@ static int dpu_crtc_atomic_check(struct drm_crtc *crtc,
 	}
 
 	/* FIXME: move this to dpu_plane_atomic_check? */
-	drm_atomic_crtc_state_for_each_plane_state(plane, pstate, crtc_state) {
+	__drm_atomic_crtc_state_for_each_plane_state_unsafe(plane, pstate, crtc_state) {
 		struct dpu_plane_state *dpu_pstate = to_dpu_plane_state(pstate);
 
 		if (IS_ERR_OR_NULL(pstate)) {

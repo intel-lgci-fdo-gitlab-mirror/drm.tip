@@ -160,7 +160,7 @@ ForEachMacros:
   - 'do_for_each_ftrace_op'
   - 'drm_atomic_crtc_for_each_plane'
   - 'drm_atomic_crtc_state_for_each_plane'
-  - 'drm_atomic_crtc_state_for_each_plane_state'
+  - '__drm_atomic_crtc_state_for_each_plane_state_unsafe'
   - 'drm_atomic_for_each_plane_damage'
   - 'drm_client_for_each_connector_iter'
   - 'drm_client_for_each_modeset'

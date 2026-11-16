@@ -65,7 +65,7 @@ static u64 _dpu_core_perf_calc_bw(const struct dpu_perf_cfg *perf_cfg,
 	u64 crtc_plane_bw = 0;
 	u32 bw_factor;
 
-	drm_atomic_crtc_state_for_each_plane_state(plane, plane_state, state)
+	__drm_atomic_crtc_state_for_each_plane_state_unsafe(plane, plane_state, state)
 		crtc_plane_bw += to_dpu_plane_state(plane_state)->plane_fetch_bw;
 
 	bw_factor = perf_cfg->bw_inefficiency_factor;

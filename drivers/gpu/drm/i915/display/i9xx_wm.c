@@ -2931,7 +2931,7 @@ static int ilk_compute_pipe_wm(struct intel_atomic_state *state,
 
 	pipe_wm = &crtc_state->wm.ilk.optimal;
 
-	intel_atomic_crtc_state_for_each_plane_state(plane, plane_state, crtc_state) {
+	__intel_atomic_crtc_state_for_each_plane_state_unsafe(plane, plane_state, crtc_state) {
 		if (plane->base.type == DRM_PLANE_TYPE_PRIMARY)
 			pristate = plane_state;
 		else if (plane->base.type == DRM_PLANE_TYPE_OVERLAY)

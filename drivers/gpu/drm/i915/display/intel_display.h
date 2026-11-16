@@ -307,13 +307,13 @@ enum phy_fia {
 		for_each_if(((old_crtc_state) = intel_atomic_get_old_crtc_state((__state), (crtc)), \
 			     (new_crtc_state) = intel_atomic_get_new_crtc_state((__state), (crtc))))
 
-#define intel_atomic_crtc_state_for_each_plane_state( \
+#define __intel_atomic_crtc_state_for_each_plane_state_unsafe( \
 		  plane, plane_state, \
 		  crtc_state) \
 	for_each_intel_plane_mask(((crtc_state)->uapi.state->dev), (plane), \
 				((crtc_state)->uapi.plane_mask)) \
 		for_each_if ((plane_state = \
-			      to_intel_plane_state(__drm_atomic_get_current_plane_state((crtc_state)->uapi.state, &plane->base))))
+			      to_intel_plane_state(__drm_atomic_get_current_plane_state_unsafe((crtc_state)->uapi.state, &plane->base))))
 
 #define for_each_new_intel_connector_in_state(__state, connector, new_connector_state, __i) \
 	for ((__i) = 0; \

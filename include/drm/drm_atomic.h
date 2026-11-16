@@ -887,7 +887,7 @@ drm_atomic_get_new_connector_state(const struct drm_atomic_commit *state,
 }
 
 /**
- * __drm_atomic_get_current_plane_state - get current plane state
+ * __drm_atomic_get_current_plane_state_unsafe - get current plane state
  * @state: global atomic state object
  * @plane: plane to grab
  *
@@ -913,8 +913,8 @@ drm_atomic_get_new_connector_state(const struct drm_atomic_commit *state,
  * Read-only pointer to the current plane state.
  */
 static inline const struct drm_plane_state *
-__drm_atomic_get_current_plane_state(const struct drm_atomic_commit *state,
-				     struct drm_plane *plane)
+__drm_atomic_get_current_plane_state_unsafe(const struct drm_atomic_commit *state,
+					    struct drm_plane *plane)
 {
 	struct drm_plane_state *plane_state;
 

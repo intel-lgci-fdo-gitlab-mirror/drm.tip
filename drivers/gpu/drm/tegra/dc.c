@@ -2471,7 +2471,7 @@ tegra_plane_overlap_mask(struct drm_crtc_state *state,
 	if (tegra_plane_is_cursor(plane_state))
 		return 0;
 
-	drm_atomic_crtc_state_for_each_plane_state(plane, other_state, state) {
+	__drm_atomic_crtc_state_for_each_plane_state_unsafe(plane, other_state, state) {
 		rect = plane_state->dst;
 
 		tegra = to_tegra_plane(other_state->plane);
@@ -2529,7 +2529,7 @@ static int tegra_crtc_calculate_memory_bandwidth(struct drm_crtc *crtc,
 	 * overlap. Note that bitmask[plane] includes BIT(plane) in order
 	 * to make further code nicer and simpler.
 	 */
-	drm_atomic_crtc_state_for_each_plane_state(plane, plane_state, new_state) {
+	__drm_atomic_crtc_state_for_each_plane_state_unsafe(plane, plane_state, new_state) {
 		tegra_state = to_const_tegra_plane_state(plane_state);
 		tegra = to_tegra_plane(plane);
 
@@ -2559,7 +2559,7 @@ static int tegra_crtc_calculate_memory_bandwidth(struct drm_crtc *crtc,
 	 * in order to set up latency allowance based on the peak BW, see
 	 * tegra_crtc_update_memory_bandwidth().
 	 */
-	drm_atomic_crtc_state_for_each_plane_state(plane, plane_state, new_state) {
+	__drm_atomic_crtc_state_for_each_plane_state_unsafe(plane, plane_state, new_state) {
 		u32 i, old_peak_bw, new_peak_bw, overlap_bw = 0;
 
 		/*

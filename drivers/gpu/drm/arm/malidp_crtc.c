@@ -268,7 +268,7 @@ static int malidp_crtc_atomic_check_scaling(struct drm_crtc *crtc,
 	if (scaling & (scaling - 1))
 		return -EINVAL;
 
-	drm_atomic_crtc_state_for_each_plane_state(plane, pstate, state) {
+	__drm_atomic_crtc_state_for_each_plane_state_unsafe(plane, pstate, state) {
 		struct malidp_plane *mp = to_malidp_plane(plane);
 		u32 phase;
 
@@ -373,7 +373,7 @@ static int malidp_crtc_atomic_check(struct drm_crtc *crtc,
 	 */
 
 	/* first count the number of rotated planes */
-	drm_atomic_crtc_state_for_each_plane_state(plane, pstate, crtc_state) {
+	__drm_atomic_crtc_state_for_each_plane_state_unsafe(plane, pstate, crtc_state) {
 		struct drm_framebuffer *fb = pstate->fb;
 
 		if ((pstate->rotation & MALIDP_ROTATED_MASK) || fb->modifier)
@@ -389,7 +389,7 @@ static int malidp_crtc_atomic_check(struct drm_crtc *crtc,
 		rot_mem_free += hwdev->rotation_memory[1];
 
 	/* now validate the rotation memory requirements */
-	drm_atomic_crtc_state_for_each_plane_state(plane, pstate, crtc_state) {
+	__drm_atomic_crtc_state_for_each_plane_state_unsafe(plane, pstate, crtc_state) {
 		struct malidp_plane *mp = to_malidp_plane(plane);
 		struct malidp_plane_state *ms = to_malidp_plane_state(pstate);
 		struct drm_framebuffer *fb = pstate->fb;
