@@ -57,8 +57,14 @@ struct xe_res_cursor {
 	struct scatterlist *sgl;
 	/** @dma_addr: Current element in a struct drm_pagemap_addr array */
 	const struct drm_pagemap_addr *dma_addr;
-	/** @mm: Buddy allocator for VRAM cursor */
-	struct gpu_buddy *mm;
+	/**
+	 * @part: VRAM partition @node was allocated from
+	 *
+	 * Needed to resolve a VRAM region relative offset and a size from a
+	 * buddy block, see xe_ttm_vram_mgr_block_offset(). Only valid for the
+	 * VRAM memory types.
+	 */
+	struct xe_ttm_vram_mgr_part *part;
 	/**
 	 * @dma_start: DMA start address for the current segment.
 	 * This may be different to @dma_addr.addr since elements in
@@ -68,14 +74,6 @@ struct xe_res_cursor {
 	/** @dma_seg_size: Size of the current DMA segment. */
 	u64 dma_seg_size;
 };
-
-static struct gpu_buddy *xe_res_get_buddy(struct ttm_resource *res)
-{
-	struct ttm_resource_manager *mgr;
-
-	mgr = ttm_manager_type(res->bo->bdev, res->mem_type);
-	return &to_xe_ttm_vram_mgr(mgr)->mm;
-}
 
 /**
  * xe_res_first - initialize a xe_res_cursor
@@ -107,16 +105,18 @@ static inline void xe_res_first(struct ttm_resource *res,
 		cur->size = size;
 		cur->remaining = size;
 		cur->node = NULL;
-		cur->mm = NULL;
+		cur->part = NULL;
 		break;
 	}
 	case XE_PL_VRAM0:
 	case XE_PL_VRAM1: {
+		struct xe_ttm_vram_mgr_resource *vres =
+			to_xe_ttm_vram_mgr_resource(res);
+		struct xe_ttm_vram_mgr_part *part = vres->part;
 		struct gpu_buddy_block *block;
 		struct list_head *head, *next;
-		struct gpu_buddy *mm = xe_res_get_buddy(res);
 
-		head = &to_xe_ttm_vram_mgr_resource(res)->blocks;
+		head = &vres->blocks;
 
 		block = list_first_entry_or_null(head,
 						 struct gpu_buddy_block,
@@ -124,8 +124,8 @@ static inline void xe_res_first(struct ttm_resource *res,
 		if (!block)
 			goto fallback;
 
-		while (start >= gpu_buddy_block_size(mm, block)) {
-			start -= gpu_buddy_block_size(mm, block);
+		while (start >= xe_ttm_vram_mgr_block_size(part, block)) {
+			start -= xe_ttm_vram_mgr_block_size(part, block);
 
 			next = block->link.next;
 			if (next != head)
@@ -133,9 +133,9 @@ static inline void xe_res_first(struct ttm_resource *res,
 						   link);
 		}
 
-		cur->mm = mm;
-		cur->start = gpu_buddy_block_offset(block) + start;
-		cur->size = min(gpu_buddy_block_size(mm, block) - start,
+		cur->part = part;
+		cur->start = xe_ttm_vram_mgr_block_offset(part, block) + start;
+		cur->size = min(xe_ttm_vram_mgr_block_size(part, block) - start,
 				size);
 		cur->remaining = size;
 		cur->node = block;
@@ -152,6 +152,7 @@ fallback:
 	cur->size = size;
 	cur->remaining = size;
 	cur->node = NULL;
+	cur->part = NULL;
 	cur->mem_type = XE_PL_TT;
 	XE_WARN_ON(res && start + size > res->size);
 }
@@ -311,15 +312,15 @@ static inline void xe_res_next(struct xe_res_cursor *cur, u64 size)
 		block = list_entry(next, struct gpu_buddy_block, link);
 
 
-		while (start >= gpu_buddy_block_size(cur->mm, block)) {
-			start -= gpu_buddy_block_size(cur->mm, block);
+		while (start >= xe_ttm_vram_mgr_block_size(cur->part, block)) {
+			start -= xe_ttm_vram_mgr_block_size(cur->part, block);
 
 			next = block->link.next;
 			block = list_entry(next, struct gpu_buddy_block, link);
 		}
 
-		cur->start = gpu_buddy_block_offset(block) + start;
-		cur->size = min(gpu_buddy_block_size(cur->mm, block) - start,
+		cur->start = xe_ttm_vram_mgr_block_offset(cur->part, block) + start;
+		cur->size = min(xe_ttm_vram_mgr_block_size(cur->part, block) - start,
 				cur->remaining);
 		cur->node = block;
 		break;

@@ -55,8 +55,6 @@ struct xe_ttm_vram_mgr_part {
 struct xe_ttm_vram_mgr {
 	/** @manager: Base TTM resource manager */
 	struct ttm_resource_manager manager;
-	/** @mm: DRM buddy allocator which manages the VRAM */
-	struct gpu_buddy mm;
 	/** @parts: Partitions this VRAM region is split into */
 	struct xe_ttm_vram_mgr_part parts[XE_TTM_VRAM_MGR_MAX_PARTS];
 	/** @num_parts: Number of initialized entries in @parts */

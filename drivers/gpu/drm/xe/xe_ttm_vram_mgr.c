@@ -37,8 +37,9 @@ xe_ttm_vram_mgr_first_block(struct list_head *list)
 	return list_first_entry_or_null(list, struct gpu_buddy_block, link);
 }
 
-static inline bool xe_is_vram_mgr_blocks_contiguous(struct gpu_buddy *mm,
-						    struct list_head *head)
+static inline bool
+xe_is_vram_mgr_blocks_contiguous(struct xe_ttm_vram_mgr_part *part,
+				 struct list_head *head)
 {
 	struct gpu_buddy_block *block;
 	u64 start, size;
@@ -48,28 +49,94 @@ static inline bool xe_is_vram_mgr_blocks_contiguous(struct gpu_buddy *mm,
 		return false;
 
 	while (head != block->link.next) {
-		start = gpu_buddy_block_offset(block);
-		size = gpu_buddy_block_size(mm, block);
+		start = xe_ttm_vram_mgr_block_offset(part, block);
+		size = xe_ttm_vram_mgr_block_size(part, block);
 
 		block = list_entry(block->link.next, struct gpu_buddy_block,
 				   link);
-		if (start + size != gpu_buddy_block_offset(block))
+		if (start + size != xe_ttm_vram_mgr_block_offset(part, block))
 			return false;
 	}
 
 	return true;
 }
 
-static int xe_ttm_vram_buddy_alloc(struct xe_ttm_vram_mgr *mgr, u64 start,
+/*
+ * Find the partition able to satisfy the VRAM region relative range
+ * [@start, @end). @exact is set if the range covers the whole partition, in
+ * which case the caller can skip %GPU_BUDDY_RANGE_ALLOCATION as every block
+ * of the partition trivially satisfies the range.
+ *
+ * Partitions are a hard split, so a range straddling a partition boundary
+ * cannot be satisfied and NULL is returned.
+ */
+static struct xe_ttm_vram_mgr_part *
+xe_ttm_vram_mgr_select_part(struct xe_ttm_vram_mgr *mgr, u64 start, u64 end,
+			    bool *exact)
+{
+	unsigned int i;
+
+	for (i = 0; i < mgr->num_parts; ++i) {
+		struct xe_ttm_vram_mgr_part *part = &mgr->parts[i];
+
+		if (start == part->pool->offset &&
+		    end == part->pool->offset + part->pool->size) {
+			*exact = true;
+			return part;
+		}
+	}
+
+	for (i = 0; i < mgr->num_parts; ++i) {
+		struct xe_ttm_vram_mgr_part *part = &mgr->parts[i];
+
+		if (start >= part->pool->offset &&
+		    end <= part->pool->offset + part->pool->size) {
+			*exact = false;
+			return part;
+		}
+	}
+
+	return NULL;
+}
+
+/*
+ * Find the partition containing the VRAM region relative offset @addr, or
+ * NULL if @addr is outside the region.
+ */
+static struct xe_ttm_vram_mgr_part *
+xe_ttm_vram_mgr_addr_to_part(struct xe_ttm_vram_mgr *mgr, u64 addr)
+{
+	unsigned int i;
+
+	for (i = 0; i < mgr->num_parts; ++i) {
+		struct xe_ttm_vram_mgr_part *part = &mgr->parts[i];
+
+		if (addr >= part->pool->offset &&
+		    addr < part->pool->offset + part->pool->size)
+			return part;
+	}
+
+	return NULL;
+}
+
+/*
+ * Allocate the VRAM region relative range [@start, @end) from @part. The
+ * range must be contained within @part and is translated to the partition
+ * relative offsets tracked by its buddy allocator.
+ */
+static int xe_ttm_vram_buddy_alloc(struct xe_ttm_vram_mgr *mgr,
+				   struct xe_ttm_vram_mgr_part *part, u64 start,
 				   u64 end, u64 size, u64 min_page_size,
 				   struct list_head *blocks, unsigned long flags,
 				   struct ttm_resource *res, u64 *used_visible)
 {
-	struct gpu_buddy *mm = &mgr->mm;
 	struct gpu_buddy_block *block;
 	int err;
 
-	err = gpu_buddy_alloc_blocks(mm, start, end, size, min_page_size, blocks, flags);
+	err = gpu_buddy_alloc_blocks(&part->mm,
+				     start - part->pool->offset,
+				     end - part->pool->offset,
+				     size, min_page_size, blocks, flags);
 	if (err)
 		return err;
 
@@ -88,10 +155,11 @@ static int xe_ttm_vram_buddy_alloc(struct xe_ttm_vram_mgr *mgr, u64 start,
 		*used_visible = size;
 	} else {
 		list_for_each_entry(block, blocks, link) {
-			u64 blk_start = gpu_buddy_block_offset(block);
+			u64 blk_start = xe_ttm_vram_mgr_block_offset(part, block);
 
 			if (blk_start < mgr->visible_size) {
-				u64 blk_end = blk_start + gpu_buddy_block_size(mm, block);
+				u64 blk_end = blk_start +
+					xe_ttm_vram_mgr_block_size(part, block);
 
 				*used_visible += min(blk_end, mgr->visible_size) - blk_start;
 			}
@@ -99,6 +167,7 @@ static int xe_ttm_vram_buddy_alloc(struct xe_ttm_vram_mgr *mgr, u64 start,
 	}
 
 	mgr->visible_avail -= *used_visible;
+	part->used_visible += *used_visible;
 	return 0;
 }
 
@@ -109,17 +178,20 @@ static int xe_ttm_vram_mgr_new(struct ttm_resource_manager *man,
 {
 	struct xe_ttm_vram_mgr *mgr = to_xe_ttm_vram_mgr(man);
 	struct xe_ttm_vram_mgr_resource *vres;
-	struct gpu_buddy *mm = &mgr->mm;
+	struct xe_ttm_vram_mgr_part *part;
 	u64 size, min_page_size;
 	unsigned long lpfn;
+	bool exact;
 	int err;
 
 	lpfn = place->lpfn;
 	if (!lpfn || lpfn > man->size >> PAGE_SHIFT)
 		lpfn = man->size >> PAGE_SHIFT;
 
-	if (tbo->base.size >> PAGE_SHIFT > (lpfn - place->fpfn))
-		return -E2BIG; /* don't trigger eviction for the impossible */
+	/* don't trigger eviction for the impossible */
+	if (place->fpfn >= lpfn ||
+	    tbo->base.size >> PAGE_SHIFT > (lpfn - place->fpfn))
+		return -E2BIG;
 
 	vres = kzalloc_obj(*vres);
 	if (!vres)
@@ -135,13 +207,21 @@ static int xe_ttm_vram_mgr_new(struct ttm_resource_manager *man,
 
 	INIT_LIST_HEAD(&vres->blocks);
 
+	part = xe_ttm_vram_mgr_select_part(mgr, (u64)place->fpfn << PAGE_SHIFT,
+					   (u64)lpfn << PAGE_SHIFT, &exact);
+	if (!part) {
+		err = -ENOSPC;
+		goto error_fini;
+	}
+	vres->part = part;
+
 	if (place->flags & TTM_PL_FLAG_TOPDOWN)
 		vres->flags |= GPU_BUDDY_TOPDOWN_ALLOCATION;
 
 	if (place->flags & TTM_PL_FLAG_CONTIGUOUS)
 		vres->flags |= GPU_BUDDY_CONTIGUOUS_ALLOCATION;
 
-	if (place->fpfn || lpfn != man->size >> PAGE_SHIFT)
+	if (!exact)
 		vres->flags |= GPU_BUDDY_RANGE_ALLOCATION;
 
 	if (WARN_ON(!vres->base.size)) {
@@ -154,8 +234,17 @@ static int xe_ttm_vram_mgr_new(struct ttm_resource_manager *man,
 	if (tbo->page_alignment)
 		min_page_size = (u64)tbo->page_alignment << PAGE_SHIFT;
 
-	if (WARN_ON(min_page_size < mm->chunk_size)) {
+	if (WARN_ON(min_page_size < part->mm.chunk_size)) {
 		err = -EINVAL;
+		goto error_fini;
+	}
+
+	/*
+	 * Buddy offsets are partition relative, so an allocation aligned within
+	 * the partition is only aligned in the region if the base is too.
+	 */
+	if (!IS_ALIGNED(part->pool->offset, min_page_size)) {
+		err = -ENOSPC;
 		goto error_fini;
 	}
 
@@ -170,7 +259,7 @@ static int xe_ttm_vram_mgr_new(struct ttm_resource_manager *man,
 		goto error_unlock;
 	}
 
-	err = xe_ttm_vram_buddy_alloc(mgr, (u64)place->fpfn << PAGE_SHIFT,
+	err = xe_ttm_vram_buddy_alloc(mgr, part, (u64)place->fpfn << PAGE_SHIFT,
 				      (u64)lpfn << PAGE_SHIFT, size,
 				      min_page_size, &vres->blocks, vres->flags,
 				      &vres->base, &vres->used_visible_size);
@@ -179,7 +268,7 @@ static int xe_ttm_vram_mgr_new(struct ttm_resource_manager *man,
 	mutex_unlock(&mgr->lock);
 
 	if (!(vres->base.placement & TTM_PL_FLAG_CONTIGUOUS) &&
-	    xe_is_vram_mgr_blocks_contiguous(mm, &vres->blocks))
+	    xe_is_vram_mgr_blocks_contiguous(part, &vres->blocks))
 		vres->base.placement |= TTM_PL_FLAG_CONTIGUOUS;
 
 	/*
@@ -191,7 +280,8 @@ static int xe_ttm_vram_mgr_new(struct ttm_resource_manager *man,
 								 typeof(*block),
 								 link);
 
-		vres->base.start = gpu_buddy_block_offset(block) >> PAGE_SHIFT;
+		vres->base.start =
+			xe_ttm_vram_mgr_block_offset(part, block) >> PAGE_SHIFT;
 	} else {
 		vres->base.start = XE_BO_INVALID_OFFSET;
 	}
@@ -208,6 +298,7 @@ error_fini:
 }
 
 static void xe_ttm_vram_buddy_free(struct xe_ttm_vram_mgr *mgr,
+				   struct xe_ttm_vram_mgr_part *part,
 				   struct list_head *blocks,
 				   u64 used_visible)
 {
@@ -215,8 +306,9 @@ static void xe_ttm_vram_buddy_free(struct xe_ttm_vram_mgr *mgr,
 
 	list_for_each_entry(block, blocks, link)
 		block->private = NULL;
-	gpu_buddy_free_list(&mgr->mm, blocks, 0);
+	gpu_buddy_free_list(&part->mm, blocks, 0);
 	mgr->visible_avail += used_visible;
+	part->used_visible -= used_visible;
 }
 
 /*
@@ -237,7 +329,8 @@ static void xe_ttm_vram_retry_queued_pages(struct xe_ttm_vram_mgr *mgr)
 	lockdep_assert_held(&mgr->lock);
 
 	list_for_each_entry_safe(pos, n, &mgr->queued_pages, queued_link) {
-		if (xe_ttm_vram_buddy_alloc(mgr, pos->addr, pos->addr + PAGE_SIZE,
+		if (xe_ttm_vram_buddy_alloc(mgr, pos->part, pos->addr,
+					    pos->addr + PAGE_SIZE,
 					    PAGE_SIZE, PAGE_SIZE, &pos->blocks,
 					    GPU_BUDDY_RANGE_ALLOCATION, NULL,
 					    &pos->used_visible_size)) {
@@ -259,7 +352,8 @@ static void xe_ttm_vram_mgr_del(struct ttm_resource_manager *man,
 	struct xe_ttm_vram_mgr *mgr = to_xe_ttm_vram_mgr(man);
 
 	mutex_lock(&mgr->lock);
-	xe_ttm_vram_buddy_free(mgr, &vres->blocks, vres->used_visible_size);
+	xe_ttm_vram_buddy_free(mgr, vres->part, &vres->blocks,
+			       vres->used_visible_size);
 	if (unlikely(!list_empty(&mgr->queued_pages)))
 		xe_ttm_vram_retry_queued_pages(mgr);
 	mutex_unlock(&mgr->lock);
@@ -273,7 +367,7 @@ static void xe_ttm_vram_mgr_debug(struct ttm_resource_manager *man,
 				  struct drm_printer *printer)
 {
 	struct xe_ttm_vram_mgr *mgr = to_xe_ttm_vram_mgr(man);
-	struct gpu_buddy *mm = &mgr->mm;
+	unsigned int i;
 
 	mutex_lock(&mgr->lock);
 	drm_printf(printer, "default_page_size: %lluKiB\n",
@@ -283,7 +377,15 @@ static void xe_ttm_vram_mgr_debug(struct ttm_resource_manager *man,
 	drm_printf(printer, "visible_size: %lluMiB\n",
 		   (u64)mgr->visible_size >> 20);
 
-	drm_buddy_print(mm, printer);
+	for (i = 0; i < mgr->num_parts; ++i) {
+		struct xe_ttm_vram_mgr_part *part = &mgr->parts[i];
+
+		drm_printf(printer, "partition %u: base %lluMiB size %lluMiB%s\n",
+			   i, part->pool->offset >> 20, part->pool->size >> 20,
+			   part->pool->purpose == XE_VRAM_POOL_KERNEL ?
+			   " (kernel only)" : "");
+		drm_buddy_print(&part->mm, printer);
+	}
 	mutex_unlock(&mgr->lock);
 	drm_printf(printer, "man size:%llu\n", man->size);
 }
@@ -296,8 +398,8 @@ static bool xe_ttm_vram_mgr_intersects(struct ttm_resource_manager *man,
 	struct xe_ttm_vram_mgr *mgr = to_xe_ttm_vram_mgr(man);
 	struct xe_ttm_vram_mgr_resource *vres =
 		to_xe_ttm_vram_mgr_resource(res);
-	struct gpu_buddy *mm = &mgr->mm;
 	struct gpu_buddy_block *block;
+	unsigned long place_lpfn;
 
 	if (!place->fpfn && !place->lpfn)
 		return true;
@@ -305,13 +407,16 @@ static bool xe_ttm_vram_mgr_intersects(struct ttm_resource_manager *man,
 	if (!place->fpfn && place->lpfn == mgr->visible_size >> PAGE_SHIFT)
 		return vres->used_visible_size > 0;
 
+	/* A zero lpfn means no upper limit */
+	place_lpfn = place->lpfn ? place->lpfn : man->size >> PAGE_SHIFT;
+
 	list_for_each_entry(block, &vres->blocks, link) {
 		unsigned long fpfn =
-			gpu_buddy_block_offset(block) >> PAGE_SHIFT;
+			xe_ttm_vram_mgr_block_offset(vres->part, block) >> PAGE_SHIFT;
 		unsigned long lpfn = fpfn +
-			(gpu_buddy_block_size(mm, block) >> PAGE_SHIFT);
+			(xe_ttm_vram_mgr_block_size(vres->part, block) >> PAGE_SHIFT);
 
-		if (place->fpfn < lpfn && place->lpfn > fpfn)
+		if (place->fpfn < lpfn && place_lpfn > fpfn)
 			return true;
 	}
 
@@ -326,8 +431,8 @@ static bool xe_ttm_vram_mgr_compatible(struct ttm_resource_manager *man,
 	struct xe_ttm_vram_mgr *mgr = to_xe_ttm_vram_mgr(man);
 	struct xe_ttm_vram_mgr_resource *vres =
 		to_xe_ttm_vram_mgr_resource(res);
-	struct gpu_buddy *mm = &mgr->mm;
 	struct gpu_buddy_block *block;
+	unsigned long place_lpfn;
 
 	if (!place->fpfn && !place->lpfn)
 		return true;
@@ -335,13 +440,16 @@ static bool xe_ttm_vram_mgr_compatible(struct ttm_resource_manager *man,
 	if (!place->fpfn && place->lpfn == mgr->visible_size >> PAGE_SHIFT)
 		return vres->used_visible_size == size;
 
+	/* A zero lpfn means no upper limit */
+	place_lpfn = place->lpfn ? place->lpfn : man->size >> PAGE_SHIFT;
+
 	list_for_each_entry(block, &vres->blocks, link) {
 		unsigned long fpfn =
-			gpu_buddy_block_offset(block) >> PAGE_SHIFT;
+			xe_ttm_vram_mgr_block_offset(vres->part, block) >> PAGE_SHIFT;
 		unsigned long lpfn = fpfn +
-			(gpu_buddy_block_size(mm, block) >> PAGE_SHIFT);
+			(xe_ttm_vram_mgr_block_size(vres->part, block) >> PAGE_SHIFT);
 
-		if (fpfn < place->fpfn || lpfn > place->lpfn)
+		if (fpfn < place->fpfn || lpfn > place_lpfn)
 			return false;
 	}
 
@@ -397,17 +505,31 @@ static void xe_ttm_vram_free_bad_pages(struct xe_ttm_vram_mgr *mgr)
 
 	list_for_each_entry_safe(pos, n, &mgr->offlined_pages, offlined_link) {
 		list_del(&pos->offlined_link);
-		xe_ttm_vram_buddy_free(mgr, &pos->blocks, pos->used_visible_size);
+		xe_ttm_vram_buddy_free(mgr, pos->part, &pos->blocks,
+				       pos->used_visible_size);
 		--mgr->n_offlined_pages;
 		kfree(pos);
 	}
 	list_for_each_entry_safe(pos, n, &mgr->queued_pages, queued_link) {
 		list_del(&pos->queued_link);
 		/* queued entries have no buddy reservation yet */
-		xe_ttm_vram_buddy_free(mgr, &pos->blocks, 0);
+		xe_ttm_vram_buddy_free(mgr, pos->part, &pos->blocks, 0);
 		--mgr->n_queued_pages;
 		kfree(pos);
 	}
+}
+
+/* Tear down every initialized partition and unpublish it from its pool */
+static void xe_ttm_vram_mgr_fini_parts(struct xe_ttm_vram_mgr *mgr)
+{
+	unsigned int i;
+
+	for (i = 0; i < mgr->num_parts; ++i) {
+		mgr->parts[i].pool->part = NULL;
+		gpu_buddy_fini(&mgr->parts[i].mm);
+	}
+
+	mgr->num_parts = 0;
 }
 
 static void xe_ttm_vram_mgr_fini(struct drm_device *dev, void *arg)
@@ -425,40 +547,86 @@ static void xe_ttm_vram_mgr_fini(struct drm_device *dev, void *arg)
 
 	WARN_ON_ONCE(mgr->visible_avail != mgr->visible_size);
 
-	gpu_buddy_fini(&mgr->mm);
+	xe_ttm_vram_mgr_fini_parts(mgr);
 
 	ttm_resource_manager_cleanup(&mgr->manager);
 
 	ttm_set_driver_manager(&xe->ttm, mgr->mem_type, NULL);
 }
 
-int __xe_ttm_vram_mgr_init(struct xe_device *xe, struct xe_ttm_vram_mgr *mgr,
-			   u32 mem_type, u64 size, u64 io_size,
-			   u64 default_page_size)
+/*
+ * Back every pool of the region with a buddy allocator of its own.
+ *
+ * Buddy offsets are partition relative, so a partition base has to be aligned
+ * to %XE_TTM_VRAM_MGR_PART_ALIGN, otherwise an aligned buddy allocation is not
+ * aligned in the region. Allocations needing a larger alignment are rejected
+ * by xe_ttm_vram_mgr_new() if the partition base does not honour it.
+ */
+static int xe_ttm_vram_mgr_init_parts(struct xe_device *xe, struct xe_ttm_vram_mgr *mgr,
+				      struct xe_vram_region *vram)
 {
+	unsigned int i;
+	int err;
+
+	for (i = 0; i < vram->num_partitions; ++i) {
+		struct xe_ttm_vram_mgr_part *part = &mgr->parts[i];
+		struct xe_vram_pool *pool = &vram->partitions[i];
+
+		xe_assert(xe, IS_ALIGNED(pool->offset, XE_TTM_VRAM_MGR_PART_ALIGN));
+		xe_assert(xe, pool->offset + pool->size <= vram->usable_size);
+
+		err = gpu_buddy_init(&part->mm, pool->size, mgr->default_page_size);
+		if (err) {
+			xe_ttm_vram_mgr_fini_parts(mgr);
+			return err;
+		}
+
+		gpu_buddy_driver_set_lock(&part->mm, &mgr->lock);
+
+		part->pool = pool;
+		pool->part = part;
+		mgr->num_parts = i + 1;
+	}
+
+	return 0;
+}
+
+/**
+ * xe_ttm_vram_mgr_init - initialize TTM VRAM region
+ * @xe: pointer to Xe device
+ * @vram: pointer to xe_vram_region that contains the memory region attributes
+ *
+ * Initialize the Xe TTM manager of @vram, with one buddy allocator per pool
+ * of the region.
+ *
+ * Returns 0 for success, negative error code otherwise.
+ */
+int xe_ttm_vram_mgr_init(struct xe_device *xe, struct xe_vram_region *vram)
+{
+	struct xe_ttm_vram_mgr *mgr = &vram->ttm;
 	struct ttm_resource_manager *man = &mgr->manager;
+	u64 io_size = xe_vram_region_io_size(vram);
 	struct dmem_cgroup_region *cg;
-	const char *name;
 	int err;
 
 	man->func = &xe_ttm_vram_mgr_func;
-	mgr->mem_type = mem_type;
+	mgr->mem_type = vram->placement;
 	err = drmm_mutex_init(&xe->drm, &mgr->lock);
 	if (err)
 		return err;
 	INIT_LIST_HEAD(&mgr->offlined_pages);
 	INIT_LIST_HEAD(&mgr->queued_pages);
-	mgr->default_page_size = default_page_size;
+	mgr->default_page_size = PAGE_SIZE;
 	mgr->visible_size = io_size;
 	mgr->visible_avail = io_size;
 
-	ttm_resource_manager_init(man, &xe->ttm, size);
-	err = gpu_buddy_init(&mgr->mm, man->size, default_page_size);
+	ttm_resource_manager_init(man, &xe->ttm, xe_vram_region_usable_size(vram));
+
+	err = xe_ttm_vram_mgr_init_parts(xe, mgr, vram);
 	if (err)
 		return err;
 
-	gpu_buddy_driver_set_lock(&mgr->mm, &mgr->lock);
-	ttm_set_driver_manager(&xe->ttm, mem_type, &mgr->manager);
+	ttm_set_driver_manager(&xe->ttm, mgr->mem_type, man);
 
 	/*
 	 * Register the fini action before the cgroup region so that devres
@@ -469,10 +637,9 @@ int __xe_ttm_vram_mgr_init(struct xe_device *xe, struct xe_ttm_vram_mgr *mgr,
 	if (err)
 		return err;
 
-	name = mem_type == XE_PL_VRAM0 ? "vram0" : "vram1";
-	cg = drmm_cgroup_register_region(&xe->drm, name,
+	cg = drmm_cgroup_register_region(&xe->drm, xe_mem_type_to_name[mgr->mem_type],
 					 &(struct dmem_cgroup_init){
-						.size = size,
+						.size = man->size,
 						.ops = &xe_ttm_vram_mgr_dmem_ops,
 						.reclaim_priv = man,
 					 });
@@ -483,23 +650,6 @@ int __xe_ttm_vram_mgr_init(struct xe_device *xe, struct xe_ttm_vram_mgr *mgr,
 	ttm_resource_manager_set_used(man, true);
 
 	return drmm_add_action_or_reset(&xe->drm, xe_ttm_vram_mgr_set_unused, man);
-}
-
-/**
- * xe_ttm_vram_mgr_init - initialize TTM VRAM region
- * @xe: pointer to Xe device
- * @vram: pointer to xe_vram_region that contains the memory region attributes
- *
- * Initialize the Xe TTM for given @vram region using the given parameters.
- *
- * Returns 0 for success, negative error code otherwise.
- */
-int xe_ttm_vram_mgr_init(struct xe_device *xe, struct xe_vram_region *vram)
-{
-	return __xe_ttm_vram_mgr_init(xe, &vram->ttm, vram->placement,
-				      xe_vram_region_usable_size(vram),
-				      xe_vram_region_io_size(vram),
-				      PAGE_SIZE);
 }
 
 int xe_ttm_vram_mgr_alloc_sgt(struct xe_device *xe,
@@ -596,21 +746,64 @@ void xe_ttm_vram_mgr_free_sgt(struct device *dev, enum dma_data_direction dir,
 	kfree(sgt);
 }
 
-u64 xe_ttm_vram_get_cpu_visible_size(struct ttm_resource_manager *man)
+/**
+ * xe_ttm_vram_get_general_pool_sizes - Sizes of the general-purpose pools
+ * @man: The TTM resource manager of the VRAM region
+ * @size: total size of the general-purpose pools
+ * @cpu_visible_size: CPU-visible size of the general-purpose pools
+ *
+ * Report only VRAM available to userspace. The visible size is clipped to
+ * the manager's CPU-visible range, which starts at the region base.
+ */
+void xe_ttm_vram_get_general_pool_sizes(struct ttm_resource_manager *man,
+					u64 *size, u64 *cpu_visible_size)
 {
 	struct xe_ttm_vram_mgr *mgr = to_xe_ttm_vram_mgr(man);
+	unsigned int i;
 
-	return mgr->visible_size;
+	*size = 0;
+	*cpu_visible_size = 0;
+	for (i = 0; i < mgr->num_parts; ++i) {
+		struct xe_vram_pool *pool = mgr->parts[i].pool;
+		u64 end = pool->offset + pool->size;
+
+		if (pool->purpose != XE_VRAM_POOL_GENERAL)
+			continue;
+
+		*size += pool->size;
+		if (pool->offset < mgr->visible_size)
+			*cpu_visible_size += min(end, mgr->visible_size) - pool->offset;
+	}
 }
 
-void xe_ttm_vram_get_used(struct ttm_resource_manager *man,
-			  u64 *used, u64 *used_visible)
+/**
+ * xe_ttm_vram_get_general_pool_used - Usage of the general-purpose pools
+ * @man: The TTM resource manager of the VRAM region
+ * @used: bytes allocated from the general-purpose pools
+ * @used_visible: CPU-visible bytes allocated from the general-purpose pools
+ *
+ * Counterpart of xe_ttm_vram_get_general_pool_sizes(), memory allocated from
+ * pools serving another purpose, e.g. kernel-only, is not accounted.
+ */
+void xe_ttm_vram_get_general_pool_used(struct ttm_resource_manager *man,
+				       u64 *used, u64 *used_visible)
 {
 	struct xe_ttm_vram_mgr *mgr = to_xe_ttm_vram_mgr(man);
+	unsigned int i;
+
+	*used = 0;
+	*used_visible = 0;
 
 	mutex_lock(&mgr->lock);
-	*used = mgr->mm.size - mgr->mm.avail;
-	*used_visible = mgr->visible_size - mgr->visible_avail;
+	for (i = 0; i < mgr->num_parts; ++i) {
+		struct xe_ttm_vram_mgr_part *part = &mgr->parts[i];
+
+		if (part->pool->purpose != XE_VRAM_POOL_GENERAL)
+			continue;
+
+		*used += part->mm.size - part->mm.avail;
+		*used_visible += part->used_visible;
+	}
 	mutex_unlock(&mgr->lock);
 }
 
@@ -625,9 +818,8 @@ u64 xe_ttm_vram_get_pool_avail(struct xe_vram_pool *pool)
 	struct xe_ttm_vram_mgr *mgr = &pool->region->ttm;
 	u64 avail;
 
-	/* A pool still spans the whole region of its manager */
 	mutex_lock(&mgr->lock);
-	avail = mgr->mm.avail;
+	avail = pool->part ? pool->part->mm.avail : 0;
 	mutex_unlock(&mgr->lock);
 
 	return avail;
@@ -790,9 +982,10 @@ static struct xe_bo *xe_ttm_vram_block_owner_get(struct xe_device *xe,
 }
 
 static int xe_ttm_vram_reserve_page_at_addr(struct xe_device *xe, u64 addr,
-					    struct xe_ttm_vram_mgr *vram_mgr, struct gpu_buddy *mm)
+					    struct xe_ttm_vram_mgr *vram_mgr)
 {
 	struct xe_ttm_vram_offline_resource *nentry;
+	struct xe_ttm_vram_mgr_part *part;
 	struct xe_bo *pbo_to_put = NULL;
 	struct xe_bo *pbo = NULL;
 	struct gpu_buddy_block *block;
@@ -802,7 +995,11 @@ static int xe_ttm_vram_reserve_page_at_addr(struct xe_device *xe, u64 addr,
 	scoped_guard(mutex, &vram_mgr->lock) {
 		if (xe_ttm_vram_page_already_processed(vram_mgr, addr))
 			return -EEXIST;
-		block = gpu_buddy_allocated_addr_to_block(mm, addr);
+		part = xe_ttm_vram_mgr_addr_to_part(vram_mgr, addr);
+		if (WARN_ON(!part))
+			return -ENXIO;
+		block = gpu_buddy_allocated_addr_to_block(&part->mm,
+							  addr - part->pool->offset);
 		if (WARN_ON(IS_ERR(block)))
 			return PTR_ERR(block);
 
@@ -812,6 +1009,7 @@ static int xe_ttm_vram_reserve_page_at_addr(struct xe_device *xe, u64 addr,
 		INIT_LIST_HEAD(&nentry->blocks);
 		nentry->status = XE_PAGE_RESERVE_PENDING;
 		nentry->addr = addr;
+		nentry->part = part;
 
 		if (block) {
 			pbo = xe_ttm_vram_block_owner_get(xe, block);
@@ -836,7 +1034,8 @@ static int xe_ttm_vram_reserve_page_at_addr(struct xe_device *xe, u64 addr,
 		} else {
 			/* Immediately offline unoccupied pages */
 			/* Queue free(to-be-reserved) pages */
-			ret = xe_ttm_vram_buddy_alloc(vram_mgr, addr, addr + size,
+			ret = xe_ttm_vram_buddy_alloc(vram_mgr, part, addr,
+						      addr + size,
 						      size, size, &nentry->blocks,
 						      GPU_BUDDY_RANGE_ALLOCATION,
 						      NULL, &nentry->used_visible_size);
@@ -938,7 +1137,6 @@ int xe_ttm_vram_handle_addr_fault(struct xe_device *xe, u64 addr)
 {
 	struct xe_ttm_vram_mgr *vram_mgr;
 	struct xe_vram_region *vr;
-	struct gpu_buddy *mm;
 
 	/* Assert that the address is PAGE_SIZE aligned */
 	if (WARN_ON_ONCE(!IS_ALIGNED(addr, PAGE_SIZE))) {
@@ -962,7 +1160,6 @@ int xe_ttm_vram_handle_addr_fault(struct xe_device *xe, u64 addr)
 		return -EIO;
 	}
 	vram_mgr = &vr->ttm;
-	mm = &vram_mgr->mm;
 
 	if (xe_ras_get_disable_vram_page_offline(xe)) {
 		xe_err(xe, "0x%llx is reported as corrupted address by HW\n",
@@ -971,7 +1168,7 @@ int xe_ttm_vram_handle_addr_fault(struct xe_device *xe, u64 addr)
 	}
 
 	/* Reserve page at address */
-	return xe_ttm_vram_reserve_page_at_addr(xe, addr - vr->dpa_base, vram_mgr, mm);
+	return xe_ttm_vram_reserve_page_at_addr(xe, addr - vr->dpa_base, vram_mgr);
 }
 EXPORT_SYMBOL(xe_ttm_vram_handle_addr_fault);
 
@@ -996,7 +1193,6 @@ int xe_ttm_vram_inject_fault(struct xe_device *xe)
 	struct xe_tile *tile = xe_device_get_root_tile(xe);
 	struct xe_vram_region *vr = tile->mem.vram->region;
 	struct xe_ttm_vram_mgr *vram_mgr = &vr->ttm;
-	struct gpu_buddy *mm = &vram_mgr->mm;
 	u64 addr;
 
 	/* Stay within the buddy-managed range; CCS/GSM/DSM sit beyond usable_size */
@@ -1005,13 +1201,19 @@ int xe_ttm_vram_inject_fault(struct xe_device *xe)
 
 	addr = ALIGN_DOWN(vr->usable_size - PAGE_SIZE, PAGE_SIZE);
 	while (addr < vr->usable_size) {
+		struct xe_ttm_vram_mgr_part *part;
 		struct gpu_buddy_block *block;
 		bool found = false;
 
 		scoped_guard(mutex, &vram_mgr->lock) {
-			block = gpu_buddy_allocated_addr_to_block(mm, addr);
-			if (!block)
-				found = true;
+			part = xe_ttm_vram_mgr_addr_to_part(vram_mgr, addr);
+			if (part) {
+				u64 offset = addr - part->pool->offset;
+
+				block = gpu_buddy_allocated_addr_to_block(&part->mm, offset);
+				if (!block)
+					found = true;
+			}
 		}
 
 		/*
