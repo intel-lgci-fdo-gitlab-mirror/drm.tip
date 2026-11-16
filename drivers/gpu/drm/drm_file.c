@@ -729,6 +729,8 @@ void drm_event_cancel_free(struct drm_device *dev,
 {
 	unsigned long flags;
 
+	drm_event_release_completion(p);
+
 	spin_lock_irqsave(&dev->event_lock, flags);
 	if (p->file_priv) {
 		p->file_priv->event_space += p->event->length;
@@ -743,6 +745,29 @@ void drm_event_cancel_free(struct drm_device *dev,
 }
 EXPORT_SYMBOL(drm_event_cancel_free);
 
+/**
+ * drm_event_release_completion - release the completion of an event
+ * @p: event whose completion should be released
+ *
+ * Calls &drm_pending_event.completion_release for @p, if it still has a
+ * completion, and forgets about the completion. This is done by
+ * drm_send_event() when the event is sent. It must also be done when an
+ * event is thrown away without having been sent, and is done by
+ * drm_event_cancel_free(). It is fine to call this more than once, and
+ * for events without a completion.
+ *
+ * The caller must make sure the event is not being sent concurrently.
+ */
+void drm_event_release_completion(struct drm_pending_event *p)
+{
+	if (!p->completion)
+		return;
+
+	p->completion_release(p->completion);
+	p->completion = NULL;
+}
+EXPORT_SYMBOL(drm_event_release_completion);
+
 static void drm_send_event_helper(struct drm_device *dev,
 			   struct drm_pending_event *e, ktime_t timestamp)
 {
@@ -750,8 +775,7 @@ static void drm_send_event_helper(struct drm_device *dev,
 
 	if (e->completion) {
 		complete_all(e->completion);
-		e->completion_release(e->completion);
-		e->completion = NULL;
+		drm_event_release_completion(e);
 	}
 
 	if (e->fence) {
