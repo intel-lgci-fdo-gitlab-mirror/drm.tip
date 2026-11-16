@@ -1430,10 +1430,10 @@ struct drm_plane_helper_funcs {
 	 * given update can be committed bypassing the atomic commit machinery.
 	 * That is, if it can jump ahead of the state currently queued for update.
 	 *
-	 * This function is also used by drm_atomic_set_property() to determine
+	 * This function is also abused by drm_atomic_set_property() to determine
 	 * if the plane can be flipped in async. The flip flag is used to
 	 * distinguish if the function is used for just the plane state or for a
-	 * flip.
+	 * flip. FIXME this is wrong, and needs to be moved into the drivers.
 	 *
 	 * RETURNS:
 	 *

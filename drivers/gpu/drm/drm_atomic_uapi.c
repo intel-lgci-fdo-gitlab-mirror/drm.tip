@@ -1290,6 +1290,12 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 				break;
 			}
 
+			/*
+			 * FIXME this is in the wrong place. Whether to do a
+			 * bypass commit for async flips would is a driver
+			 * decision. Drivers that want this need to just do
+			 * these checks themselves somewhere.
+			 */
 			if (ret && plane->type != DRM_PLANE_TYPE_PRIMARY) {
 				/* ask the driver if this non-primary plane is supported */
 				if (plane_funcs && plane_funcs->atomic_bypass_check)
