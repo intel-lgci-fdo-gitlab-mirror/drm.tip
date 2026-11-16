@@ -310,6 +310,15 @@ static unsigned int intel_dsb_tail(struct intel_dsb *dsb)
 	return dsb_buffer_ggtt_offset(dsb) + intel_dsb_size(dsb);
 }
 
+static void intel_dsb_set_ins(struct intel_dsb *dsb,
+			      unsigned int ins_start_offset,
+			      u32 ldw, u32 udw)
+{
+	dsb->ins_start_offset = ins_start_offset;
+	dsb->ins[0] = ldw;
+	dsb->ins[1] = udw;
+}
+
 static bool intel_dsb_prev_ins_is_indexed_write(struct intel_dsb *dsb)
 {
 	u32 opcode = DSB_OPCODE_INDEXED_WRITE << DSB_OPCODE_SHIFT;
@@ -344,9 +353,7 @@ static void intel_dsb_emit(struct intel_dsb *dsb, u32 ldw, u32 udw)
 
 	intel_dsb_ins_align(dsb);
 
-	dsb->ins_start_offset = dsb->free_pos;
-	dsb->ins[0] = ldw;
-	dsb->ins[1] = udw;
+	intel_dsb_set_ins(dsb, dsb->free_pos, ldw, udw);
 
 	dsb_buffer_write(dsb, dsb->free_pos++, dsb->ins[0]);
 	dsb_buffer_write(dsb, dsb->free_pos++, dsb->ins[1]);
@@ -1023,9 +1030,7 @@ void intel_dsb_wait(struct intel_dsb *dsb)
 
 	/* Attempt to reset it */
 	dsb->free_pos = 0;
-	dsb->ins_start_offset = 0;
-	dsb->ins[0] = 0;
-	dsb->ins[1] = 0;
+	intel_dsb_set_ins(dsb, 0, 0, 0);
 
 	intel_de_write_fw(display, DSB_CTRL(pipe, dsb->id), 0);
 
