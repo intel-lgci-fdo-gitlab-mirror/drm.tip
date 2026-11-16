@@ -1194,19 +1194,6 @@ out:
 	return ret;
 }
 
-static int drm_atomic_check_prop_changes(int ret, uint64_t old_val, uint64_t prop_value,
-					 struct drm_property *prop)
-{
-	if (ret != 0 || old_val != prop_value) {
-		drm_dbg_atomic(prop->dev,
-			       "[PROP:%d:%s] No prop can be changed during async flip\n",
-			       prop->base.id, prop->name);
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
 int drm_atomic_set_property(struct drm_atomic_commit *state,
 			    struct drm_file *file_priv,
 			    struct drm_mode_object *obj,
@@ -1235,8 +1222,16 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 		if (async_flip) {
 			ret = drm_atomic_connector_get_property(connector, connector_state,
 								prop, &old_val);
-			ret = drm_atomic_check_prop_changes(ret, old_val, prop_value, prop);
-			break;
+			if (ret)
+				break;
+
+			if (old_val != prop_value) {
+				drm_dbg_atomic(prop->dev,
+					       "[PROP:%d:%s] No prop can be changed during async flip\n",
+					       prop->base.id, prop->name);
+				ret = -EINVAL;
+				break;
+			}
 		}
 
 		ret = drm_atomic_connector_set_property(connector,
@@ -1257,8 +1252,16 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 		if (async_flip) {
 			ret = drm_atomic_crtc_get_property(crtc, crtc_state,
 							   prop, &old_val);
-			ret = drm_atomic_check_prop_changes(ret, old_val, prop_value, prop);
-			break;
+			if (ret)
+				break;
+
+			if (old_val != prop_value) {
+				drm_dbg_atomic(prop->dev,
+					       "[PROP:%d:%s] No prop can be changed during async flip\n",
+					       prop->base.id, prop->name);
+				ret = -EINVAL;
+				break;
+			}
 		}
 
 		ret = drm_atomic_crtc_set_property(crtc,
@@ -1281,12 +1284,18 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 			/* no-op changes are always allowed */
 			ret = drm_atomic_plane_get_property(plane, plane_state,
 							    prop, &old_val);
-			ret = drm_atomic_check_prop_changes(ret, old_val, prop_value, prop);
+			if (ret)
+				break;
 
 			/* fail everything that isn't no-op or a pure flip */
-			if (ret && prop != config->prop_fb_id &&
+			if (old_val != prop_value &&
+			    prop != config->prop_fb_id &&
 			    prop != config->prop_in_fence_fd &&
 			    prop != config->prop_fb_damage_clips) {
+				drm_dbg_atomic(prop->dev,
+					       "[PROP:%d:%s] No prop can be changed during async flip\n",
+					       prop->base.id, prop->name);
+				ret = -EINVAL;
 				break;
 			}
 
@@ -1296,10 +1305,12 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 			 * decision. Drivers that want this need to just do
 			 * these checks themselves somewhere.
 			 */
-			if (ret && plane->type != DRM_PLANE_TYPE_PRIMARY) {
+			if (old_val != prop_value && plane->type != DRM_PLANE_TYPE_PRIMARY) {
 				/* ask the driver if this non-primary plane is supported */
 				if (plane_funcs && plane_funcs->atomic_bypass_check)
 					ret = plane_funcs->atomic_bypass_check(plane, state, true);
+				else
+					ret = -EINVAL;
 
 				if (ret) {
 					drm_dbg_atomic(prop->dev,
