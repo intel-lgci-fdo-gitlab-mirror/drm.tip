@@ -1430,6 +1430,12 @@ struct drm_plane_helper_funcs {
 	 * given update can be committed bypassing the atomic commit machinery.
 	 * That is, if it can jump ahead of the state currently queued for update.
 	 *
+	 * Extreme care is needed to make this safe as the already queued commits
+	 * will not be aware of the bypass commit that overtook them. And the
+	 * state that the bypass commit will observe is the final already queued
+	 * state, not the current state at the point when the bypass commit
+	 * will actually execute.
+	 *
 	 * This function is also abused by drm_atomic_set_property() to determine
 	 * if the plane can be flipped in async. The flip flag is used to
 	 * distinguish if the function is used for just the plane state or for a
