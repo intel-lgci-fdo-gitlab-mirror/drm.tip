@@ -672,6 +672,10 @@ resource_size_t xe_vram_region_actual_physical_size(const struct xe_vram_region 
 }
 EXPORT_SYMBOL_IF_KUNIT(xe_vram_region_actual_physical_size);
 
+#if IS_BUILTIN(CONFIG_DRM_XE_KUNIT_TEST)
+#include "tests/xe_vram.c"
+#endif
+
 #if IS_ENABLED(CONFIG_DRM_XE_DEBUG_MEM)
 static void memtest_bo_cleanup(void *arg)
 {
