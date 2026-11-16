@@ -2824,6 +2824,54 @@ intel_dp_compute_m_n_ratio_limits(struct intel_dp *intel_dp,
 	return true;
 }
 
+static void
+intel_dp_apply_vbt_edp_link_config(struct intel_dp *intel_dp,
+				   struct intel_connector *connector,
+				   struct link_config_limits *limits)
+{
+	struct intel_display *display = to_intel_display(intel_dp);
+	struct intel_dp_link_caps *link_caps = intel_dp->link.caps;
+	struct intel_dp_link_caps_filter vbt_filter = INTEL_DP_LINK_CAPS_FILTER_NONE;
+	struct intel_dp_link_caps_iter iter;
+	struct intel_dp_link_config config;
+	int vbt_rate = connector->panel.vbt.edp.rate;
+	int vbt_lanes = connector->panel.vbt.edp.lanes;
+
+	if (!intel_dp_is_edp(intel_dp) ||
+	    !connector->panel.vbt.edp.fast_link_training ||
+	    !drm_dp_fast_training_cap(intel_dp->dpcd) ||
+	    (!vbt_rate && !vbt_lanes))
+		return;
+
+	intel_dp_link_caps_iter_start(&iter, link_caps,
+				      intel_dp_link_caps_connector_compute_order(connector),
+				      limits->link_config_filter);
+	for_each_dp_link_config(&iter, &config) {
+		if (vbt_rate && config.rate != vbt_rate)
+			continue;
+		if (vbt_lanes && config.lane_count != vbt_lanes)
+			continue;
+
+		intel_dp_link_caps_filter_add(link_caps, &vbt_filter, &config);
+	}
+	intel_dp_link_caps_iter_end(&iter);
+
+	if (!vbt_filter.config_mask) {
+		drm_dbg_kms(display->drm,
+			    "[CONNECTOR:%d:%s] VBT eDP link config (lanes %d, rate %d) not in allowed link configs, ignoring\n",
+			    connector->base.base.id, connector->base.name,
+			    vbt_lanes, vbt_rate);
+		return;
+	}
+
+	drm_dbg_kms(display->drm,
+		    "[CONNECTOR:%d:%s] Limiting link configs to VBT eDP lanes %d, rate %d\n",
+		    connector->base.base.id, connector->base.name,
+		    vbt_lanes, vbt_rate);
+
+	limits->link_config_filter = vbt_filter;
+}
+
 bool
 intel_dp_compute_config_limits(struct intel_dp *intel_dp,
 			       struct drm_connector_state *conn_state,
@@ -2939,6 +2987,8 @@ intel_dp_compute_config_limits(struct intel_dp *intel_dp,
 
 		limits->link_config_filter = new_filter;
 	}
+
+	intel_dp_apply_vbt_edp_link_config(intel_dp, connector, limits);
 
 	if (!intel_dp_compute_m_n_ratio_limits(intel_dp, conn_state, crtc_state, limits))
 		return false;
