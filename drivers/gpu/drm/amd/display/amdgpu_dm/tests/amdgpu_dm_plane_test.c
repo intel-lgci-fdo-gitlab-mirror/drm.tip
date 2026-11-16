@@ -1936,13 +1936,13 @@ static void dm_test_format_mod_supported_d_swizzle_reject(struct kunit *test)
 }
 
 /**
- * dm_test_atomic_async_check_rejects() - Verify async check rejections.
+ * dm_test_atomic_bypass_check_rejects() - Verify async check rejections.
  * @test: KUnit test context.
  *
  * Verify if async flip on non-overlay planes and async cursor update on
  * non-cursor planes are rejected.
  */
-static void dm_test_atomic_async_check_rejects(struct kunit *test)
+static void dm_test_atomic_bypass_check_rejects(struct kunit *test)
 {
 	struct drm_plane *plane;
 
@@ -1951,21 +1951,21 @@ static void dm_test_atomic_async_check_rejects(struct kunit *test)
 
 	plane->type = DRM_PLANE_TYPE_PRIMARY;
 	KUNIT_EXPECT_EQ(test,
-			amdgpu_dm_plane_atomic_async_check(plane, NULL, true),
+			amdgpu_dm_plane_atomic_bypass_check(plane, NULL, true),
 			-EINVAL);
 	KUNIT_EXPECT_EQ(test,
-			amdgpu_dm_plane_atomic_async_check(plane, NULL, false),
+			amdgpu_dm_plane_atomic_bypass_check(plane, NULL, false),
 			-EINVAL);
 }
 
 /**
- * dm_test_atomic_async_check_overlay_cursor() - Verify overlay cursor rejection.
+ * dm_test_atomic_bypass_check_overlay_cursor() - Verify overlay cursor rejection.
  * @test: KUnit test context.
  *
  * Verify if async cursor updates are rejected while the CRTC is using an
  * overlay cursor mode.
  */
-static void dm_test_atomic_async_check_overlay_cursor(struct kunit *test)
+static void dm_test_atomic_bypass_check_overlay_cursor(struct kunit *test)
 {
 	struct drm_atomic_commit *state;
 	struct __drm_planes_state *planes;
@@ -2001,12 +2001,12 @@ static void dm_test_atomic_async_check_overlay_cursor(struct kunit *test)
 	state->crtcs[0].new_state = &dm_crtc_state->base;
 
 	KUNIT_EXPECT_EQ(test,
-			amdgpu_dm_plane_atomic_async_check(plane, state, false),
+			amdgpu_dm_plane_atomic_bypass_check(plane, state, false),
 			-EINVAL);
 
 	dm_crtc_state->cursor_mode = DM_CURSOR_NATIVE_MODE;
 	KUNIT_EXPECT_EQ(test,
-			amdgpu_dm_plane_atomic_async_check(plane, state, false),
+			amdgpu_dm_plane_atomic_bypass_check(plane, state, false),
 			0);
 }
 
@@ -2878,13 +2878,13 @@ static void dm_test_handle_cursor_update_no_fb(struct kunit *test)
 }
 
 /**
- * dm_test_atomic_async_update_copies_state() - Verify async cursor state copy.
+ * dm_test_atomic_bypass_update_copies_state() - Verify async cursor state copy.
  * @test: KUnit test context.
  *
  * Verify if the async update swaps the framebuffer and copies the source and
  * CRTC rectangles from the new state into the current plane state.
  */
-static void dm_test_atomic_async_update_copies_state(struct kunit *test)
+static void dm_test_atomic_bypass_update_copies_state(struct kunit *test)
 {
 	struct amdgpu_device *adev;
 	struct drm_atomic_commit *state;
@@ -2928,7 +2928,7 @@ static void dm_test_atomic_async_update_copies_state(struct kunit *test)
 	state->planes[0].new_state = new_state;
 	state->planes[0].old_state = old_state;
 
-	amdgpu_dm_plane_atomic_async_update(plane, state);
+	amdgpu_dm_plane_atomic_bypass_update(plane, state);
 
 	KUNIT_EXPECT_PTR_EQ(test, cur_state->fb, NULL);
 	KUNIT_EXPECT_PTR_EQ(test, new_state->fb, &afb->base);
@@ -3294,11 +3294,11 @@ static struct kunit_case amdgpu_dm_plane_test_cases[] = {
 	KUNIT_CASE(dm_test_handle_cursor_update_no_fb),
 	KUNIT_CASE(dm_test_handle_cursor_update_disabled),
 	KUNIT_CASE(dm_test_handle_cursor_update_no_stream),
-	/* amdgpu_dm_plane_atomic_async_update() */
-	KUNIT_CASE(dm_test_atomic_async_update_copies_state),
-	/* amdgpu_dm_plane_atomic_async_check() */
-	KUNIT_CASE(dm_test_atomic_async_check_rejects),
-	KUNIT_CASE(dm_test_atomic_async_check_overlay_cursor),
+	/* amdgpu_dm_plane_atomic_bypass_update() */
+	KUNIT_CASE(dm_test_atomic_bypass_update_copies_state),
+	/* amdgpu_dm_plane_atomic_bypass_check() */
+	KUNIT_CASE(dm_test_atomic_bypass_check_rejects),
+	KUNIT_CASE(dm_test_atomic_bypass_check_overlay_cursor),
 	/* amdgpu_dm_plane_atomic_check() */
 	KUNIT_CASE(dm_test_atomic_check_no_dc_state),
 	KUNIT_CASE(dm_test_atomic_check_missing_crtc_state),

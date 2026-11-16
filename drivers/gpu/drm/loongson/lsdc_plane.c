@@ -172,9 +172,9 @@ static const struct drm_plane_helper_funcs lsdc_primary_helper_funcs = {
 	.atomic_disable = lsdc_primary_atomic_disable,
 };
 
-static int lsdc_cursor_plane_atomic_async_check(struct drm_plane *plane,
-						struct drm_atomic_commit *state,
-						bool flip)
+static int lsdc_cursor_plane_atomic_bypass_check(struct drm_plane *plane,
+						 struct drm_atomic_commit *state,
+						 bool flip)
 {
 	struct drm_plane_state *new_state;
 	struct drm_crtc_state *crtc_state;
@@ -219,8 +219,8 @@ static int lsdc_cursor_plane_atomic_async_check(struct drm_plane *plane,
 						   true, true);
 }
 
-static void lsdc_cursor_plane_atomic_async_update(struct drm_plane *plane,
-						  struct drm_atomic_commit *state)
+static void lsdc_cursor_plane_atomic_bypass_update(struct drm_plane *plane,
+						   struct drm_atomic_commit *state)
 {
 	struct lsdc_cursor *cursor = to_lsdc_cursor(plane);
 	const struct lsdc_cursor_plane_ops *ops = cursor->ops;
@@ -335,8 +335,8 @@ static const struct drm_plane_helper_funcs ls7a1000_cursor_plane_helper_funcs = 
 	.atomic_check = ls7a1000_cursor_plane_atomic_check,
 	.atomic_update = ls7a1000_cursor_plane_atomic_update,
 	.atomic_disable = ls7a1000_cursor_plane_atomic_disable,
-	.atomic_async_check = lsdc_cursor_plane_atomic_async_check,
-	.atomic_async_update = lsdc_cursor_plane_atomic_async_update,
+	.atomic_bypass_check = lsdc_cursor_plane_atomic_bypass_check,
+	.atomic_bypass_update = lsdc_cursor_plane_atomic_bypass_update,
 };
 
 /* ls7a2000 cursor plane helpers */
@@ -431,8 +431,8 @@ static const struct drm_plane_helper_funcs ls7a2000_cursor_plane_helper_funcs = 
 	.atomic_check = ls7a2000_cursor_plane_atomic_check,
 	.atomic_update = ls7a2000_cursor_plane_atomic_update,
 	.atomic_disable = ls7a2000_cursor_plane_atomic_disable,
-	.atomic_async_check = lsdc_cursor_plane_atomic_async_check,
-	.atomic_async_update = lsdc_cursor_plane_atomic_async_update,
+	.atomic_bypass_check = lsdc_cursor_plane_atomic_bypass_check,
+	.atomic_bypass_update = lsdc_cursor_plane_atomic_bypass_update,
 };
 
 static void lsdc_plane_atomic_print_state(struct drm_printer *p,

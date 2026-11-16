@@ -112,8 +112,8 @@ void amdgpu_dm_plane_get_min_max_dc_plane_scaling(struct drm_device *dev,
 						  struct drm_framebuffer *fb,
 						  int *min_downscale,
 						  int *max_upscale);
-int amdgpu_dm_plane_atomic_async_check(struct drm_plane *plane,
-				       struct drm_atomic_commit *state, bool flip);
+int amdgpu_dm_plane_atomic_bypass_check(struct drm_plane *plane,
+					struct drm_atomic_commit *state, bool flip);
 int amdgpu_dm_plane_atomic_check(struct drm_plane *plane,
 				 struct drm_atomic_commit *state);
 void amdgpu_dm_plane_panic_flush(struct drm_plane *plane);
@@ -136,6 +136,6 @@ bool amdgpu_dm_plane_gfx6_format_mod_supported(const struct amdgpu_device *adev,
 					       const u64 modifier);
 int amdgpu_dm_plane_helper_prepare_fb(struct drm_plane *plane, struct drm_plane_state *new_state);
 void amdgpu_dm_plane_helper_cleanup_fb(struct drm_plane *plane, struct drm_plane_state *old_state);
-void amdgpu_dm_plane_atomic_async_update(struct drm_plane *plane, struct drm_atomic_commit *state);
+void amdgpu_dm_plane_atomic_bypass_update(struct drm_plane *plane, struct drm_atomic_commit *state);
 #endif
 #endif

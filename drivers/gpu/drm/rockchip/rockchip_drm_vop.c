@@ -1070,8 +1070,8 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
 	spin_unlock(&vop->reg_lock);
 }
 
-static int vop_plane_atomic_async_check(struct drm_plane *plane,
-					struct drm_atomic_commit *state, bool flip)
+static int vop_plane_atomic_bypass_check(struct drm_plane *plane,
+					 struct drm_atomic_commit *state, bool flip)
 {
 	struct drm_plane_state *new_plane_state = drm_atomic_get_new_plane_state(state,
 										 plane);
@@ -1104,8 +1104,8 @@ static int vop_plane_atomic_async_check(struct drm_plane *plane,
 						   true, true);
 }
 
-static void vop_plane_atomic_async_update(struct drm_plane *plane,
-					  struct drm_atomic_commit *state)
+static void vop_plane_atomic_bypass_update(struct drm_plane *plane,
+					   struct drm_atomic_commit *state)
 {
 	struct drm_plane_state *new_state = drm_atomic_get_new_plane_state(state,
 									   plane);
@@ -1149,8 +1149,8 @@ static const struct drm_plane_helper_funcs plane_helper_funcs = {
 	.atomic_check = vop_plane_atomic_check,
 	.atomic_update = vop_plane_atomic_update,
 	.atomic_disable = vop_plane_atomic_disable,
-	.atomic_async_check = vop_plane_atomic_async_check,
-	.atomic_async_update = vop_plane_atomic_async_update,
+	.atomic_bypass_check = vop_plane_atomic_bypass_check,
+	.atomic_bypass_update = vop_plane_atomic_bypass_update,
 };
 
 static const struct drm_plane_funcs vop_plane_funcs = {

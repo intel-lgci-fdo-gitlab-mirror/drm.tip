@@ -1130,7 +1130,7 @@ int drm_atomic_helper_check(struct drm_device *dev,
 		return ret;
 
 	if (state->legacy_cursor_update)
-		state->async_update = !drm_atomic_helper_async_check(dev, state);
+		state->bypass_update = !drm_atomic_helper_bypass_check(dev, state);
 
 	drm_self_refresh_helper_alter_state(state);
 
@@ -2099,7 +2099,7 @@ static void commit_work(struct work_struct *work)
 }
 
 /**
- * drm_atomic_helper_async_check - check if state can be committed asynchronously
+ * drm_atomic_helper_bypass_check - check if state can be committed bypassing the normal commit tracking
  * @dev: DRM device
  * @state: the driver state object
  *
@@ -2111,7 +2111,7 @@ static void commit_work(struct work_struct *work)
  * if not. Note that error just mean it can't be committed asynchronously, if it
  * fails the commit should be treated like a normal synchronous commit.
  */
-int drm_atomic_helper_async_check(struct drm_device *dev,
+int drm_atomic_helper_bypass_check(struct drm_device *dev,
 				   struct drm_atomic_commit *state)
 {
 	struct drm_crtc *crtc;
@@ -2146,56 +2146,56 @@ int drm_atomic_helper_async_check(struct drm_device *dev,
 	}
 
 	funcs = plane->helper_private;
-	if (!funcs->atomic_async_update) {
+	if (!funcs->atomic_bypass_update) {
 		drm_dbg_atomic(dev,
-			       "[PLANE:%d:%s] driver does not support async updates\n",
+			       "[PLANE:%d:%s] driver does not support bypass updates\n",
 			       plane->base.id, plane->name);
 		return -EINVAL;
 	}
 
 	if (new_plane_state->fence) {
 		drm_dbg_atomic(dev,
-			       "[PLANE:%d:%s] missing fence for async update\n",
+			       "[PLANE:%d:%s] missing fence for bypass update\n",
 			       plane->base.id, plane->name);
 		return -EINVAL;
 	}
 
 	/*
 	 * Don't do an async update if there is an outstanding commit modifying
-	 * the plane.  This prevents our async update's changes from getting
-	 * overridden by a previous synchronous update's state.
+	 * the plane.  This prevents our bypass update's changes from getting
+	 * overridden by a previous normal update's state.
 	 */
 	if (old_plane_state->commit &&
 	    !try_wait_for_completion(&old_plane_state->commit->hw_done)) {
 		drm_dbg_atomic(dev,
-			       "[PLANE:%d:%s] inflight previous commit preventing async commit\n",
+			       "[PLANE:%d:%s] inflight previous commit preventing bypass commit\n",
 			       plane->base.id, plane->name);
 		return -EBUSY;
 	}
 
-	ret = funcs->atomic_async_check(plane, state, false);
+	ret = funcs->atomic_bypass_check(plane, state, false);
 	if (ret != 0)
 		drm_dbg_atomic(dev,
-			       "[PLANE:%d:%s] driver async check failed\n",
+			       "[PLANE:%d:%s] driver bypass check failed\n",
 			       plane->base.id, plane->name);
 	return ret;
 }
-EXPORT_SYMBOL(drm_atomic_helper_async_check);
+EXPORT_SYMBOL(drm_atomic_helper_bypass_check);
 
 /**
- * drm_atomic_helper_async_commit - commit state asynchronously
+ * drm_atomic_helper_bypass_commit - commit state asynchronously bypassing normal commit tracking
  * @dev: DRM device
  * @state: the driver state object
  *
- * This function commits a state asynchronously. It should be used on a state
- * only when drm_atomic_async_check() succeeds. Async commits are not supposed
- * to swap the states like normal sync commits, but just do in-place changes
- * on the current state.
+ * This function commits a state asynchronously bypassing the normal commit
+ * tracking. It should be used on a state only when drm_atomic_bypass_check()
+ * succeeds. Bypass commits are not supposed to swap the states like normal
+ * commits, but just do in-place changes on the current state.
  *
  * TODO: Implement full swap instead of doing in-place changes.
  */
-void drm_atomic_helper_async_commit(struct drm_device *dev,
-				    struct drm_atomic_commit *state)
+void drm_atomic_helper_bypass_commit(struct drm_device *dev,
+				     struct drm_atomic_commit *state)
 {
 	struct drm_plane *plane;
 	struct drm_plane_state *plane_state;
@@ -2207,10 +2207,10 @@ void drm_atomic_helper_async_commit(struct drm_device *dev,
 		struct drm_framebuffer *old_fb = plane->state->fb;
 
 		funcs = plane->helper_private;
-		funcs->atomic_async_update(plane, state);
+		funcs->atomic_bypass_update(plane, state);
 
 		/*
-		 * ->atomic_async_update() is supposed to update the
+		 * ->atomic_bypass_update() is supposed to update the
 		 * plane->state in-place, make sure at least common
 		 * properties have been properly updated.
 		 */
@@ -2227,7 +2227,7 @@ void drm_atomic_helper_async_commit(struct drm_device *dev,
 		WARN_ON_ONCE(plane_state->fb != old_fb);
 	}
 }
-EXPORT_SYMBOL(drm_atomic_helper_async_commit);
+EXPORT_SYMBOL(drm_atomic_helper_bypass_commit);
 
 /**
  * drm_atomic_helper_commit - commit validated state object
@@ -2253,12 +2253,12 @@ int drm_atomic_helper_commit(struct drm_device *dev,
 {
 	int ret;
 
-	if (state->async_update) {
+	if (state->bypass_update) {
 		ret = drm_atomic_helper_prepare_planes(dev, state);
 		if (ret)
 			return ret;
 
-		drm_atomic_helper_async_commit(dev, state);
+		drm_atomic_helper_bypass_commit(dev, state);
 		drm_atomic_helper_unprepare_planes(dev, state);
 
 		return 0;

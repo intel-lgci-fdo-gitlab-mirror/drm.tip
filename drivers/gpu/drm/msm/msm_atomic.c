@@ -145,7 +145,7 @@ static bool can_do_async(struct drm_atomic_commit *state,
 	struct drm_crtc *crtc;
 	int i, num_crtcs = 0;
 
-	if (!(state->legacy_cursor_update || state->async_update))
+	if (!(state->legacy_cursor_update || state->bypass_update))
 		return false;
 
 	/* any connector change, means slow path: */

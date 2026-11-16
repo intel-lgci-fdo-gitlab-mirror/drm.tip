@@ -358,8 +358,8 @@ static void mdp5_plane_atomic_update(struct drm_plane *plane,
 	}
 }
 
-static int mdp5_plane_atomic_async_check(struct drm_plane *plane,
-					 struct drm_atomic_commit *state, bool flip)
+static int mdp5_plane_atomic_bypass_check(struct drm_plane *plane,
+					  struct drm_atomic_commit *state, bool flip)
 {
 	struct drm_plane_state *new_plane_state = drm_atomic_get_new_plane_state(state,
 										 plane);
@@ -412,8 +412,8 @@ static int mdp5_plane_atomic_async_check(struct drm_plane *plane,
 	return 0;
 }
 
-static void mdp5_plane_atomic_async_update(struct drm_plane *plane,
-					   struct drm_atomic_commit *state)
+static void mdp5_plane_atomic_bypass_update(struct drm_plane *plane,
+					    struct drm_atomic_commit *state)
 {
 	struct drm_plane_state *new_state = drm_atomic_get_new_plane_state(state,
 									   plane);
@@ -450,8 +450,8 @@ static const struct drm_plane_helper_funcs mdp5_plane_helper_funcs = {
 		.cleanup_fb = mdp5_plane_cleanup_fb,
 		.atomic_check = mdp5_plane_atomic_check,
 		.atomic_update = mdp5_plane_atomic_update,
-		.atomic_async_check = mdp5_plane_atomic_async_check,
-		.atomic_async_update = mdp5_plane_atomic_async_update,
+		.atomic_bypass_check = mdp5_plane_atomic_bypass_check,
+		.atomic_bypass_update = mdp5_plane_atomic_bypass_update,
 };
 
 static void set_scanout_locked(struct mdp5_kms *mdp5_kms,

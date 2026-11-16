@@ -1127,8 +1127,8 @@ static void tegra_cursor_atomic_disable(struct drm_plane *plane,
 	tegra_dc_writel(dc, value, DC_DISP_DISP_WIN_OPTIONS);
 }
 
-static int tegra_cursor_atomic_async_check(struct drm_plane *plane, struct drm_atomic_commit *state,
-					   bool flip)
+static int tegra_cursor_atomic_bypass_check(struct drm_plane *plane, struct drm_atomic_commit *state,
+					    bool flip)
 {
 	struct drm_plane_state *new_state = drm_atomic_get_new_plane_state(state, plane);
 	struct drm_crtc_state *crtc_state;
@@ -1165,8 +1165,8 @@ static int tegra_cursor_atomic_async_check(struct drm_plane *plane, struct drm_a
 	return 0;
 }
 
-static void tegra_cursor_atomic_async_update(struct drm_plane *plane,
-					     struct drm_atomic_commit *state)
+static void tegra_cursor_atomic_bypass_update(struct drm_plane *plane,
+					      struct drm_atomic_commit *state)
 {
 	struct drm_plane_state *new_state = drm_atomic_get_new_plane_state(state, plane);
 	struct tegra_dc *dc = to_tegra_dc(new_state->crtc);
@@ -1198,8 +1198,8 @@ static const struct drm_plane_helper_funcs tegra_cursor_plane_helper_funcs = {
 	.atomic_check = tegra_cursor_atomic_check,
 	.atomic_update = tegra_cursor_atomic_update,
 	.atomic_disable = tegra_cursor_atomic_disable,
-	.atomic_async_check = tegra_cursor_atomic_async_check,
-	.atomic_async_update = tegra_cursor_atomic_async_update,
+	.atomic_bypass_check = tegra_cursor_atomic_bypass_check,
+	.atomic_bypass_update = tegra_cursor_atomic_bypass_update,
 };
 
 static const uint64_t linear_modifiers[] = {
