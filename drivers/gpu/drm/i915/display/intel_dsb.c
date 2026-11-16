@@ -343,11 +343,7 @@ static bool intel_dsb_prev_ins_is_write(struct intel_dsb *dsb,
 {
 	u32 prev_opcode, prev_reg;
 
-	/*
-	 * Nothing emitted yet? Must check before looking
-	 * at the actual data since i915_gem_object_create_internal()
-	 * does *not* give you zeroed memory!
-	 */
+	/* Nothing emitted yet? */
 	if (dsb->free_pos == 0)
 		return false;
 
