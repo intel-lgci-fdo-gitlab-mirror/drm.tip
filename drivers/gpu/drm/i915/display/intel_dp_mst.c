@@ -349,7 +349,7 @@ int intel_dp_mtp_tu_compute_config(struct intel_dp *intel_dp,
 
 		if (is_mst) {
 			int remote_bw_overhead;
-			int remote_tu;
+			int remote_tu, aligned_tu;
 			fixed20_12 pbn;
 
 			remote_bw_overhead = intel_dp_mst_bw_overhead(crtc_state,
@@ -381,16 +381,18 @@ int intel_dp_mtp_tu_compute_config(struct intel_dp *intel_dp,
 			 * TODO: remove the alignment restriction for 128b/132b links
 			 * on some platforms, where Bspec allows this.
 			 */
-			remote_tu = ALIGN(remote_tu, 4 / crtc_state->lane_count);
+			aligned_tu = ALIGN(remote_tu, 4 / crtc_state->lane_count);
 
 			/*
-			 * Also align PBNs accordingly, since MST core will derive its
-			 * own copy of TU from the PBN in drm_dp_atomic_find_time_slots().
-			 * The above comment about the difference between the PBN
-			 * allocated for the whole path and the TUs allocated for the
-			 * first branch device's link also applies here.
+			 * MST core derives its own copy of TU from the PBN in
+			 * drm_dp_atomic_find_time_slots(), so round the PBN up to
+			 * the aligned TU only if the alignment changed it. Otherwise
+			 * keep the exact PBN, since rounding it up to whole TUs can
+			 * make it exceed the path's PBN limit.
 			 */
-			pbn.full = remote_tu * mst_state->pbn_div.full;
+			if (aligned_tu != remote_tu)
+				pbn.full = aligned_tu * mst_state->pbn_div.full;
+			remote_tu = aligned_tu;
 
 			drm_WARN_ON(display->drm, remote_tu < crtc_state->dp_m_n.tu);
 			crtc_state->dp_m_n.tu = remote_tu;
