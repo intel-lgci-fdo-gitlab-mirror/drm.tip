@@ -1440,34 +1440,13 @@ static void vbt_edp_to_pps_delays(struct intel_pps_delays *pps,
 }
 
 static void
-parse_edp(struct intel_display *display,
-	  struct intel_panel *panel)
+parse_edp_fast_link_params(struct intel_display *display,
+			   struct intel_panel *panel,
+			   const struct bdb_edp *edp)
 {
-	const struct bdb_edp *edp;
-	const struct edp_fast_link_params *edp_link_params;
 	int panel_type = panel->vbt.panel_type;
-
-	edp = bdb_find_section(display, BDB_EDP);
-	if (!edp)
-		return;
-
-	switch (panel_bits(edp->color_depth, panel_type, 2)) {
-	case EDP_18BPP:
-		panel->vbt.edp.bpp = 18;
-		break;
-	case EDP_24BPP:
-		panel->vbt.edp.bpp = 24;
-		break;
-	case EDP_30BPP:
-		panel->vbt.edp.bpp = 30;
-		break;
-	}
-
-	/* Get the eDP sequencing and link info */
-	edp_link_params = &edp->fast_link_params[panel_type];
-
-	vbt_edp_to_pps_delays(&panel->vbt.edp.pps,
-			      &edp->power_seqs[panel_type]);
+	const struct edp_fast_link_params *edp_link_params =
+		&edp->fast_link_params[panel_type];
 
 	if (display->vbt.version >= 224) {
 		panel->vbt.edp.rate =
@@ -1547,6 +1526,36 @@ parse_edp(struct intel_display *display,
 			    edp_link_params->vswing);
 		break;
 	}
+}
+
+static void
+parse_edp(struct intel_display *display,
+	  struct intel_panel *panel)
+{
+	const struct bdb_edp *edp;
+	int panel_type = panel->vbt.panel_type;
+
+	edp = bdb_find_section(display, BDB_EDP);
+	if (!edp)
+		return;
+
+	switch (panel_bits(edp->color_depth, panel_type, 2)) {
+	case EDP_18BPP:
+		panel->vbt.edp.bpp = 18;
+		break;
+	case EDP_24BPP:
+		panel->vbt.edp.bpp = 24;
+		break;
+	case EDP_30BPP:
+		panel->vbt.edp.bpp = 30;
+		break;
+	}
+
+	/* Get the eDP sequencing info */
+	vbt_edp_to_pps_delays(&panel->vbt.edp.pps,
+			      &edp->power_seqs[panel_type]);
+
+	parse_edp_fast_link_params(display, panel, edp);
 
 	if (display->vbt.version >= 173) {
 		u8 vswing;
