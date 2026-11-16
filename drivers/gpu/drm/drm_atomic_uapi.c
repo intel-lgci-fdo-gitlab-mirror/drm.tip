@@ -1352,6 +1352,8 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 		struct drm_colorop_state *colorop_state;
 		bool replaced = false;
 
+		/* FIXME async flip checks completely missing here */
+
 		colorop_state = drm_atomic_get_colorop_state(state, colorop);
 		if (IS_ERR(colorop_state)) {
 			ret = PTR_ERR(colorop_state);
