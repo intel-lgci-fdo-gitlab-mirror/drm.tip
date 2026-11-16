@@ -1194,6 +1194,124 @@ out:
 	return ret;
 }
 
+static int connector_async_flip_check(struct drm_atomic_commit *state,
+				      struct drm_connector *connector,
+				      struct drm_property *prop,
+				      u64 prop_value, bool *is_noop)
+{
+	const struct drm_connector_state *current_connector_state;
+	u64 old_val = 0;
+	int ret;
+
+	current_connector_state =
+		__drm_atomic_get_current_connector_state(state, connector);
+	if (IS_ERR(current_connector_state))
+		return PTR_ERR(current_connector_state);
+
+	ret = drm_atomic_connector_get_property(connector, current_connector_state,
+						prop, &old_val);
+	if (ret)
+		return ret;
+
+	/*
+	 * Note that for WRITEBACK_FB_ID and WRITEBACK_OUT_FENCE_PTR
+	 * the old value will always be 0. So any commit that sets either
+	 * property to any other value will not be considered a no-op.
+	 */
+	if (old_val != prop_value) {
+		drm_dbg_atomic(prop->dev,
+			       "[CONNECTOR:%d:%s][PROP:%d:%s] Unsupported property change during async flip\n",
+			       connector->base.id, connector->name,
+			       prop->base.id, prop->name);
+		return -EINVAL;
+	}
+
+	*is_noop = old_val == prop_value;
+
+	return 0;
+}
+
+static int crtc_async_flip_check(struct drm_atomic_commit *state,
+				 struct drm_crtc *crtc,
+				 struct drm_property *prop,
+				 u64 prop_value, bool *is_noop)
+{
+	const struct drm_crtc_state *current_crtc_state;
+	u64 old_val = 0;
+	int ret;
+
+	current_crtc_state =
+		__drm_atomic_get_current_crtc_state(state, crtc);
+	if (IS_ERR(current_crtc_state))
+		return PTR_ERR(current_crtc_state);
+
+	ret = drm_atomic_crtc_get_property(crtc, current_crtc_state,
+					   prop, &old_val);
+	if (ret)
+		return ret;
+
+	/*
+	 * Note that for OUT_FENCE_PTR the old value will always be 0.
+	 * So any commit that sets the property to any other value
+	 * will not be considered a no-op.
+	 */
+	if (old_val != prop_value) {
+		drm_dbg_atomic(prop->dev,
+			       "[CRTC:%d:%s][PROP:%d:%s] Unsupported property change during async flip\n",
+			       crtc->base.id, crtc->name,
+			       prop->base.id, prop->name);
+		return -EINVAL;
+	}
+
+	*is_noop = old_val == prop_value;
+
+	return 0;
+}
+
+static int plane_async_flip_check(struct drm_atomic_commit *state,
+				  struct drm_plane *plane,
+				  struct drm_property *prop,
+				  u64 prop_value, bool *is_noop)
+{
+	struct drm_device *dev = plane->dev;
+	struct drm_mode_config *config = &dev->mode_config;
+	const struct drm_plane_state *current_plane_state;
+	u64 old_val = 0;
+	int ret;
+
+	current_plane_state =
+		__drm_atomic_get_current_plane_state(state, plane);
+	if (IS_ERR(current_plane_state))
+		return PTR_ERR(current_plane_state);
+
+	ret = drm_atomic_plane_get_property(plane, current_plane_state,
+					    prop, &old_val);
+	if (ret)
+		return ret;
+
+	/*
+	 * Fail everything that isn't no-op or a pure flip.
+	 *
+	 * Note that for IN_FENCE_FD the old value will always be -1.
+	 * So any commit that sets the property to any other value
+	 * will not be considered a no-op.
+	 */
+	if (old_val != prop_value &&
+	    prop != config->prop_fb_id &&
+	    prop != config->prop_in_fence_fd &&
+	    prop != config->prop_fb_damage_clips) {
+		drm_dbg_atomic(prop->dev,
+			       "[PLANE:%d:%s][PROP:%d:%s] Unsupported property change during async flip\n",
+			       plane->base.id, plane->name,
+			       prop->base.id, prop->name);
+		return -EINVAL;
+	}
+
+	*is_noop = old_val == prop_value;
+
+	return 0;
+}
+
 int drm_atomic_set_property(struct drm_atomic_commit *state,
 			    struct drm_file *file_priv,
 			    struct drm_mode_object *obj,
@@ -1202,7 +1320,6 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 			    bool async_flip)
 {
 	struct drm_mode_object *ref;
-	u64 old_val;
 	int ret;
 
 	if (!drm_property_change_valid_get(prop, prop_value, &ref))
@@ -1215,36 +1332,10 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 		bool is_noop = false;
 
 		if (async_flip) {
-			const struct drm_connector_state *current_connector_state;
-
-			current_connector_state =
-				__drm_atomic_get_current_connector_state(state, connector);
-			if (IS_ERR(current_connector_state)) {
-				ret = PTR_ERR(current_connector_state);
-				break;
-			}
-
-			ret = drm_atomic_connector_get_property(connector, current_connector_state,
-								prop, &old_val);
+			ret = connector_async_flip_check(state, connector,
+							 prop, prop_value, &is_noop);
 			if (ret)
 				break;
-
-			/*
-			 * Note that for WRITEBACK_FB_ID and WRITEBACK_OUT_FENCE_PTR
-			 * the old value will always be 0. So any commit that sets either
-			 * property to any other value will not be considered a no-op.
-			 */
-			if (old_val != prop_value) {
-				drm_dbg_atomic(prop->dev,
-					       "[CONNECTOR:%d:%s][PROP:%d:%s] Unsupported property change during async flip\n",
-					       connector->base.id, connector->name,
-					       prop->base.id, prop->name);
-				ret = -EINVAL;
-				break;
-			}
-
-			if (old_val == prop_value)
-				is_noop = true;
 		}
 
 		/* No-op connector property changes can be completely skipped */
@@ -1270,36 +1361,10 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 		bool is_noop = false;
 
 		if (async_flip) {
-			const struct drm_crtc_state *current_crtc_state;
-
-			current_crtc_state =
-				__drm_atomic_get_current_crtc_state(state, crtc);
-			if (IS_ERR(current_crtc_state)) {
-				ret = PTR_ERR(current_crtc_state);
-				break;
-			}
-
-			ret = drm_atomic_crtc_get_property(crtc, current_crtc_state,
-							   prop, &old_val);
+			ret = crtc_async_flip_check(state, crtc,
+						    prop, prop_value, &is_noop);
 			if (ret)
 				break;
-
-			/*
-			 * Note that for OUT_FENCE_PTR the old value will always be 0.
-			 * So any commit that sets the property to any other value
-			 * will not be considered a no-op.
-			 */
-			if (old_val != prop_value) {
-				drm_dbg_atomic(prop->dev,
-					       "[CRTC:%d:%s][PROP:%d:%s] Unsupported property change during async flip\n",
-					       crtc->base.id, crtc->name,
-					       prop->base.id, prop->name);
-				ret = -EINVAL;
-				break;
-			}
-
-			if (old_val == prop_value)
-				is_noop = true;
 		}
 
 		/*
@@ -1324,46 +1389,14 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 	case DRM_MODE_OBJECT_PLANE: {
 		struct drm_plane *plane = obj_to_plane(obj);
 		struct drm_plane_state *plane_state;
-		struct drm_mode_config *config = &plane->dev->mode_config;
 		const struct drm_plane_helper_funcs *plane_funcs = plane->helper_private;
 		bool is_noop = false;
 
 		if (async_flip) {
-			const struct drm_plane_state *current_plane_state;
-
-			current_plane_state =
-				__drm_atomic_get_current_plane_state(state, plane);
-			if (IS_ERR(current_plane_state)) {
-				ret = PTR_ERR(current_plane_state);
-				break;
-			}
-
-			ret = drm_atomic_plane_get_property(plane, current_plane_state,
-							    prop, &old_val);
+			ret = plane_async_flip_check(state, plane,
+						     prop, prop_value, &is_noop);
 			if (ret)
 				break;
-
-			/*
-			 * Fail everything that isn't no-op or a pure flip.
-			 *
-			 * Note that for IN_FENCE_FD the old value will always be -1.
-			 * So any commit that sets the property to any other value
-			 * will not be considered a no-op.
-			 */
-			if (old_val != prop_value &&
-			    prop != config->prop_fb_id &&
-			    prop != config->prop_in_fence_fd &&
-			    prop != config->prop_fb_damage_clips) {
-				drm_dbg_atomic(prop->dev,
-					       "[PLANE:%d:%s][PROP:%d:%s] Unsupported property change during async flip\n",
-					       plane->base.id, plane->name,
-					       prop->base.id, prop->name);
-				ret = -EINVAL;
-				break;
-			}
-
-			if (old_val == prop_value)
-				is_noop = true;
 		}
 
 		/* No-op plane property changes can be fully skipped */
