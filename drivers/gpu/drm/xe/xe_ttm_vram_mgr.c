@@ -1303,3 +1303,7 @@ void xe_ttm_vram_debugfs_init(struct xe_device *xe, struct dentry *root)
 		return;
 	debugfs_create_file("vram_bad_pages", 0444, root, xe, &vram_bad_pages_fops);
 }
+
+#if IS_BUILTIN(CONFIG_DRM_XE_KUNIT_TEST)
+#include "tests/xe_ttm_vram_mgr.c"
+#endif
