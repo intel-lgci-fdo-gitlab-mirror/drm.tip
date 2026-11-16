@@ -338,9 +338,10 @@ static void intel_dsb_emit(struct intel_dsb *dsb, u32 ldw, u32 udw)
 	dsb_buffer_write(dsb, dsb->free_pos++, dsb->ins[1]);
 }
 
-static bool intel_dsb_prev_ins_is_write(struct intel_dsb *dsb,
-					u32 opcode, intel_reg_t reg)
+static bool intel_dsb_prev_ins_is_indexed_write(struct intel_dsb *dsb,
+						intel_reg_t reg)
 {
+	u32 opcode = DSB_OPCODE_INDEXED_WRITE << DSB_OPCODE_SHIFT;
 	u32 prev_opcode, prev_reg;
 
 	/* Nothing emitted yet? */
@@ -351,13 +352,6 @@ static bool intel_dsb_prev_ins_is_write(struct intel_dsb *dsb,
 	prev_reg =  dsb->ins[1] & DSB_REG_VALUE_MASK;
 
 	return prev_opcode == opcode && prev_reg == intel_reg_offset(reg);
-}
-
-static bool intel_dsb_prev_ins_is_indexed_write(struct intel_dsb *dsb, intel_reg_t reg)
-{
-	return intel_dsb_prev_ins_is_write(dsb,
-					   DSB_OPCODE_INDEXED_WRITE << DSB_OPCODE_SHIFT,
-					   reg);
 }
 
 /**
