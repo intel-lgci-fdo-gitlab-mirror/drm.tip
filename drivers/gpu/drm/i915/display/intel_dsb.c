@@ -335,6 +335,10 @@ static bool intel_dsb_prev_ins_is_indexed_write(struct intel_dsb *dsb)
 
 static void intel_dsb_ins_align(struct intel_dsb *dsb)
 {
+	/* Store the final indexed register write count */
+	if (intel_dsb_prev_ins_is_indexed_write(dsb))
+		dsb_buffer_write(dsb, dsb->ins_start_offset + 0, dsb->ins[0]);
+
 	/*
 	 * Every instruction must be 8 byte aligned.
 	 * Indexed register writes may leave free_pos misaligned.
@@ -409,9 +413,12 @@ void intel_dsb_reg_write_indexed(struct intel_dsb *dsb,
 	if (!assert_dsb_has_room(dsb))
 		return;
 
-	/* Update the count */
+	/*
+	 * Update the count. The actual dsb_buffer_write()
+	 * is done from intel_dsb_ins_align() once the final
+	 * count is known.
+	 */
 	dsb->ins[0]++;
-	dsb_buffer_write(dsb, dsb->ins_start_offset + 0, dsb->ins[0]);
 
 	dsb_buffer_write(dsb, dsb->free_pos++, val);
 }
