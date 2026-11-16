@@ -733,6 +733,12 @@ static void xe_oa_free_configs(struct xe_oa_stream *stream)
 	dma_fence_put(stream->last_fence);
 }
 
+static void xe_oa_update_last_fence(struct xe_oa_stream *stream, struct dma_fence *fence)
+{
+	dma_fence_put(stream->last_fence);
+	stream->last_fence = dma_fence_get(fence);
+}
+
 static int xe_oa_load_with_lri(struct xe_oa_stream *stream, struct xe_oa_reg *reg_lri, u32 count)
 {
 	struct dma_fence *fence;
@@ -753,6 +759,7 @@ static int xe_oa_load_with_lri(struct xe_oa_stream *stream, struct xe_oa_reg *re
 		goto free_bb;
 	}
 	xe_bb_free(bb, fence);
+	xe_oa_update_last_fence(stream, fence);
 	dma_fence_put(fence);
 
 	return 0;
@@ -876,6 +883,38 @@ static void xe_oa_disable_metric_set(struct xe_oa_stream *stream)
 		xe_mmio_rmw32(mmio, OAM_COMPRESSION_T3_CONTROL, OAM_LAT_MEASURE_ENABLE, 0);
 }
 
+/*
+ * Wait for the last OA batch of the stream, so that it can't program the HW after the HW
+ * teardown.
+ */
+static void xe_oa_stream_drain(struct xe_oa_stream *stream)
+{
+	struct xe_exec_queue *q = stream->exec_q ?: stream->k_exec_q;
+	long timeout;
+
+	if (!stream->last_fence || dma_fence_is_signaled(stream->last_fence))
+		return;
+
+	timeout = msecs_to_jiffies(q->sched_props.job_timeout_ms) + HZ;
+	if (dma_fence_wait_timeout(stream->last_fence, false, timeout))
+		return;
+
+	drm_err(&stream->oa->xe->drm, "Timed out waiting for OA batch, killing exec queue\n");
+
+	/*
+	 * The batch is most likely still waiting for an input sync, which no TDR covers. Kill
+	 * the exec queue, so the batch is dropped instead of run when the input sync signals.
+	 * A batch already on the HW gets cleaned up by the TDR the kill triggers, give it a
+	 * moment.
+	 */
+	if (q->vm)
+		xe_exec_queue_kill(q);
+	else
+		q->ops->kill(q);
+
+	dma_fence_wait_timeout(stream->last_fence, false, HZ);
+}
+
 static void xe_oa_stream_hw_teardown(struct xe_oa_stream *stream)
 {
 	if (stream->sample)
@@ -909,6 +948,7 @@ static void xe_oa_stream_destroy(struct xe_oa_stream *stream)
 	/* The poll timer may still be armed if the OA disable was skipped */
 	hrtimer_cancel(&stream->poll_check_timer);
 
+	xe_oa_stream_drain(stream);
 	if (!xe_wedged(stream->oa->xe))
 		xe_oa_stream_hw_teardown(stream);
 
@@ -1005,12 +1045,6 @@ xe_oa_alloc_config_buffer(struct xe_oa_stream *stream, struct xe_oa_config *oa_c
 	oa_bo = __xe_oa_alloc_config_buffer(stream, oa_config);
 out:
 	return oa_bo;
-}
-
-static void xe_oa_update_last_fence(struct xe_oa_stream *stream, struct dma_fence *fence)
-{
-	dma_fence_put(stream->last_fence);
-	stream->last_fence = dma_fence_get(fence);
 }
 
 static void xe_oa_fence_work_fn(struct work_struct *w)
