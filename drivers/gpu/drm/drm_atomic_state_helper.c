@@ -174,24 +174,19 @@ EXPORT_SYMBOL(drm_atomic_helper_crtc_duplicate_state);
  */
 void __drm_atomic_helper_crtc_destroy_state(struct drm_crtc_state *state)
 {
-	if (state->commit) {
-		/*
-		 * In the event that a non-blocking commit returns
-		 * -ERESTARTSYS before the commit_tail work is queued, we will
-		 * have an extra reference to the commit object. Release it, if
-		 * the event has not been consumed by the worker.
-		 *
-		 * state->event may be freed, so we can't directly look at
-		 * state->event->base.completion.
-		 */
-		if (state->event && state->commit->abort_completion)
-			drm_crtc_commit_put(state->commit);
-
-		kfree(state->commit->event);
-		state->commit->event = NULL;
-
-		drm_crtc_commit_put(state->commit);
+	/*
+	 * An event that is still here was never consumed, eg. because a
+	 * non-blocking commit returned -ERESTARTSYS before the commit_tail
+	 * work was queued. Throw it away, which also releases the extra
+	 * reference to the commit that the event holds for its completion.
+	 */
+	if (state->event) {
+		drm_event_cancel_free(state->crtc->dev, &state->event->base);
+		state->event = NULL;
 	}
+
+	if (state->commit)
+		drm_crtc_commit_put(state->commit);
 
 	drm_property_blob_put(state->mode_blob);
 	drm_property_blob_put(state->degamma_lut);

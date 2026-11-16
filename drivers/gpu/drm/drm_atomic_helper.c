@@ -2559,18 +2559,14 @@ int drm_atomic_helper_setup_commit(struct drm_atomic_commit *state,
 		}
 
 		if (!new_crtc_state->event) {
-			commit->event = kzalloc_obj(*commit->event);
-			if (!commit->event)
+			new_crtc_state->event = kzalloc_obj(*new_crtc_state->event);
+			if (!new_crtc_state->event)
 				return -ENOMEM;
-
-			new_crtc_state->event = commit->event;
 		}
 
 		new_crtc_state->event->base.completion = &commit->flip_done;
 		new_crtc_state->event->base.completion_release = release_crtc_commit;
 		drm_crtc_commit_get(commit);
-
-		commit->abort_completion = true;
 
 		state->crtcs[i].commit = commit;
 		drm_crtc_commit_get(commit);
@@ -3340,8 +3336,6 @@ int drm_atomic_helper_swap_state(struct drm_atomic_commit *state,
 			list_add(&new_crtc_state->commit->commit_entry,
 				 &crtc->commit_list);
 			spin_unlock(&crtc->commit_lock);
-
-			new_crtc_state->commit->event = NULL;
 		}
 	}
 

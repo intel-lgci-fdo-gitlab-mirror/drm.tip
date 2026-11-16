@@ -1552,13 +1552,10 @@ err_free_event:
 }
 
 static void complete_signaling(struct drm_device *dev,
-			       struct drm_atomic_commit *state,
 			       struct drm_out_fence_state *fence_state,
 			       unsigned int num_fences,
 			       bool install_fds)
 {
-	struct drm_crtc *crtc;
-	struct drm_crtc_state *crtc_state;
 	int i;
 
 	if (install_fds) {
@@ -1570,21 +1567,10 @@ static void complete_signaling(struct drm_device *dev,
 		return;
 	}
 
-	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
-		struct drm_pending_vblank_event *event = crtc_state->event;
-		/*
-		 * Free the allocated event. drm_atomic_helper_setup_commit
-		 * can allocate an event too, so only free it if it's ours
-		 * to prevent a double free in drm_atomic_commit_clear.
-		 */
-		if (event && (event->base.fence || event->base.file_priv)) {
-			if (crtc_state->commit && crtc_state->commit->abort_completion)
-				drm_crtc_commit_put(crtc_state->commit);
-			drm_event_cancel_free(dev, &event->base);
-			crtc_state->event = NULL;
-		}
-	}
-
+	/*
+	 * Any events that were not consumed are thrown away when the state
+	 * is destroyed.
+	 */
 	if (!fence_state)
 		return;
 
@@ -1778,7 +1764,7 @@ retry:
 	}
 
 out:
-	complete_signaling(dev, state, fence_state, num_fences, !ret);
+	complete_signaling(dev, fence_state, num_fences, !ret);
 
 	if (ret == -EDEADLK) {
 		drm_atomic_commit_clear(state);

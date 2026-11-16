@@ -140,21 +140,6 @@ struct drm_crtc_commit {
 	 */
 	struct list_head commit_entry;
 
-	/**
-	 * @event:
-	 *
-	 * &drm_pending_vblank_event pointer to clean up private events.
-	 */
-	struct drm_pending_vblank_event *event;
-
-	/**
-	 * @abort_completion:
-	 *
-	 * A flag that's set after drm_atomic_helper_setup_commit() takes a
-	 * second reference for the completion of $drm_crtc_state.event. It's
-	 * used by the free code to remove the second reference if commit fails.
-	 */
-	bool abort_completion;
 };
 
 struct __drm_colorops_state {
