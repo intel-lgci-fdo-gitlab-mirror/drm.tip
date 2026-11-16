@@ -497,6 +497,28 @@ drm_atomic_get_crtc_state(struct drm_atomic_commit *state,
 }
 EXPORT_SYMBOL(drm_atomic_get_crtc_state);
 
+const struct drm_crtc_state *
+__drm_atomic_get_current_crtc_state(struct drm_atomic_commit *state,
+				    struct drm_crtc *crtc)
+{
+	const struct drm_crtc_state *crtc_state;
+	int ret;
+
+	WARN_ON(!state->acquire_ctx);
+	drm_WARN_ON(state->dev, state->checked);
+
+	crtc_state = drm_atomic_get_new_crtc_state(state, crtc);
+	if (crtc_state)
+		return crtc_state;
+
+	ret = drm_modeset_lock(&crtc->mutex, state->acquire_ctx);
+	if (ret)
+		return ERR_PTR(ret);
+
+	return crtc->state;
+}
+/* Do not export! Only meant for drm_atomic_set_property(). */
+
 static int drm_atomic_crtc_check(const struct drm_crtc_state *old_crtc_state,
 				 const struct drm_crtc_state *new_crtc_state)
 {
@@ -703,6 +725,43 @@ drm_atomic_get_plane_state(struct drm_atomic_commit *state,
 	return plane_state;
 }
 EXPORT_SYMBOL(drm_atomic_get_plane_state);
+
+const struct drm_plane_state *
+__drm_atomic_get_current_plane_state(struct drm_atomic_commit *state,
+				     struct drm_plane *plane)
+{
+	const struct drm_plane_state *plane_state;
+	int ret;
+
+	WARN_ON(!state->acquire_ctx);
+	drm_WARN_ON(state->dev, state->checked);
+
+	plane_state = drm_atomic_get_new_plane_state(state, plane);
+	if (plane_state)
+		return plane_state;
+
+	ret = drm_modeset_lock(&plane->mutex, state->acquire_ctx);
+	if (ret)
+		return ERR_PTR(ret);
+
+	plane_state = plane->state;
+
+	/*
+	 * The plane's current crtc must always be added
+	 * to the commit for completion/event purposes.
+	 */
+	if (plane_state->crtc) {
+		struct drm_crtc_state *crtc_state;
+
+		crtc_state = drm_atomic_get_crtc_state(state,
+						       plane_state->crtc);
+		if (IS_ERR(crtc_state))
+			return ERR_CAST(crtc_state);
+	}
+
+	return plane_state;
+}
+/* Do not export! Only meant for drm_atomic_set_property(). */
 
 static void drm_atomic_commit_set_colorop_state(struct drm_atomic_commit *commit,
 						struct drm_colorop *colorop,
@@ -1495,6 +1554,44 @@ drm_atomic_get_connector_state(struct drm_atomic_commit *state,
 	return connector_state;
 }
 EXPORT_SYMBOL(drm_atomic_get_connector_state);
+
+const struct drm_connector_state *
+__drm_atomic_get_current_connector_state(struct drm_atomic_commit *state,
+					 struct drm_connector *connector)
+{
+	struct drm_mode_config *config = &connector->dev->mode_config;
+	const struct drm_connector_state *connector_state;
+	int ret;
+
+	WARN_ON(!state->acquire_ctx);
+	drm_WARN_ON(state->dev, state->checked);
+
+	connector_state = drm_atomic_get_new_connector_state(state, connector);
+	if (connector_state)
+		return connector_state;
+
+	ret = drm_modeset_lock(&config->connection_mutex, state->acquire_ctx);
+	if (ret)
+		return ERR_PTR(ret);
+
+	connector_state = connector->state;
+
+	/*
+	 * The connectors's current crtc must always be added
+	 * to the commit for completion/event purposes.
+	 */
+	if (connector_state->crtc) {
+		struct drm_crtc_state *crtc_state;
+
+		crtc_state = drm_atomic_get_crtc_state(state,
+						       connector_state->crtc);
+		if (IS_ERR(crtc_state))
+			return ERR_CAST(crtc_state);
+	}
+
+	return connector_state;
+}
+/* Do not export! Only meant for drm_atomic_set_property(). */
 
 static void drm_atomic_connector_print_state(struct drm_printer *p,
 		const struct drm_connector_state *state)
