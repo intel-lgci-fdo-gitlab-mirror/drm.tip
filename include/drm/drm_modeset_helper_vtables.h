@@ -1424,8 +1424,7 @@ struct drm_plane_helper_funcs {
 	 * @atomic_async_check:
 	 *
 	 * Drivers should set this function pointer to check if the plane's
-	 * atomic state can be updated in a async fashion. Here async means
-	 * "not vblank synchronized".
+	 * atomic state can be updated in a async fashion.
 	 *
 	 * This hook is called by drm_atomic_async_check() to establish if a
 	 * given update can be committed asynchronously, that is, if it can
@@ -1449,8 +1448,7 @@ struct drm_plane_helper_funcs {
 	 *
 	 * Drivers should set this function pointer to perform asynchronous
 	 * updates of planes, that is, jump ahead of the currently queued
-	 * state and update the plane. Here async means "not vblank
-	 * synchronized".
+	 * state and update the plane.
 	 *
 	 * This hook is called by drm_atomic_helper_async_commit().
 	 *

@@ -2187,11 +2187,10 @@ EXPORT_SYMBOL(drm_atomic_helper_async_check);
  * @dev: DRM device
  * @state: the driver state object
  *
- * This function commits a state asynchronously, i.e., not vblank
- * synchronized. It should be used on a state only when
- * drm_atomic_async_check() succeeds. Async commits are not supposed to swap
- * the states like normal sync commits, but just do in-place changes on the
- * current state.
+ * This function commits a state asynchronously. It should be used on a state
+ * only when drm_atomic_async_check() succeeds. Async commits are not supposed
+ * to swap the states like normal sync commits, but just do in-place changes
+ * on the current state.
  *
  * TODO: Implement full swap instead of doing in-place changes.
  */
