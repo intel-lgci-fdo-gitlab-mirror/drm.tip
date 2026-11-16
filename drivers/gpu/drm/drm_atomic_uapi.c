@@ -1225,6 +1225,11 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 			if (ret)
 				break;
 
+			/*
+			 * Note that for WRITEBACK_FB_ID and WRITEBACK_OUT_FENCE_PTR
+			 * the old value will always be 0. So any commit that sets either
+			 * property to any other value will not be considered a no-op.
+			 */
 			if (old_val != prop_value) {
 				drm_dbg_atomic(prop->dev,
 					       "[CONNECTOR:%d:%s][PROP:%d:%s] Unsupported property change during async flip\n",
@@ -1256,6 +1261,11 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 			if (ret)
 				break;
 
+			/*
+			 * Note that for OUT_FENCE_PTR the old value will always be 0.
+			 * So any commit that sets the property to any other value
+			 * will not be considered a no-op.
+			 */
 			if (old_val != prop_value) {
 				drm_dbg_atomic(prop->dev,
 					       "[CRTC:%d:%s][PROP:%d:%s] Unsupported property change during async flip\n",
@@ -1289,7 +1299,13 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 			if (ret)
 				break;
 
-			/* fail everything that isn't no-op or a pure flip */
+			/*
+			 * Fail everything that isn't no-op or a pure flip.
+			 *
+			 * Note that for IN_FENCE_FD the old value will always be -1.
+			 * So any commit that sets the property to any other value
+			 * will not be considered a no-op.
+			 */
 			if (old_val != prop_value &&
 			    prop != config->prop_fb_id &&
 			    prop != config->prop_in_fence_fd &&
