@@ -601,6 +601,8 @@ static void intel_dsb_align_tail(struct intel_dsb *dsb)
 	if (aligned_tail > tail) {
 		dsb_buffer_fill(dsb, dsb->free_pos, 0, aligned_tail - tail);
 		dsb->free_pos = aligned_tail / 4;
+
+		intel_dsb_set_ins(dsb, dsb->free_pos - 2, 0, 0);
 	}
 }
 
@@ -624,6 +626,8 @@ static void intel_dsb_gosub_align(struct intel_dsb *dsb)
 	if (aligned_tail - tail <= 2 * 8) {
 		dsb_buffer_fill(dsb, dsb->free_pos, 0, aligned_tail - tail);
 		dsb->free_pos = aligned_tail / 4;
+
+		intel_dsb_set_ins(dsb, dsb->free_pos - 2, 0, 0);
 	}
 }
 
