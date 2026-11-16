@@ -1083,6 +1083,8 @@ int xe_device_probe(struct xe_device *xe)
 	if (err)
 		goto err_unregister_display;
 
+	xe_vsec_init(xe);
+
 	xe_debugfs_register(xe);
 
 	err = xe_hwmon_register(xe);
@@ -1095,8 +1097,6 @@ int xe_device_probe(struct xe_device *xe)
 
 	for_each_gt(gt, xe, id)
 		xe_gt_sanitize_freq(gt);
-
-	xe_vsec_init(xe);
 
 	err = xe_sriov_init_late(xe);
 	if (err)
