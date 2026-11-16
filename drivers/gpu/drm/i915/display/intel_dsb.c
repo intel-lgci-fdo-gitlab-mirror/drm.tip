@@ -336,14 +336,11 @@ static bool intel_dsb_prev_ins_is_indexed_write(struct intel_dsb *dsb)
 static void intel_dsb_ins_align(struct intel_dsb *dsb)
 {
 	/*
-	 * Every instruction should be 8 byte aligned.
-	 *
-	 * The only way to get unaligned free_pos is via
-	 * intel_dsb_reg_write_indexed() which already
-	 * makes sure the next dword is zeroed, so no need
-	 * to clear it here.
+	 * Every instruction must be 8 byte aligned.
+	 * Indexed register writes may leave free_pos misaligned.
 	 */
-	dsb->free_pos = ALIGN(dsb->free_pos, 2);
+	if (dsb->free_pos & 1)
+		dsb_buffer_write(dsb, dsb->free_pos++, 0);
 }
 
 static void intel_dsb_emit(struct intel_dsb *dsb, u32 ldw, u32 udw)
@@ -417,9 +414,6 @@ void intel_dsb_reg_write_indexed(struct intel_dsb *dsb,
 	dsb_buffer_write(dsb, dsb->ins_start_offset + 0, dsb->ins[0]);
 
 	dsb_buffer_write(dsb, dsb->free_pos++, val);
-	/* if number of data words is odd, then the last dword should be 0.*/
-	if (dsb->free_pos & 0x1)
-		dsb_buffer_write(dsb, dsb->free_pos, 0);
 }
 
 void intel_dsb_reg_write(struct intel_dsb *dsb,
