@@ -3972,6 +3972,33 @@ static int page_flip_common(struct drm_atomic_commit *state,
 	return ret;
 }
 
+/*
+ * The event belongs to the caller, so if the flip fails the state must not
+ * hold on to it. Detach it from the state, or the state destruction would
+ * free it as well as the caller.
+ *
+ * Also release the event's completion here. The usual caller,
+ * drm_mode_page_flip_ioctl(), frees the event with drm_event_cancel_free(),
+ * which would do that anyway. But other callers may just kfree() the event,
+ * and then the reference the completion holds on the commit would leak.
+ */
+static void page_flip_detach_event(struct drm_atomic_commit *state,
+				   struct drm_crtc *crtc,
+				   struct drm_pending_vblank_event *event)
+{
+	struct drm_crtc_state *crtc_state;
+
+	if (!event)
+		return;
+
+	crtc_state = drm_atomic_get_new_crtc_state(state, crtc);
+	if (!crtc_state || crtc_state->event != event)
+		return;
+
+	drm_event_release_completion(&event->base);
+	crtc_state->event = NULL;
+}
+
 /**
  * drm_atomic_helper_page_flip - execute a legacy page flip
  * @crtc: DRM CRTC
@@ -4011,6 +4038,8 @@ int drm_atomic_helper_page_flip(struct drm_crtc *crtc,
 
 	ret = drm_atomic_nonblocking_commit(state);
 fail:
+	if (ret)
+		page_flip_detach_event(state, crtc, event);
 	drm_atomic_commit_put(state);
 	return ret;
 }
@@ -4063,6 +4092,8 @@ int drm_atomic_helper_page_flip_target(struct drm_crtc *crtc,
 
 	ret = drm_atomic_nonblocking_commit(state);
 fail:
+	if (ret)
+		page_flip_detach_event(state, crtc, event);
 	drm_atomic_commit_put(state);
 	return ret;
 }
