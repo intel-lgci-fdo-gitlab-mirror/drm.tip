@@ -1212,15 +1212,19 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 	case DRM_MODE_OBJECT_CONNECTOR: {
 		struct drm_connector *connector = obj_to_connector(obj);
 		struct drm_connector_state *connector_state;
-
-		connector_state = drm_atomic_get_connector_state(state, connector);
-		if (IS_ERR(connector_state)) {
-			ret = PTR_ERR(connector_state);
-			break;
-		}
+		bool is_noop = false;
 
 		if (async_flip) {
-			ret = drm_atomic_connector_get_property(connector, connector_state,
+			const struct drm_connector_state *current_connector_state;
+
+			current_connector_state =
+				__drm_atomic_get_current_connector_state(state, connector);
+			if (IS_ERR(current_connector_state)) {
+				ret = PTR_ERR(current_connector_state);
+				break;
+			}
+
+			ret = drm_atomic_connector_get_property(connector, current_connector_state,
 								prop, &old_val);
 			if (ret)
 				break;
@@ -1238,6 +1242,21 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 				ret = -EINVAL;
 				break;
 			}
+
+			if (old_val == prop_value)
+				is_noop = true;
+		}
+
+		/* No-op connector property changes can be completely skipped */
+		if (is_noop) {
+			ret = 0;
+			break;
+		}
+
+		connector_state = drm_atomic_get_connector_state(state, connector);
+		if (IS_ERR(connector_state)) {
+			ret = PTR_ERR(connector_state);
+			break;
 		}
 
 		ret = drm_atomic_connector_set_property(connector,
@@ -1248,15 +1267,19 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 	case DRM_MODE_OBJECT_CRTC: {
 		struct drm_crtc *crtc = obj_to_crtc(obj);
 		struct drm_crtc_state *crtc_state;
-
-		crtc_state = drm_atomic_get_crtc_state(state, crtc);
-		if (IS_ERR(crtc_state)) {
-			ret = PTR_ERR(crtc_state);
-			break;
-		}
+		bool is_noop = false;
 
 		if (async_flip) {
-			ret = drm_atomic_crtc_get_property(crtc, crtc_state,
+			const struct drm_crtc_state *current_crtc_state;
+
+			current_crtc_state =
+				__drm_atomic_get_current_crtc_state(state, crtc);
+			if (IS_ERR(current_crtc_state)) {
+				ret = PTR_ERR(current_crtc_state);
+				break;
+			}
+
+			ret = drm_atomic_crtc_get_property(crtc, current_crtc_state,
 							   prop, &old_val);
 			if (ret)
 				break;
@@ -1274,6 +1297,24 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 				ret = -EINVAL;
 				break;
 			}
+
+			if (old_val == prop_value)
+				is_noop = true;
+		}
+
+		/*
+		 * CRTCs must always be included in the commit,
+		 * even for no-op property changes.
+		 */
+		crtc_state = drm_atomic_get_crtc_state(state, crtc);
+		if (IS_ERR(crtc_state)) {
+			ret = PTR_ERR(crtc_state);
+			break;
+		}
+
+		if (is_noop) {
+			ret = 0;
+			break;
 		}
 
 		ret = drm_atomic_crtc_set_property(crtc,
@@ -1285,16 +1326,19 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 		struct drm_plane_state *plane_state;
 		struct drm_mode_config *config = &plane->dev->mode_config;
 		const struct drm_plane_helper_funcs *plane_funcs = plane->helper_private;
-
-		plane_state = drm_atomic_get_plane_state(state, plane);
-		if (IS_ERR(plane_state)) {
-			ret = PTR_ERR(plane_state);
-			break;
-		}
+		bool is_noop = false;
 
 		if (async_flip) {
-			/* no-op changes are always allowed */
-			ret = drm_atomic_plane_get_property(plane, plane_state,
+			const struct drm_plane_state *current_plane_state;
+
+			current_plane_state =
+				__drm_atomic_get_current_plane_state(state, plane);
+			if (IS_ERR(current_plane_state)) {
+				ret = PTR_ERR(current_plane_state);
+				break;
+			}
+
+			ret = drm_atomic_plane_get_property(plane, current_plane_state,
 							    prop, &old_val);
 			if (ret)
 				break;
@@ -1318,25 +1362,40 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 				break;
 			}
 
-			/*
-			 * FIXME this is in the wrong place. Whether to do a
-			 * bypass commit for async flips would is a driver
-			 * decision. Drivers that want this need to just do
-			 * these checks themselves somewhere.
-			 */
-			if (old_val != prop_value && plane->type != DRM_PLANE_TYPE_PRIMARY) {
-				/* ask the driver if this non-primary plane is supported */
-				if (plane_funcs && plane_funcs->atomic_bypass_check)
-					ret = plane_funcs->atomic_bypass_check(plane, state, true);
-				else
-					ret = -EINVAL;
+			if (old_val == prop_value)
+				is_noop = true;
+		}
 
-				if (ret) {
-					drm_dbg_atomic(prop->dev,
-						       "[PLANE:%d:%s] does not support async flips\n",
-						       obj->id, plane->name);
-					break;
-				}
+		/* No-op plane property changes can be fully skipped */
+		if (is_noop) {
+			ret = 0;
+			break;
+		}
+
+		plane_state = drm_atomic_get_plane_state(state, plane);
+		if (IS_ERR(plane_state)) {
+			ret = PTR_ERR(plane_state);
+			break;
+		}
+
+		/*
+		 * FIXME this is in the wrong place. Whether to do a
+		 * bypass commit for async flips would is a driver
+		 * decision. Drivers that want this need to just do
+		 * these checks themselves somewhere.
+		 */
+		if (async_flip && !is_noop && plane->type != DRM_PLANE_TYPE_PRIMARY) {
+			/* ask the driver if this non-primary plane is supported */
+			if (plane_funcs && plane_funcs->atomic_bypass_check)
+				ret = plane_funcs->atomic_bypass_check(plane, state, true);
+			else
+				ret = -EINVAL;
+
+			if (ret) {
+				drm_dbg_atomic(prop->dev,
+					       "[PLANE:%d:%s] does not support async flips\n",
+					       obj->id, plane->name);
+				break;
 			}
 		}
 

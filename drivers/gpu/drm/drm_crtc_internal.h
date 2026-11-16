@@ -252,6 +252,15 @@ int __drm_atomic_helper_set_config(struct drm_mode_set *set,
 
 void drm_atomic_print_new_state(const struct drm_atomic_commit *state,
 		struct drm_printer *p);
+const struct drm_crtc_state *
+__drm_atomic_get_current_crtc_state(struct drm_atomic_commit *state,
+				    struct drm_crtc *crtc);
+const struct drm_connector_state *
+__drm_atomic_get_current_connector_state(struct drm_atomic_commit *state,
+					 struct drm_connector *connector);
+const struct drm_plane_state *
+__drm_atomic_get_current_plane_state(struct drm_atomic_commit *state,
+				     struct drm_plane *plane);
 
 /* drm_atomic_uapi.c */
 int drm_atomic_connector_commit_dpms(struct drm_atomic_commit *state,
