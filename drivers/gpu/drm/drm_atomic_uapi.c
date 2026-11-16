@@ -1292,8 +1292,8 @@ int drm_atomic_set_property(struct drm_atomic_commit *state,
 
 			if (ret && plane->type != DRM_PLANE_TYPE_PRIMARY) {
 				/* ask the driver if this non-primary plane is supported */
-				if (plane_funcs && plane_funcs->atomic_async_check)
-					ret = plane_funcs->atomic_async_check(plane, state, true);
+				if (plane_funcs && plane_funcs->atomic_bypass_check)
+					ret = plane_funcs->atomic_bypass_check(plane, state, true);
 
 				if (ret) {
 					drm_dbg_atomic(prop->dev,

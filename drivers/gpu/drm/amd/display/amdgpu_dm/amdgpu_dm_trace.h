@@ -316,7 +316,7 @@ DECLARE_EVENT_CLASS(amdgpu_dm_atomic_state_template,
 		    TP_STRUCT__entry(__field(const struct drm_atomic_commit *, state)
 				     __field(bool, allow_modeset)
 				     __field(bool, legacy_cursor_update)
-				     __field(bool, async_update)
+				     __field(bool, bypass_update)
 				     __field(bool, duplicated)
 				     __field(int, num_connector)
 				     __field(int, num_private_objs)
@@ -324,16 +324,16 @@ DECLARE_EVENT_CLASS(amdgpu_dm_atomic_state_template,
 		    TP_fast_assign(__entry->state = state;
 				   __entry->allow_modeset = state->allow_modeset;
 				   __entry->legacy_cursor_update = state->legacy_cursor_update;
-				   __entry->async_update = state->async_update;
+				   __entry->bypass_update = state->bypass_update;
 				   __entry->duplicated = state->duplicated;
 				   __entry->num_connector = state->num_connector;
 				   __entry->num_private_objs = state->num_private_objs;
 		    ),
 		    TP_printk("state=%p allow_modeset=%d legacy_cursor_update=%d "
-			      "async_update=%d duplicated=%d num_connector=%d "
+			      "bypass_update=%d duplicated=%d num_connector=%d "
 			      "num_private_objs=%d",
 			      __entry->state, __entry->allow_modeset,
-			      __entry->legacy_cursor_update, __entry->async_update,
+			      __entry->legacy_cursor_update, __entry->bypass_update,
 			      __entry->duplicated, __entry->num_connector,
 			      __entry->num_private_objs)
 );
@@ -357,20 +357,20 @@ TRACE_EVENT(amdgpu_dm_atomic_check_finish,
 	    TP_STRUCT__entry(
 			     __field(const struct drm_atomic_commit *, state)
 			     __field(int, res)
-			     __field(bool, async_update)
+			     __field(bool, bypass_update)
 			     __field(bool, allow_modeset)
 	    ),
 
 	    TP_fast_assign(
 			   __entry->state = state;
 			   __entry->res = res;
-			   __entry->async_update = state->async_update;
+			   __entry->bypass_update = state->bypass_update;
 			   __entry->allow_modeset = state->allow_modeset;
 	    ),
 
-	    TP_printk("state=%p res=%d async_update=%d allow_modeset=%d",
+	    TP_printk("state=%p res=%d bypass_update=%d allow_modeset=%d",
 		      __entry->state, __entry->res,
-		      __entry->async_update, __entry->allow_modeset)
+		      __entry->bypass_update, __entry->allow_modeset)
 );
 
 TRACE_EVENT(amdgpu_dm_dc_pipe_state,

@@ -2257,8 +2257,8 @@ void vc4_plane_async_set_fb(struct drm_plane *plane, struct drm_framebuffer *fb)
 	drm_dev_exit(idx);
 }
 
-static void vc4_plane_atomic_async_update(struct drm_plane *plane,
-					  struct drm_atomic_commit *state)
+static void vc4_plane_atomic_bypass_update(struct drm_plane *plane,
+					   struct drm_atomic_commit *state)
 {
 	struct drm_plane_state *new_plane_state = drm_atomic_get_new_plane_state(state,
 										 plane);
@@ -2331,8 +2331,8 @@ static void vc4_plane_atomic_async_update(struct drm_plane *plane,
 	drm_dev_exit(idx);
 }
 
-static int vc4_plane_atomic_async_check(struct drm_plane *plane,
-					struct drm_atomic_commit *state, bool flip)
+static int vc4_plane_atomic_bypass_check(struct drm_plane *plane,
+					 struct drm_atomic_commit *state, bool flip)
 {
 	struct vc4_dev *vc4 = to_vc4_dev(plane->dev);
 	struct drm_plane_state *new_plane_state = drm_atomic_get_new_plane_state(state,
@@ -2414,15 +2414,15 @@ static const struct drm_plane_helper_funcs vc4_plane_helper_funcs = {
 	.atomic_update = vc4_plane_atomic_update,
 	.prepare_fb = vc4_prepare_fb,
 	.cleanup_fb = vc4_cleanup_fb,
-	.atomic_async_check = vc4_plane_atomic_async_check,
-	.atomic_async_update = vc4_plane_atomic_async_update,
+	.atomic_bypass_check = vc4_plane_atomic_bypass_check,
+	.atomic_bypass_update = vc4_plane_atomic_bypass_update,
 };
 
 static const struct drm_plane_helper_funcs vc5_plane_helper_funcs = {
 	.atomic_check = vc4_plane_atomic_check,
 	.atomic_update = vc4_plane_atomic_update,
-	.atomic_async_check = vc4_plane_atomic_async_check,
-	.atomic_async_update = vc4_plane_atomic_async_update,
+	.atomic_bypass_check = vc4_plane_atomic_bypass_check,
+	.atomic_bypass_update = vc4_plane_atomic_bypass_update,
 };
 
 static bool vc4_format_mod_supported(struct drm_plane *plane,

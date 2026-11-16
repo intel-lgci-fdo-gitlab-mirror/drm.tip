@@ -6581,20 +6581,20 @@ STATIC_IFN_KUNIT int amdgpu_dm_atomic_check(struct drm_device *dev,
 	if (state->legacy_cursor_update) {
 		/*
 		 * This is a fast cursor update coming from the plane update
-		 * helper, check if it can be done asynchronously for better
-		 * performance.
+		 * helper, check if it can be bypass the atomic machinery
+		 * for better performance.
 		 */
-		state->async_update =
-			!drm_atomic_helper_async_check(dev, state);
+		state->bypass_update =
+			!drm_atomic_helper_bypass_check(dev, state);
 
 		/*
-		 * Skip the remaining global validation if this is an async
+		 * Skip the remaining global validation if this is a bypass
 		 * update. Cursor updates can be done without affecting
 		 * state or bandwidth calcs and this avoids the performance
 		 * penalty of locking the private state object and
 		 * allocating a new dc_state.
 		 */
-		if (state->async_update)
+		if (state->bypass_update)
 			return 0;
 	}
 

@@ -1237,7 +1237,7 @@ struct drm_plane_helper_funcs {
 	 * VRAM. Other possible preparatory work includes flushing caches.
 	 *
 	 * This function must not block for outstanding rendering, since it is
-	 * called in the context of the atomic IOCTL even for async commits to
+	 * called in the context of the atomic IOCTL even for bypass commits to
 	 * be able to return any errors to userspace. Instead the recommended
 	 * way is to fill out the &drm_plane_state.fence of the passed-in
 	 * &drm_plane_state. If the driver doesn't support native fences then
@@ -1421,14 +1421,14 @@ struct drm_plane_helper_funcs {
 			       struct drm_atomic_commit *state);
 
 	/**
-	 * @atomic_async_check:
+	 * @atomic_bypass_check:
 	 *
 	 * Drivers should set this function pointer to check if the plane's
-	 * atomic state can be updated in a async fashion.
+	 * atomic state can be updated in a bypass fashion.
 	 *
-	 * This hook is called by drm_atomic_async_check() to establish if a
-	 * given update can be committed asynchronously, that is, if it can
-	 * jump ahead of the state currently queued for update.
+	 * This hook is called by drm_atomic_bypass_check() to establish if a
+	 * given update can be committed bypassing the atomic commit machinery.
+	 * That is, if it can jump ahead of the state currently queued for update.
 	 *
 	 * This function is also used by drm_atomic_set_property() to determine
 	 * if the plane can be flipped in async. The flip flag is used to
@@ -1438,35 +1438,35 @@ struct drm_plane_helper_funcs {
 	 * RETURNS:
 	 *
 	 * Return 0 on success and any error returned indicates that the update
-	 * can not be applied in asynchronous manner.
+	 * can not be applied bypassing the normal machinery.
 	 */
-	int (*atomic_async_check)(struct drm_plane *plane,
-				  struct drm_atomic_commit *state, bool flip);
+	int (*atomic_bypass_check)(struct drm_plane *plane,
+				   struct drm_atomic_commit *state, bool flip);
 
 	/**
-	 * @atomic_async_update:
+	 * @atomic_bypass_update:
 	 *
 	 * Drivers should set this function pointer to perform asynchronous
-	 * updates of planes, that is, jump ahead of the currently queued
-	 * state and update the plane.
+	 * updates of planes, bypassing the commit machinery. That is, jump
+	 * ahead of the currently queued state and update the plane.
 	 *
-	 * This hook is called by drm_atomic_helper_async_commit().
+	 * This hook is called by drm_atomic_helper_bypass_commit().
 	 *
-	 * An async update will happen on legacy cursor updates. An async
+	 * A bypass update will happen on legacy cursor updates. A bypass
 	 * update won't happen if there is an outstanding commit modifying
 	 * the same plane.
 	 *
-	 * When doing async_update drivers shouldn't replace the
+	 * When doing bypass_update drivers shouldn't replace the
 	 * &drm_plane_state but update the current one with the new plane
 	 * configurations in the new plane_state.
 	 *
 	 * Drivers should also swap the framebuffers between current plane
 	 * state (&drm_plane.state) and new_state.
-	 * This is required since cleanup for async commits is performed on
+	 * This is required since cleanup for bypass commits is performed on
 	 * the new state, rather than old state like for traditional commits.
 	 * Since we want to give up the reference on the current (old) fb
 	 * instead of our brand new one, swap them in the driver during the
-	 * async commit.
+	 * bypass commit.
 	 *
 	 * FIXME:
 	 *  - It only works for single plane updates
@@ -1476,8 +1476,8 @@ struct drm_plane_helper_funcs {
 	 *    we run this hook. For now drivers must implement their own workers
 	 *    for deferring if needed, until a common solution is created.
 	 */
-	void (*atomic_async_update)(struct drm_plane *plane,
-				    struct drm_atomic_commit *state);
+	void (*atomic_bypass_update)(struct drm_plane *plane,
+				     struct drm_atomic_commit *state);
 
 	/**
 	 * @get_scanout_buffer:

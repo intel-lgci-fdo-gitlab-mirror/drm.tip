@@ -1565,8 +1565,8 @@ STATIC_IFN_KUNIT int amdgpu_dm_plane_atomic_check(struct drm_plane *plane,
 }
 EXPORT_IF_KUNIT(amdgpu_dm_plane_atomic_check);
 
-STATIC_IFN_KUNIT int amdgpu_dm_plane_atomic_async_check(struct drm_plane *plane,
-							struct drm_atomic_commit *state, bool flip)
+STATIC_IFN_KUNIT int amdgpu_dm_plane_atomic_bypass_check(struct drm_plane *plane,
+							 struct drm_atomic_commit *state, bool flip)
 {
 	struct drm_crtc_state *new_crtc_state;
 	struct drm_plane_state *new_plane_state;
@@ -1588,7 +1588,7 @@ STATIC_IFN_KUNIT int amdgpu_dm_plane_atomic_async_check(struct drm_plane *plane,
 
 	return 0;
 }
-EXPORT_IF_KUNIT(amdgpu_dm_plane_atomic_async_check);
+EXPORT_IF_KUNIT(amdgpu_dm_plane_atomic_bypass_check);
 
 int amdgpu_dm_plane_get_cursor_position(struct drm_plane *plane, struct drm_crtc *crtc,
 					struct dc_cursor_position *position)
@@ -1725,8 +1725,8 @@ void amdgpu_dm_plane_handle_cursor_update(struct drm_plane *plane,
 }
 EXPORT_IF_KUNIT(amdgpu_dm_plane_handle_cursor_update);
 
-STATIC_IFN_KUNIT void amdgpu_dm_plane_atomic_async_update(struct drm_plane *plane,
-							  struct drm_atomic_commit *state)
+STATIC_IFN_KUNIT void amdgpu_dm_plane_atomic_bypass_update(struct drm_plane *plane,
+							   struct drm_atomic_commit *state)
 {
 	struct drm_plane_state *new_state = drm_atomic_get_new_plane_state(state,
 									   plane);
@@ -1748,7 +1748,7 @@ STATIC_IFN_KUNIT void amdgpu_dm_plane_atomic_async_update(struct drm_plane *plan
 
 	amdgpu_dm_plane_handle_cursor_update(plane, old_state);
 }
-EXPORT_IF_KUNIT(amdgpu_dm_plane_atomic_async_update);
+EXPORT_IF_KUNIT(amdgpu_dm_plane_atomic_bypass_update);
 
 STATIC_IFN_KUNIT void amdgpu_dm_plane_panic_flush(struct drm_plane *plane)
 {
@@ -1769,16 +1769,16 @@ static const struct drm_plane_helper_funcs dm_plane_helper_funcs = {
 	.prepare_fb = amdgpu_dm_plane_helper_prepare_fb,
 	.cleanup_fb = amdgpu_dm_plane_helper_cleanup_fb,
 	.atomic_check = amdgpu_dm_plane_atomic_check,
-	.atomic_async_check = amdgpu_dm_plane_atomic_async_check,
-	.atomic_async_update = amdgpu_dm_plane_atomic_async_update
+	.atomic_bypass_check = amdgpu_dm_plane_atomic_bypass_check,
+	.atomic_bypass_update = amdgpu_dm_plane_atomic_bypass_update
 };
 
 static const struct drm_plane_helper_funcs dm_primary_plane_helper_funcs = {
 	.prepare_fb = amdgpu_dm_plane_helper_prepare_fb,
 	.cleanup_fb = amdgpu_dm_plane_helper_cleanup_fb,
 	.atomic_check = amdgpu_dm_plane_atomic_check,
-	.atomic_async_check = amdgpu_dm_plane_atomic_async_check,
-	.atomic_async_update = amdgpu_dm_plane_atomic_async_update,
+	.atomic_bypass_check = amdgpu_dm_plane_atomic_bypass_check,
+	.atomic_bypass_update = amdgpu_dm_plane_atomic_bypass_update,
 	.get_scanout_buffer = amdgpu_display_get_scanout_buffer,
 	.panic_flush = amdgpu_dm_plane_panic_flush,
 };

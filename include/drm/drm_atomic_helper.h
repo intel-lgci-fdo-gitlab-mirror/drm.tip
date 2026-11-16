@@ -73,10 +73,10 @@ void drm_atomic_helper_commit_tail_rpm(struct drm_atomic_commit *state);
 int drm_atomic_helper_commit(struct drm_device *dev,
 			     struct drm_atomic_commit *state,
 			     bool nonblock);
-int drm_atomic_helper_async_check(struct drm_device *dev,
-				  struct drm_atomic_commit *state);
-void drm_atomic_helper_async_commit(struct drm_device *dev,
-				    struct drm_atomic_commit *state);
+int drm_atomic_helper_bypass_check(struct drm_device *dev,
+				   struct drm_atomic_commit *state);
+void drm_atomic_helper_bypass_commit(struct drm_device *dev,
+				     struct drm_atomic_commit *state);
 
 int drm_atomic_helper_wait_for_fences(struct drm_device *dev,
 					struct drm_atomic_commit *state,

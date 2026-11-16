@@ -74,8 +74,8 @@ static void mtk_plane_destroy_state(struct drm_plane *plane,
 	kfree(to_mtk_plane_state(state));
 }
 
-static int mtk_plane_atomic_async_check(struct drm_plane *plane,
-					struct drm_atomic_commit *state, bool flip)
+static int mtk_plane_atomic_bypass_check(struct drm_plane *plane,
+					 struct drm_atomic_commit *state, bool flip)
 {
 	struct drm_plane_state *new_plane_state = drm_atomic_get_new_plane_state(state,
 										 plane);
@@ -187,8 +187,8 @@ static void mtk_plane_update_new_state(struct drm_plane_state *new_state,
 	mtk_plane_state->pending.color_encoding = new_state->color_encoding;
 }
 
-static void mtk_plane_atomic_async_update(struct drm_plane *plane,
-					  struct drm_atomic_commit *state)
+static void mtk_plane_atomic_bypass_update(struct drm_plane *plane,
+					   struct drm_atomic_commit *state)
 {
 	struct drm_plane_state *new_state = drm_atomic_get_new_plane_state(state,
 									   plane);
@@ -295,8 +295,8 @@ static const struct drm_plane_helper_funcs mtk_plane_helper_funcs = {
 	.atomic_check = mtk_plane_atomic_check,
 	.atomic_update = mtk_plane_atomic_update,
 	.atomic_disable = mtk_plane_atomic_disable,
-	.atomic_async_update = mtk_plane_atomic_async_update,
-	.atomic_async_check = mtk_plane_atomic_async_check,
+	.atomic_bypass_update = mtk_plane_atomic_bypass_update,
+	.atomic_bypass_check = mtk_plane_atomic_bypass_check,
 };
 
 int mtk_plane_init(struct drm_device *dev, struct drm_plane *plane,

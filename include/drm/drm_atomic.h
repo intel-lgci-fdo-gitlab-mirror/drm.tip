@@ -551,9 +551,9 @@ struct drm_atomic_commit {
 	bool legacy_cursor_update : 1;
 
 	/**
-	 * @async_update: hint for asynchronous plane update
+	 * @bypass_update: hint for bypass plane update
 	 */
-	bool async_update : 1;
+	bool bypass_update : 1;
 
 	/**
 	 * @duplicated:

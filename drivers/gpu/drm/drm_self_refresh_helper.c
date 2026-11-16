@@ -191,10 +191,10 @@ void drm_self_refresh_helper_alter_state(struct drm_atomic_commit *state)
 	struct drm_crtc_state *crtc_state;
 	int i;
 
-	if (state->async_update || !state->allow_modeset) {
+	if (state->bypass_update || !state->allow_modeset) {
 		for_each_old_crtc_in_state(state, crtc, crtc_state, i) {
 			if (crtc_state->self_refresh_active) {
-				state->async_update = false;
+				state->bypass_update = false;
 				state->allow_modeset = true;
 				break;
 			}
