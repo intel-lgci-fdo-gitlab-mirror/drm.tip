@@ -66,20 +66,20 @@ struct xe_tile {
 	/** @mem: memory management info for tile */
 	struct {
 		/**
-		 * @mem.kernel_vram: kernel-dedicated VRAM info for tile.
+		 * @mem.kernel_vram: kernel-dedicated VRAM pool for tile.
 		 *
 		 * Although VRAM is associated with a specific tile, it can
 		 * still be accessed by all tiles' GTs.
 		 */
-		struct xe_vram_region *kernel_vram;
+		struct xe_vram_pool *kernel_vram;
 
 		/**
-		 * @mem.vram: general purpose VRAM info for tile.
+		 * @mem.vram: general purpose VRAM pool for tile.
 		 *
 		 * Although VRAM is associated with a specific tile, it can
 		 * still be accessed by all tiles' GTs.
 		 */
-		struct xe_vram_region *vram;
+		struct xe_vram_pool *vram;
 
 		/** @mem.ggtt: Global graphics translation table */
 		struct xe_ggtt *ggtt;

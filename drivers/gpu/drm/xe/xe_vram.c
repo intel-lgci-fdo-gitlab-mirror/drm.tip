@@ -28,6 +28,20 @@
 #include "xe_vram.h"
 #include "xe_vram_types.h"
 
+static const char *stringify_vram_binding(enum xe_vram_binding binding)
+{
+	switch (binding) {
+	case XE_VRAM_BINDING_NONE:
+		return "None";
+	case XE_VRAM_BINDING_DEVICE:
+		return "Device";
+	case XE_VRAM_BINDING_TILE:
+		return "Tile";
+	}
+
+	return "Unknown";
+}
+
 static bool resource_is_valid(struct pci_dev *pdev, int bar)
 {
 	if (!pci_resource_flags(pdev, bar))
@@ -200,19 +214,21 @@ static void vram_fini(void *arg)
 
 	xe_assert(xe, !xe->mem.vram->mapping);
 
-	for_each_tile(tile, xe, id) {
-		tile->mem.vram->mapping = NULL;
-		if (tile->mem.kernel_vram)
-			tile->mem.kernel_vram->mapping = NULL;
-	}
+	for_each_tile(tile, xe, id)
+		tile->mem.vram->region->mapping = NULL;
 }
 
-struct xe_vram_region *xe_vram_region_alloc(struct xe_device *xe, u8 id, u32 placement)
+static struct xe_vram_region *vram_region_alloc(struct xe_device *xe,
+						enum xe_vram_binding binding,
+						u8 id, u32 placement)
 {
 	struct xe_vram_region *vram;
 	struct drm_device *drm = &xe->drm;
+	bool tile_bound = binding != XE_VRAM_BINDING_DEVICE;
 
-	xe_assert(xe, id < xe->info.tile_count);
+	xe_assert(xe, binding != XE_VRAM_BINDING_NONE);
+	xe_assert(xe, !tile_bound || id < xe->info.tile_count);
+	xe_assert(xe, !tile_bound || placement >= XE_PL_VRAM0);
 
 	vram = drmm_kzalloc(drm, sizeof(*vram), GFP_KERNEL);
 	if (!vram)
@@ -221,10 +237,80 @@ struct xe_vram_region *xe_vram_region_alloc(struct xe_device *xe, u8 id, u32 pla
 	vram->xe = xe;
 	vram->id = id;
 	vram->placement = placement;
+	vram->binding = binding;
 #if defined(CONFIG_DRM_XE_PAGEMAP)
-	vram->migrate = xe->tiles[id].migrate;
+	if (tile_bound)
+		vram->migrate = xe->tiles[id].migrate;
 #endif
+	if (!tile_bound)
+		return vram;
+
+	/*
+	 * partitions[0] always exists, so its address is a stable handle even
+	 * before vram_region_init() sizes it to span the whole region.
+	 */
+	vram->partitions[0] = (struct xe_vram_pool) {
+		.region = vram,
+		.purpose = XE_VRAM_POOL_GENERAL,
+	};
 	return vram;
+}
+
+/**
+ * xe_vram_region_alloc_device - Allocate the device level VRAM region
+ * @xe: the &xe_device
+ *
+ * The device level region only aggregates the sizes and ranges of all tile
+ * VRAM regions, it is not backed by any TTM resource manager.
+ *
+ * Return: the allocated region, or NULL on failure.
+ */
+struct xe_vram_region *xe_vram_region_alloc_device(struct xe_device *xe)
+{
+	return vram_region_alloc(xe, XE_VRAM_BINDING_DEVICE, 0, 0);
+}
+
+/**
+ * xe_vram_region_alloc_tile - Allocate a general-purpose tile VRAM region
+ * @xe: the &xe_device
+ * @id: tile id
+ *
+ * Return: the allocated region, or NULL on failure.
+ */
+struct xe_vram_region *xe_vram_region_alloc_tile(struct xe_device *xe, u8 id)
+{
+	return vram_region_alloc(xe, XE_VRAM_BINDING_TILE, id, XE_PL_VRAM0 + id);
+}
+
+/**
+ * xe_vram_region_default_pool - Get the default pool of a VRAM region
+ * @vram: the VRAM region, which must not be a device aggregate
+ *
+ * Return: the default pool of @vram.
+ */
+struct xe_vram_pool *xe_vram_region_default_pool(struct xe_vram_region *vram)
+{
+	xe_assert(vram->xe, vram->binding != XE_VRAM_BINDING_DEVICE);
+
+	return &vram->partitions[0];
+}
+
+/**
+ * xe_vram_tile_alloc_kernel - Initialize the kernel VRAM pool of a tile
+ * @tile: the &xe_tile, with its general purpose VRAM pool already allocated
+ *
+ * Kernel allocations use the general-purpose pool by default.
+ *
+ * Return: 0 on success, negative error code on failure.
+ */
+int xe_vram_tile_alloc_kernel(struct xe_tile *tile)
+{
+	if (tile->mem.kernel_vram)
+		return 0;
+
+	tile->mem.kernel_vram = tile->mem.vram;
+
+	return 0;
 }
 
 static void print_vram_region_info(struct xe_device *xe, struct xe_vram_region *vram)
@@ -233,18 +319,22 @@ static void print_vram_region_info(struct xe_device *xe, struct xe_vram_region *
 		xe_log_info(xe, VRAM, "Small BAR device\n");
 
 	xe_log_info(xe, VRAM,
-		    "[%u]: Actual physical size %pa, usable size exclude stolen %pa, CPU accessible size %pa\n",
-		    vram->id, &vram->actual_physical_size, &vram->usable_size, &vram->io_size);
-	xe_log_info(xe, VRAM, "[%u]: DPA range: [%pa-%llx], io range: [%pa-%llx]\n",
-		    vram->id, &vram->dpa_base, vram->dpa_base + (u64)vram->actual_physical_size,
-		    &vram->io_start, vram->io_start + (u64)vram->io_size);
+		    "%s[%u]: Actual physical size %pa, usable size exclude stolen %pa, CPU accessible size %pa\n",
+		    stringify_vram_binding(vram->binding), vram->id, &vram->actual_physical_size,
+		    &vram->usable_size, &vram->io_size);
+	xe_log_info(xe, VRAM, "%s[%u]: DPA range: [%pa-%llx], io range: [%pa-%llx]\n",
+		    stringify_vram_binding(vram->binding), vram->id, &vram->dpa_base,
+		    vram->dpa_base + (u64)vram->actual_physical_size, &vram->io_start,
+		    vram->io_start + (u64)vram->io_size);
 }
 
 static int vram_region_init(struct xe_device *xe, struct xe_vram_region *vram,
 			    struct xe_vram_region *lmem_bar, u64 offset, u64 usable_size,
 			    u64 region_size, resource_size_t remain_io_size)
 {
-	struct xe_tile *tile = vram != xe->mem.vram ? &xe->tiles[vram->id] : NULL;
+	struct xe_tile *tile = vram->binding == XE_VRAM_BINDING_TILE ? &xe->tiles[vram->id] : NULL;
+
+	xe_assert(xe, vram->binding != XE_VRAM_BINDING_NONE);
 
 	/* Check if VRAM region is already initialized */
 	if (vram->mapping)
@@ -274,9 +364,88 @@ static int vram_region_init(struct xe_device *xe, struct xe_vram_region *vram,
 	vram->dpa_base = lmem_bar->dpa_base + offset;
 	vram->usable_size = usable_size;
 
+	/* The device aggregate only reports sizes, nothing is allocated from it */
+	if (vram->binding != XE_VRAM_BINDING_DEVICE) {
+		/* Until split, partitions[0] spans the whole usable range */
+		vram->partitions[0].offset = 0;
+		vram->partitions[0].size = usable_size;
+		vram->num_partitions = 1;
+	}
+
 	print_vram_region_info(xe, vram);
 
 	return 0;
+}
+
+/**
+ * xe_vram_pool_place - Fill in the TTM placement of a pool
+ * @pool: the VRAM pool to place in
+ * @place: the placement to narrow down to @pool
+ *
+ * Resolve @pool to the placement of the region backing it and, when the pool
+ * does not span that region, to the page range it covers. Callers do not have
+ * to care which of the two backs the pool.
+ *
+ * The range is only ever narrowed, so this composes with a caller supplied
+ * one, e.g. the CPU visible range of a small BAR.
+ */
+void xe_vram_pool_place(const struct xe_vram_pool *pool, struct ttm_place *place)
+{
+	u64 fpfn, lpfn;
+
+	place->mem_type = pool->region->placement;
+
+	if (pool->offset == 0 && pool->size == pool->region->usable_size)
+		return;
+
+	xe_assert(pool->region->xe, IS_ALIGNED(pool->offset, PAGE_SIZE));
+	xe_assert(pool->region->xe, IS_ALIGNED(pool->size, PAGE_SIZE));
+
+	fpfn = pool->offset >> PAGE_SHIFT;
+	lpfn = (pool->offset + pool->size) >> PAGE_SHIFT;
+
+	place->fpfn = max_t(u64, place->fpfn, fpfn);
+	place->lpfn = place->lpfn ? min_t(u64, place->lpfn, lpfn) : lpfn;
+}
+
+/**
+ * xe_vram_region_addr_to_pool - Find the pool covering an address of a region
+ * @vram: the VRAM region
+ * @addr: the region relative address
+ *
+ * Unlike the pool serving a given purpose, which the tile publishes, this
+ * resolves a pool by address. It is meant for allocations whose address is
+ * dictated by someone else, e.g. the framebuffer the BIOS left in VRAM.
+ *
+ * Return: the pool covering @addr, or NULL if no pool of @vram covers it.
+ */
+struct xe_vram_pool *xe_vram_region_addr_to_pool(struct xe_vram_region *vram, u64 addr)
+{
+	unsigned int i;
+
+	for (i = 0; i < vram->num_partitions; i++) {
+		struct xe_vram_pool *pool = &vram->partitions[i];
+
+		if (addr >= pool->offset && addr < pool->offset + pool->size)
+			return pool;
+	}
+
+	return NULL;
+}
+
+/**
+ * xe_vram_pool_usable_size - Usable size of a pool
+ * @pool: the VRAM pool
+ *
+ * Unlike xe_vram_region_usable_size(), which reports the whole region a pool
+ * may share with others, this reports only the range reserved for @pool's
+ * own purpose, e.g. what is actually available to hand out to userspace.
+ *
+ * Return: the usable size of @pool.
+ */
+resource_size_t xe_vram_pool_usable_size(const struct xe_vram_pool *pool)
+{
+	return pool->size;
 }
 
 /**
@@ -330,6 +499,7 @@ int xe_vram_probe(struct xe_device *xe)
 	remain_io_size = lmem_bar.io_size;
 
 	for_each_tile(tile, xe, id) {
+		struct xe_vram_region *tile_region;
 		u64 region_size;
 		u64 usable_size;
 		u64 tile_offset;
@@ -341,7 +511,8 @@ int xe_vram_probe(struct xe_device *xe)
 		total_size += region_size;
 		available_size += usable_size;
 
-		err = vram_region_init(xe, tile->mem.vram, &lmem_bar, tile_offset, usable_size,
+		tile_region = tile->mem.vram->region;
+		err = vram_region_init(xe, tile_region, &lmem_bar, tile_offset, usable_size,
 				       region_size, remain_io_size);
 		if (err)
 			return err;
@@ -352,7 +523,7 @@ int xe_vram_probe(struct xe_device *xe)
 				    total_size, (u64)lmem_bar.io_size);
 		}
 
-		remain_io_size -= min_t(u64, tile->mem.vram->actual_physical_size, remain_io_size);
+		remain_io_size -= min_t(u64, tile_region->actual_physical_size, remain_io_size);
 	}
 
 	err = vram_region_init(xe, xe->mem.vram, &lmem_bar, 0, available_size, total_size,
@@ -441,19 +612,20 @@ int xe_vram_reserve_memtest_bo(struct xe_device *xe)
 		if (!tile->mem.vram)
 			continue;
 
-		if (tile->mem.vram->io_size < tile->mem.vram->usable_size) {
+		if (tile->mem.vram->region->io_size < tile->mem.vram->region->usable_size) {
 			drm_info(&xe->drm,
 				 "Tile %d: Small-BAR system detected, skipping VRAM memtest\n",
 				 id);
 			continue;
 		}
 
-		vram_size = tile->mem.vram->usable_size;
+		vram_size = tile->mem.vram->region->usable_size;
 
 		tile->mem.memtest_bo = xe_bo_create_pin_map_at_novm(xe, tile, SZ_64K,
 								    vram_size - SZ_64K,
 								    ttm_bo_type_kernel,
-								    XE_BO_FLAG_VRAM_IF_DGFX(tile),
+								    XE_BO_FLAG_VRAM_IF_DGFX(tile) |
+								    XE_BO_FLAG_FORCE_USER_VRAM,
 								    0, false);
 		if (IS_ERR(tile->mem.memtest_bo)) {
 			drm_warn(&xe->drm, "Tile %d: Failed to reserve memtest BO\n", id);

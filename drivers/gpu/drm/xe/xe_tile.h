@@ -7,6 +7,7 @@
 #define _XE_TILE_H_
 
 #include "xe_tile_types.h"
+#include "xe_vram_types.h"
 
 struct xe_device;
 struct xe_pagemap;
@@ -29,11 +30,12 @@ static inline bool xe_tile_is_root(struct xe_tile *tile)
  * struct xe_tile pointer
  * @tile: Pointer to the struct xe_tile.
  *
- * Return: Pointer to the struct xe_vram_region embedded in *@tile.
+ * Return: Pointer to the struct xe_vram_region backing *@tile's general
+ * purpose VRAM pool, or NULL if *@tile has no VRAM.
  */
 static inline struct xe_vram_region *xe_tile_to_vr(struct xe_tile *tile)
 {
-	return tile->mem.vram;
+	return tile->mem.vram ? tile->mem.vram->region : NULL;
 }
 
 #if IS_ENABLED(CONFIG_DRM_XE_PAGEMAP)

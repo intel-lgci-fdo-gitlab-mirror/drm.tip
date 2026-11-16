@@ -322,7 +322,7 @@ static struct i915_vma *__xe_pin_fb_vma(struct drm_gem_object *obj, bool is_dpt,
 	if (IS_DGFX(to_xe_device(bo->ttm.base.dev)) &&
 	    pin_params->needs_cpu_lmem_access &&
 	    !(bo->flags & XE_BO_FLAG_NEEDS_CPU_ACCESS)) {
-		struct xe_vram_region *vram = xe_device_get_root_tile(xe)->mem.vram;
+		struct xe_vram_region *vram = xe_device_get_root_tile(xe)->mem.vram->region;
 
 		/*
 		 * If we need to able to access the clear-color value stored in

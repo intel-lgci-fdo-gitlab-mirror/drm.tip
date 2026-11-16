@@ -2774,7 +2774,7 @@ int xe_migrate_debug_ccs_overlap(struct xe_migrate *m,
 	if (!xe_device_has_flat_ccs(xe))
 		return -EINVAL;
 
-	first_page_dpa = xe_vram_region_dpa_base(m->tile->mem.vram);
+	first_page_dpa = xe_vram_region_dpa_base(m->tile->mem.vram->region);
 	clear_L0_ofs = xe_migrate_vram_ofs(xe, first_page_dpa, true);
 
 	scratch_dpa = xe_bo_addr(scratch_bo, 0, XE_PAGE_SIZE);

@@ -147,7 +147,8 @@
 	char __buf[10] __maybe_unused;								\
 	xe_assert_msg(tile_to_xe(__tile), condition, "tile: %u VRAM %s\n" msg,			\
 		      __tile->id, ({ string_get_size(						\
-				     xe_vram_region_actual_physical_size(__tile->mem.vram), 1,	\
+				     xe_vram_region_actual_physical_size(__tile->mem.vram ?	\
+					__tile->mem.vram->region : NULL), 1,			\
 				     STRING_UNITS_2, __buf, sizeof(__buf)); __buf; }), ## arg);	\
 })
 

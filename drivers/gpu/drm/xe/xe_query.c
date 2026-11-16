@@ -414,12 +414,16 @@ static int query_gt_list(struct xe_device *xe, struct drm_xe_device_query *query
 		 * However the uAPI is generic and it's userspace's
 		 * responsibility to check the mem_class, without any
 		 * assumption.
+		 *
+		 * Only the general-purpose VRAM region of a tile is ever
+		 * exposed, and there is exactly one of them per tile, so its
+		 * region id doubles as the tile index here.
 		 */
 		if (!IS_DGFX(xe))
 			gt_list->gt_list[iter].near_mem_regions = 0x1;
 		else
 			gt_list->gt_list[iter].near_mem_regions =
-				BIT(gt_to_tile(gt)->mem.vram->id) << 1;
+				BIT(gt_to_tile(gt)->mem.vram->region->id) << 1;
 		gt_list->gt_list[iter].far_mem_regions = xe->info.mem_region_mask ^
 			gt_list->gt_list[iter].near_mem_regions;
 

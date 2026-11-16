@@ -8,14 +8,24 @@
 
 #include <linux/types.h>
 
+#include "xe_vram_types.h"
+
 struct xe_device;
-struct xe_vram_region;
+struct xe_tile;
 struct ttm_resource;
+struct ttm_place;
 
 struct xe_vram_region *xe_map_resource_to_region(struct ttm_resource *res);
 int xe_vram_probe(struct xe_device *xe);
 
-struct xe_vram_region *xe_vram_region_alloc(struct xe_device *xe, u8 id, u32 placement);
+struct xe_vram_region *xe_vram_region_alloc_device(struct xe_device *xe);
+struct xe_vram_region *xe_vram_region_alloc_tile(struct xe_device *xe, u8 id);
+struct xe_vram_pool *xe_vram_region_default_pool(struct xe_vram_region *vram);
+int xe_vram_tile_alloc_kernel(struct xe_tile *tile);
+
+void xe_vram_pool_place(const struct xe_vram_pool *pool, struct ttm_place *place);
+struct xe_vram_pool *xe_vram_region_addr_to_pool(struct xe_vram_region *vram, u64 addr);
+resource_size_t xe_vram_pool_usable_size(const struct xe_vram_pool *pool);
 
 resource_size_t xe_vram_region_io_start(const struct xe_vram_region *vram);
 resource_size_t xe_vram_region_io_size(const struct xe_vram_region *vram);

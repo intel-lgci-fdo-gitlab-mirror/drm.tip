@@ -7,6 +7,7 @@
 #define _XE_TTM_VRAM_MGR_H_
 
 #include "xe_ttm_vram_mgr_types.h"
+#include "xe_vram_types.h"
 
 enum dma_data_direction;
 struct xe_device;
@@ -27,7 +28,7 @@ int xe_ttm_vram_mgr_alloc_sgt(struct xe_device *xe,
 void xe_ttm_vram_mgr_free_sgt(struct device *dev, enum dma_data_direction dir,
 			      struct sg_table *sgt);
 
-u64 xe_ttm_vram_get_avail(struct ttm_resource_manager *man);
+u64 xe_ttm_vram_get_pool_avail(struct xe_vram_pool *pool);
 u64 xe_ttm_vram_get_cpu_visible_size(struct ttm_resource_manager *man);
 void xe_ttm_vram_get_used(struct ttm_resource_manager *man,
 			  u64 *used, u64 *used_visible);

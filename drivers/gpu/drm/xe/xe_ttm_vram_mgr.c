@@ -28,6 +28,7 @@
 #include "xe_res_cursor.h"
 #include "xe_ttm_stolen_mgr.h"
 #include "xe_ttm_vram_mgr.h"
+#include "xe_vram.h"
 #include "xe_vram_types.h"
 
 static inline struct gpu_buddy_block *
@@ -508,7 +509,7 @@ int xe_ttm_vram_mgr_alloc_sgt(struct xe_device *xe,
 			      enum dma_data_direction dir,
 			      struct sg_table **sgt)
 {
-	struct xe_tile *tile = &xe->tiles[res->mem_type - XE_PL_VRAM0];
+	struct xe_vram_region *vram = xe_map_resource_to_region(res);
 	struct xe_ttm_vram_mgr_resource *vres = to_xe_ttm_vram_mgr_resource(res);
 	struct xe_res_cursor cursor;
 	struct scatterlist *sg;
@@ -546,7 +547,7 @@ int xe_ttm_vram_mgr_alloc_sgt(struct xe_device *xe,
 	 */
 	xe_res_first(res, offset, length, &cursor);
 	for_each_sgtable_sg((*sgt), sg, i) {
-		phys_addr_t phys = cursor.start + xe_vram_region_io_start(tile->mem.vram);
+		phys_addr_t phys = cursor.start + xe_vram_region_io_start(vram);
 		size_t size = min_t(u64, cursor.size, SZ_2G);
 		dma_addr_t addr;
 
@@ -613,13 +614,20 @@ void xe_ttm_vram_get_used(struct ttm_resource_manager *man,
 	mutex_unlock(&mgr->lock);
 }
 
-u64 xe_ttm_vram_get_avail(struct ttm_resource_manager *man)
+/**
+ * xe_ttm_vram_get_pool_avail - Free memory of a VRAM pool
+ * @pool: The VRAM pool, its region's TTM manager must be initialized
+ *
+ * Return: the number of bytes still available for allocation from @pool.
+ */
+u64 xe_ttm_vram_get_pool_avail(struct xe_vram_pool *pool)
 {
-	struct xe_ttm_vram_mgr *mgr = to_xe_ttm_vram_mgr(man);
+	struct xe_ttm_vram_mgr *mgr = &pool->region->ttm;
 	u64 avail;
 
+	/* A pool still spans the whole region of its manager */
 	mutex_lock(&mgr->lock);
-	avail =  mgr->mm.avail;
+	avail = mgr->mm.avail;
 	mutex_unlock(&mgr->lock);
 
 	return avail;
@@ -885,10 +893,12 @@ static struct xe_vram_region *xe_ttm_vram_addr_to_region(struct xe_device *xe, u
 	u8 id;
 
 	for_each_tile(tile, xe, id) {
-		struct xe_vram_region *vr = tile->mem.vram;
+		struct xe_vram_region *vr;
 
-		if (!vr)
+		if (!tile->mem.vram)
 			continue;
+
+		vr = tile->mem.vram->region;
 
 		if (addr >= vr->dpa_base && addr < (vr->dpa_base + vr->usable_size))
 			return vr;
@@ -984,7 +994,7 @@ EXPORT_SYMBOL(xe_ttm_vram_handle_addr_fault);
 int xe_ttm_vram_inject_fault(struct xe_device *xe)
 {
 	struct xe_tile *tile = xe_device_get_root_tile(xe);
-	struct xe_vram_region *vr = tile->mem.vram;
+	struct xe_vram_region *vr = tile->mem.vram->region;
 	struct xe_ttm_vram_mgr *vram_mgr = &vr->ttm;
 	struct gpu_buddy *mm = &vram_mgr->mm;
 	u64 addr;
@@ -1036,11 +1046,13 @@ static int vram_bad_pages_show(struct seq_file *m, void *unused)
 	seq_printf(m, "max_pages: %u\n", xe_ras_get_max_pages(xe));
 
 	for_each_tile(tile, xe, id) {
-		struct xe_vram_region *vr = tile->mem.vram;
+		struct xe_vram_region *vr;
 
 		man = ttm_manager_type(&xe->ttm, XE_PL_VRAM0 + id);
-		if (!man || !vr)
+		if (!man || !tile->mem.vram)
 			continue;
+
+		vr = tile->mem.vram->region;
 		mgr = to_xe_ttm_vram_mgr(man);
 
 		mutex_lock(&mgr->lock);

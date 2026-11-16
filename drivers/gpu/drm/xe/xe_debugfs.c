@@ -31,6 +31,7 @@
 #include "xe_sriov_vf.h"
 #include "xe_step.h"
 #include "xe_sysctrl_debugfs.h"
+#include "xe_tile.h"
 #include "xe_tile_debugfs.h"
 #include "xe_ttm_vram_mgr.h"
 #include "xe_vsec.h"
@@ -100,7 +101,7 @@ static ssize_t inject_mempage_offline_trigger(struct file *f,
 {
 	struct xe_device *xe = file_inode(f)->i_private;
 	struct xe_tile *tile = xe_device_get_root_tile(xe);
-	struct xe_vram_region *vr = tile->mem.vram;
+	struct xe_vram_region *vr = xe_tile_to_vr(tile);
 	u64 pfn;
 	int ret;
 

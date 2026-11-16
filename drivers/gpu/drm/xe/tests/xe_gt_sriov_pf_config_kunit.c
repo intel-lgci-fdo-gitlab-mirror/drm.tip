@@ -44,8 +44,8 @@ static void pf_set_usable_vram(struct xe_device *xe, u64 usable)
 
 	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, tile);
 	xe->mem.vram->usable_size = usable;
-	tile->mem.vram->usable_size = usable;
-	KUNIT_ASSERT_EQ(test, usable, xe_vram_region_usable_size(tile->mem.vram));
+	tile->mem.vram->size = usable;
+	KUNIT_ASSERT_EQ(test, usable, xe_vram_pool_usable_size(tile->mem.vram));
 }
 
 static const void *num_vfs_gen_param(struct kunit *test, const void *prev, char *desc)
@@ -87,8 +87,10 @@ static int pf_gt_config_test_init(struct kunit *test)
 	vram = kunit_kzalloc(test, sizeof(*vram), GFP_KERNEL);
 	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, vram);
 	vram->usable_size = TEST_VRAM;
+	vram->partitions[0] = (struct xe_vram_pool) { .region = vram, .size = TEST_VRAM };
+	vram->num_partitions = 1;
 	xe->mem.vram = vram;
-	xe->tiles[0].mem.vram = vram;
+	xe->tiles[0].mem.vram = &vram->partitions[0];
 
 	/* pretend we have a valid LMTT */
 	KUNIT_ASSERT_TRUE(test, xe_device_has_lmtt(xe));

@@ -2113,7 +2113,7 @@ int xe_pagemap_cache_create(struct xe_tile *tile)
 		if (IS_ERR(cache))
 			return PTR_ERR(cache);
 
-		tile->mem.vram->dpagemap_cache = cache;
+		tile->mem.vram->region->dpagemap_cache = cache;
 	}
 
 	return 0;

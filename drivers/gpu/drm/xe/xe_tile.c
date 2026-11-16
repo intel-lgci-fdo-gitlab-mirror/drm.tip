@@ -119,20 +119,12 @@ int xe_tile_alloc_vram(struct xe_tile *tile)
 	if (!IS_DGFX(xe))
 		return 0;
 
-	vram = xe_vram_region_alloc(xe, tile->id, XE_PL_VRAM0 + tile->id);
+	vram = xe_vram_region_alloc_tile(xe, tile->id);
 	if (!vram)
 		return -ENOMEM;
-	tile->mem.vram = vram;
+	tile->mem.vram = xe_vram_region_default_pool(vram);
 
-	/*
-	 * If the kernel_vram is not already allocated,
-	 * it means that tile has common VRAM region for
-	 * kernel and user space.
-	 */
-	if (!tile->mem.kernel_vram)
-		tile->mem.kernel_vram = tile->mem.vram;
-
-	return 0;
+	return xe_vram_tile_alloc_kernel(tile);
 }
 
 /**
@@ -190,12 +182,14 @@ int xe_tile_init_noalloc(struct xe_tile *tile)
 	if (err)
 		return err;
 
-	if (IS_DGFX(xe) && !ttm_resource_manager_used(&tile->mem.vram->ttm.manager)) {
-		err = xe_ttm_vram_mgr_init(xe, tile->mem.vram);
+	if (IS_DGFX(xe) && !ttm_resource_manager_used(&tile->mem.vram->region->ttm.manager)) {
+		err = xe_ttm_vram_mgr_init(xe, tile->mem.vram->region);
 		if (err)
 			return err;
 
-		xe->info.mem_region_mask |= BIT(tile->mem.vram->id) << 1;
+		/* The uAPI indexes the general-purpose region of a tile by tile id */
+		xe_assert(xe, tile->mem.vram->region->id == tile->id);
+		xe->info.mem_region_mask |= BIT(tile->mem.vram->region->id) << 1;
 	}
 
 	return xe_tile_sysfs_init(tile);

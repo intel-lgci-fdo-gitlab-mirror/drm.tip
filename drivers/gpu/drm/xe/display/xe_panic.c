@@ -52,7 +52,7 @@ static void xe_panic_page_set_pixel(struct drm_scanout_buffer *sb, unsigned int 
 	if (new_page != panic->page) {
 		if (xe_bo_is_vram(bo)) {
 			/* Display is always mapped on root tile */
-			struct xe_vram_region *vram =
+			struct xe_vram_pool *vram =
 				xe_device_get_root_tile(xe_bo_device(bo))->mem.vram;
 
 			if (panic->page < 0 || new_page < panic->page) {
@@ -62,7 +62,7 @@ static void xe_panic_page_set_pixel(struct drm_scanout_buffer *sb, unsigned int 
 				xe_res_next(&panic->res, PAGE_SIZE * (new_page - panic->page));
 			}
 			iosys_map_set_vaddr_iomem(&panic->vmap,
-						  vram->mapping + panic->res.start);
+						  vram->region->mapping + panic->res.start);
 		} else {
 			xe_panic_kunmap(panic);
 			iosys_map_set_vaddr(&panic->vmap,

@@ -109,8 +109,8 @@ static const struct drm_info_list vf_safe_debugfs_list[] = {
 static void tile_debugfs_create_vram_mm(struct xe_tile *tile)
 {
 	if (tile->mem.vram)
-		ttm_resource_manager_create_debugfs(&tile->mem.vram->ttm.manager, tile->debugfs,
-						    "vram_mm");
+		ttm_resource_manager_create_debugfs(&tile->mem.vram->region->ttm.manager,
+						    tile->debugfs, "vram_mm");
 }
 
 /**

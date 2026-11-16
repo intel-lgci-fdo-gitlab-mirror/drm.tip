@@ -19,6 +19,7 @@
 #include "xe_pagefault_types.h"
 #include "xe_pm.h"
 #include "xe_svm.h"
+#include "xe_tile.h"
 #include "xe_trace_bo.h"
 #include "xe_vm.h"
 
@@ -201,7 +202,7 @@ static int xe_pagefault_handle_vma(struct xe_gt *gt, struct xe_vma *vma,
 		xe_validation_ctx_init(&ctx, &vm->xe->val, &exec,
 				       (struct xe_val_flags) {});
 		drm_exec_until_all_locked(&exec) {
-			err = xe_pagefault_begin(&exec, vma, tile->mem.vram,
+			err = xe_pagefault_begin(&exec, vma, xe_tile_to_vr(tile),
 						 needs_vram == 1);
 			drm_exec_retry_on_contention(&exec);
 			xe_validation_retry_on_oom(&ctx, &err);

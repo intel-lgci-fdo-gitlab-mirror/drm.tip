@@ -225,33 +225,53 @@ static u8 vram_bo_flag_to_tile_id(struct xe_device *xe, u32 vram_bo_flag)
 	return __ffs(vram_bo_flag >> (__ffs(XE_BO_FLAG_VRAM0) - 1)) - 1;
 }
 
-static u32 bo_vram_flags_to_vram_placement(struct xe_device *xe, u32 bo_flags, u32 vram_flag,
-					   enum ttm_bo_type type)
+static enum xe_vram_pool_purpose bo_vram_purpose(u32 bo_flags, enum ttm_bo_type type)
 {
-	u8 tile_id = vram_bo_flag_to_tile_id(xe, vram_flag);
+	return type == ttm_bo_type_kernel && !(bo_flags & XE_BO_FLAG_FORCE_USER_VRAM) ?
+		XE_VRAM_POOL_KERNEL : XE_VRAM_POOL_GENERAL;
+}
 
-	xe_assert(xe, tile_id < xe->info.tile_count);
+/* BO creation and migration both resolve the pool of a purpose through here */
+static struct xe_vram_pool *tile_vram_pool(struct xe_tile *tile,
+					   enum xe_vram_pool_purpose purpose)
+{
+	return purpose == XE_VRAM_POOL_KERNEL ? tile->mem.kernel_vram : tile->mem.vram;
+}
 
-	if (type == ttm_bo_type_kernel && !(bo_flags & XE_BO_FLAG_FORCE_USER_VRAM))
-		return xe->tiles[tile_id].mem.kernel_vram->placement;
-	else
-		return xe->tiles[tile_id].mem.vram->placement;
+static struct xe_vram_pool *bo_vram_pool(struct xe_device *xe, u32 bo_flags,
+					 u32 vram_flag, enum ttm_bo_type type)
+{
+	struct xe_tile *tile = &xe->tiles[vram_bo_flag_to_tile_id(xe, vram_flag)];
+
+	return tile_vram_pool(tile, bo_vram_purpose(bo_flags, type));
+}
+
+static struct xe_vram_region *ttm_manager_to_vram_region(struct ttm_resource_manager *man)
+{
+	return container_of(to_xe_ttm_vram_mgr(man), struct xe_vram_region, ttm);
+}
+
+static struct xe_vram_pool *region_vram_pool(struct xe_vram_region *vram,
+					     enum xe_vram_pool_purpose purpose)
+{
+	struct xe_vram_pool *pool = tile_vram_pool(&vram->xe->tiles[vram->id], purpose);
+
+	xe_assert(vram->xe, pool->region == vram);
+
+	return pool;
 }
 
 static void add_vram(struct xe_device *xe, struct xe_bo *bo,
-		     struct ttm_place *places, u32 bo_flags, u32 mem_type, u32 *c)
+		     struct ttm_place *places, u32 bo_flags,
+		     struct xe_vram_pool *pool, u32 *c)
 {
-	struct ttm_place place = { .mem_type = mem_type };
-	struct ttm_resource_manager *mgr = ttm_manager_type(&xe->ttm, mem_type);
-	struct xe_ttm_vram_mgr *vram_mgr = to_xe_ttm_vram_mgr(mgr);
-
-	struct xe_vram_region *vram;
+	struct xe_vram_region *vram = pool->region;
+	struct ttm_place place = {};
 	u64 io_size;
 
 	xe_assert(xe, *c < ARRAY_SIZE(bo->placements));
 
-	vram = container_of(vram_mgr, struct xe_vram_region, ttm);
-	xe_assert(xe, vram && vram->usable_size);
+	xe_assert(xe, vram->usable_size);
 	io_size = vram->io_size;
 
 	if (force_contiguous(bo_flags))
@@ -265,8 +285,21 @@ static void add_vram(struct xe_device *xe, struct xe_bo *bo,
 			place.flags |= TTM_PL_FLAG_TOPDOWN;
 		}
 	}
+
+	xe_vram_pool_place(pool, &place);
 	places[*c] = place;
 	*c += 1;
+}
+
+static void xe_bo_set_vram_place(struct xe_device *xe, struct xe_bo *bo,
+				 struct ttm_place *place, u32 mem_type)
+{
+	struct ttm_resource_manager *man = ttm_manager_type(&xe->ttm, mem_type);
+	struct xe_vram_region *vram = ttm_manager_to_vram_region(man);
+	enum xe_vram_pool_purpose purpose = bo_vram_purpose(bo->flags, bo->ttm.type);
+	u32 c = 0;
+
+	add_vram(xe, bo, place, bo->flags, region_vram_pool(vram, purpose), &c);
 }
 
 static void try_add_vram(struct xe_device *xe, struct xe_bo *bo,
@@ -274,11 +307,9 @@ static void try_add_vram(struct xe_device *xe, struct xe_bo *bo,
 {
 	u32 vram_flag;
 
-	for_each_set_bo_vram_flag(vram_flag, bo_flags) {
-		u32 pl = bo_vram_flags_to_vram_placement(xe, bo_flags, vram_flag, type);
-
-		add_vram(xe, bo, bo->placements, bo_flags, pl, c);
-	}
+	for_each_set_bo_vram_flag(vram_flag, bo_flags)
+		add_vram(xe, bo, bo->placements, bo_flags,
+			 bo_vram_pool(xe, bo_flags, vram_flag, type), c);
 }
 
 static void try_add_stolen(struct xe_device *xe, struct xe_bo *bo,
@@ -2658,10 +2689,29 @@ static int __xe_bo_fixed_placement(struct xe_device *xe,
 	place->fpfn = start >> PAGE_SHIFT;
 	place->lpfn = end >> PAGE_SHIFT;
 
-	if (flags & XE_BO_FLAG_STOLEN)
+	if (flags & XE_BO_FLAG_STOLEN) {
 		place->mem_type = XE_PL_STOLEN;
-	else
-		place->mem_type = bo_vram_flags_to_vram_placement(xe, flags, vram_flag, type);
+	} else {
+		struct xe_vram_region *vram = bo_vram_pool(xe, flags, vram_flag, type)->region;
+		struct xe_vram_pool *pool;
+
+		/*
+		 * A fixed address is dictated by whoever owns that memory, e.g.
+		 * the BIOS framebuffer, not by the purpose of the BO, so place
+		 * it in the pool covering that address.
+		 */
+		pool = xe_vram_region_addr_to_pool(vram, start);
+		if (!pool)
+			return -EINVAL;
+
+		xe_assert(xe, !IS_SRIOV_PF(xe) || xe_device_has_lmtt(xe) ||
+			  bo_vram_purpose(flags, type) != XE_VRAM_POOL_KERNEL ||
+			  pool->purpose == XE_VRAM_POOL_KERNEL);
+
+		xe_vram_pool_place(pool, place);
+		if (place->lpfn && place->fpfn >= place->lpfn)
+			return -EINVAL;
+	}
 
 	bo->placement = (struct ttm_placement) {
 		.num_placement = 1,
@@ -4039,9 +4089,7 @@ int xe_bo_migrate(struct xe_bo *bo, u32 mem_type, struct ttm_operation_ctx *tctx
 	drm_WARN_ON(&xe->drm, mem_type == XE_PL_STOLEN);
 
 	if (mem_type_is_vram(mem_type)) {
-		u32 c = 0;
-
-		add_vram(xe, bo, &requested, bo->flags, mem_type, &c);
+		xe_bo_set_vram_place(xe, bo, &requested, mem_type);
 	}
 
 	if (!tctx->no_wait_gpu)
