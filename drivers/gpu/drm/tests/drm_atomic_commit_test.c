@@ -10,6 +10,7 @@
 #include <drm/drm_atomic_uapi.h>
 #include <drm/drm_kunit_helpers.h>
 #include <drm/drm_probe_helper.h>
+#include <linux/workqueue.h>
 
 #define DRM_TEST_ENC_0 BIT(0)
 #define DRM_TEST_ENC_1 BIT(1)
@@ -391,6 +392,118 @@ static struct kunit_case drm_in_clone_mode_check_test[] = {
 	{}
 };
 
+/*
+ * Test that the commit used for planes which are not bound to any CRTC has
+ * flip_done completed already by drm_atomic_helper_setup_commit(), since there
+ * is no flip to wait for, while hw_done is left for the commit to complete.
+ */
+static void drm_test_fake_commit_flip_done(struct kunit *test)
+{
+	struct drm_atomic_test_priv *priv;
+	struct drm_modeset_acquire_ctx ctx;
+	struct drm_atomic_commit *state;
+	struct drm_plane_state *plane_state;
+	int ret;
+
+	priv = drm_atomic_test_init_drm_components(test, false);
+	KUNIT_ASSERT_NOT_NULL(test, priv);
+
+	drm_modeset_acquire_init(&ctx, 0);
+
+	state = drm_kunit_helper_atomic_state_alloc(test, &priv->drm, &ctx);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, state);
+
+	plane_state = drm_atomic_get_plane_state(state, priv->plane);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, plane_state);
+	KUNIT_ASSERT_NULL(test, plane_state->crtc);
+	KUNIT_ASSERT_NULL(test, priv->plane->state->crtc);
+
+	ret = drm_atomic_helper_setup_commit(state, false);
+	KUNIT_ASSERT_EQ(test, ret, 0);
+
+	KUNIT_ASSERT_NOT_NULL(test, state->fake_commit);
+	KUNIT_EXPECT_PTR_EQ(test, plane_state->commit, state->fake_commit);
+	KUNIT_EXPECT_TRUE(test, try_wait_for_completion(&state->fake_commit->flip_done));
+	KUNIT_EXPECT_FALSE(test, try_wait_for_completion(&state->fake_commit->hw_done));
+
+	drm_atomic_commit_clear(state);
+	drm_modeset_drop_locks(&ctx);
+	drm_modeset_acquire_fini(&ctx);
+}
+
+struct drm_test_hw_done_work {
+	struct delayed_work work;
+	struct drm_crtc_commit *commit;
+};
+
+static void drm_test_hw_done_work_func(struct work_struct *work)
+{
+	struct drm_test_hw_done_work *w =
+		container_of(work, struct drm_test_hw_done_work, work.work);
+
+	complete_all(&w->commit->hw_done);
+}
+
+/*
+ * Test that a nonblocking commit does not fail with -EBUSY just because the
+ * previous commit that touched the same unbound plane is still in flight, ie.
+ * its hw_done is yet to complete. It should instead wait for the hw_done, so
+ * that userspace can not get arbitrarily far ahead of the commit work.
+ */
+static void drm_test_fake_commit_not_busy(struct kunit *test)
+{
+	struct drm_atomic_test_priv *priv;
+	struct drm_modeset_acquire_ctx ctx;
+	struct drm_atomic_commit *state, *prev;
+	struct drm_test_hw_done_work w;
+	int ret;
+
+	priv = drm_atomic_test_init_drm_components(test, false);
+	KUNIT_ASSERT_NOT_NULL(test, priv);
+
+	drm_modeset_acquire_init(&ctx, 0);
+
+	/* The previous commit, which became the plane's current state */
+	prev = drm_kunit_helper_atomic_state_alloc(test, &priv->drm, &ctx);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, prev);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, drm_atomic_get_plane_state(prev, priv->plane));
+	ret = drm_atomic_helper_setup_commit(prev, true);
+	KUNIT_ASSERT_EQ(test, ret, 0);
+	KUNIT_ASSERT_NOT_NULL(test, prev->fake_commit);
+	priv->plane->state->commit = drm_crtc_commit_get(prev->fake_commit);
+
+	state = drm_kunit_helper_atomic_state_alloc(test, &priv->drm, &ctx);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, state);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, drm_atomic_get_plane_state(state, priv->plane));
+
+	w.commit = prev->fake_commit;
+	INIT_DELAYED_WORK_ONSTACK(&w.work, drm_test_hw_done_work_func);
+	schedule_delayed_work(&w.work, msecs_to_jiffies(20));
+
+	ret = drm_atomic_helper_setup_commit(state, true);
+	KUNIT_EXPECT_EQ(test, ret, 0);
+	KUNIT_EXPECT_TRUE(test, try_wait_for_completion(&prev->fake_commit->hw_done));
+
+	flush_delayed_work(&w.work);
+	destroy_delayed_work_on_stack(&w.work);
+
+	drm_atomic_commit_clear(state);
+	drm_atomic_commit_clear(prev);
+	drm_modeset_drop_locks(&ctx);
+	drm_modeset_acquire_fini(&ctx);
+}
+
+static struct kunit_case drm_fake_commit_tests[] = {
+	KUNIT_CASE(drm_test_fake_commit_flip_done),
+	KUNIT_CASE(drm_test_fake_commit_not_busy),
+	{}
+};
+
+static struct kunit_suite drm_fake_commit_test_suite = {
+	.name = "drm_atomic_fake_commit",
+	.test_cases = drm_fake_commit_tests,
+};
+
 static struct kunit_suite drm_test_check_modeset_test_suite = {
 	.name = "drm_validate_modeset",
 	.test_cases = drm_test_check_modeset_test,
@@ -402,7 +515,8 @@ static struct kunit_suite drm_in_clone_mode_check_test_suite = {
 };
 
 kunit_test_suites(&drm_in_clone_mode_check_test_suite,
-		  &drm_test_check_modeset_test_suite);
+		  &drm_test_check_modeset_test_suite,
+		  &drm_fake_commit_test_suite);
 
 MODULE_AUTHOR("Jessica Zhang <quic_jesszhan@quicinc.com");
 MODULE_DESCRIPTION("Test cases for the drm_atomic_helper functions");
