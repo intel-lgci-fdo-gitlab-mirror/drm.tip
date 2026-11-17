@@ -653,8 +653,10 @@ struct drm_atomic_commit {
 	 * When a connector or plane is not bound to any CRTC, it's still important
 	 * to preserve linearity to prevent the atomic states from being freed too early.
 	 *
-	 * This commit (if set) is not bound to any CRTC, but will be completed when
-	 * drm_atomic_helper_commit_hw_done() is called.
+	 * This commit (if set) is not bound to any CRTC, and there is no flip
+	 * for it to wait for, so its &drm_crtc_commit.flip_done is completed
+	 * already by drm_atomic_helper_setup_commit(). &drm_crtc_commit.hw_done
+	 * is completed when drm_atomic_helper_commit_hw_done() is called.
 	 */
 	struct drm_crtc_commit *fake_commit;
 

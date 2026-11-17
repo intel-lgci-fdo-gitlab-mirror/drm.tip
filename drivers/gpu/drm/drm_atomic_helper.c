@@ -1967,9 +1967,6 @@ void drm_atomic_helper_wait_for_flip_done(struct drm_device *dev,
 			drm_err(dev, "[CRTC:%d:%s] flip_done timed out\n",
 				crtc->base.id, crtc->name);
 	}
-
-	if (state->fake_commit)
-		complete_all(&state->fake_commit->flip_done);
 }
 EXPORT_SYMBOL(drm_atomic_helper_wait_for_flip_done);
 
@@ -2492,6 +2489,16 @@ crtc_or_fake_commit(struct drm_atomic_commit *state, struct drm_crtc *crtc)
 			return NULL;
 
 		init_commit(state->fake_commit, NULL);
+
+		/*
+		 * There is no event nor flip for the fake commit, so
+		 * flip_done has nothing to wait for. Completing it here
+		 * avoids spurious -EBUSY from nonblocking commits that
+		 * touch the same planes/connectors while the previous commit
+		 * is still being committed. The ordering is still guaranteed
+		 * by hw_done, which the later commits wait for.
+		 */
+		complete_all(&state->fake_commit->flip_done);
 	}
 
 	return state->fake_commit;
@@ -2795,10 +2802,8 @@ void drm_atomic_helper_commit_hw_done(struct drm_atomic_commit *state)
 		complete_all(&commit->hw_done);
 	}
 
-	if (state->fake_commit) {
+	if (state->fake_commit)
 		complete_all(&state->fake_commit->hw_done);
-		complete_all(&state->fake_commit->flip_done);
-	}
 }
 EXPORT_SYMBOL(drm_atomic_helper_commit_hw_done);
 
