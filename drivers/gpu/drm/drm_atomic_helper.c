@@ -2428,6 +2428,34 @@ static int stall_checks(struct drm_crtc *crtc, bool nonblock)
 	return ret < 0 ? ret : 0;
 }
 
+/*
+ * Commits that only touch planes and connectors without a CRTC use the fake
+ * commit, which has no CRTC to hang off of, and so no commit_list for
+ * stall_checks() to look at. Their flip_done is completed already in
+ * drm_atomic_helper_setup_commit(), so the -EBUSY checks do not limit how far
+ * userspace can run ahead either. Without any limit the work items of the
+ * queued nonblocking commits would all wait for each other's hw_done, and
+ * the waits would add up and eventually time out.
+ *
+ * Wait for the previous fake commit to reach hw_done instead, which limits
+ * the depth to one commit. CRTC commits are limited by stall_checks().
+ */
+static int stall_for_fake_commit(struct drm_device *dev,
+				 struct drm_crtc_commit *commit)
+{
+	long ret;
+
+	if (!commit || commit->crtc)
+		return 0;
+
+	ret = wait_for_completion_interruptible_timeout(&commit->hw_done,
+							10 * HZ);
+	if (ret == 0)
+		drm_err(dev, "fake commit hw_done timed out\n");
+
+	return ret < 0 ? ret : 0;
+}
+
 static void release_crtc_commit(struct completion *completion)
 {
 	struct drm_crtc_commit *commit = container_of(completion,
@@ -2590,6 +2618,10 @@ int drm_atomic_helper_setup_commit(struct drm_atomic_commit *state,
 			return -EBUSY;
 		}
 
+		ret = stall_for_fake_commit(state->dev, old_conn_state->commit);
+		if (ret)
+			return ret;
+
 		/* Always track connectors explicitly for e.g. link retraining. */
 		commit = crtc_or_fake_commit(state, new_conn_state->crtc ?: old_conn_state->crtc);
 		if (!commit)
@@ -2611,6 +2643,10 @@ int drm_atomic_helper_setup_commit(struct drm_atomic_commit *state,
 
 			return -EBUSY;
 		}
+
+		ret = stall_for_fake_commit(state->dev, old_plane_state->commit);
+		if (ret)
+			return ret;
 
 		/* Always track planes explicitly for async pageflip support. */
 		commit = crtc_or_fake_commit(state, new_plane_state->crtc ?: old_plane_state->crtc);
