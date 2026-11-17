@@ -3388,17 +3388,20 @@ static void intel_dp_compute_vsc_sdp(struct intel_dp *intel_dp,
 	}
 }
 
+/* True for both HDR transfer functions, SMPTE ST 2084 (PQ) and BT.2100 HLG. */
 bool
 intel_dp_in_hdr_mode(const struct drm_connector_state *conn_state)
 {
 	struct hdr_output_metadata *hdr_metadata;
+	u8 eotf;
 
 	if (!conn_state->hdr_output_metadata)
 		return false;
 
 	hdr_metadata = conn_state->hdr_output_metadata->data;
+	eotf = hdr_metadata->hdmi_metadata_type1.eotf;
 
-	return hdr_metadata->hdmi_metadata_type1.eotf == HDMI_EOTF_SMPTE_ST2084;
+	return eotf == HDMI_EOTF_SMPTE_ST2084 || eotf == HDMI_EOTF_BT_2100_HLG;
 }
 
 static void

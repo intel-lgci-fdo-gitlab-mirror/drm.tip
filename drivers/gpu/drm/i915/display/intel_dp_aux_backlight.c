@@ -284,8 +284,16 @@ intel_dp_aux_fill_hdr_tcon_params(const struct drm_connector_state *conn_state, 
 	 * HDR mode.
 	 */
 	if (intel_dp_in_hdr_mode(conn_state)) {
+		const struct hdr_output_metadata *hdr_metadata =
+			conn_state->hdr_output_metadata->data;
+
 		*ctrl |= INTEL_EDP_HDR_TCON_SEGMENTED_BACKLIGHT_ENABLE;
-		*ctrl |= INTEL_EDP_HDR_TCON_2084_DECODE_ENABLE;
+
+		/* The TCON can only decode SMPTE ST 2084 (PQ), not HLG. */
+		if (hdr_metadata->hdmi_metadata_type1.eotf == HDMI_EOTF_SMPTE_ST2084)
+			*ctrl |= INTEL_EDP_HDR_TCON_2084_DECODE_ENABLE;
+		else
+			*ctrl &= ~INTEL_EDP_HDR_TCON_2084_DECODE_ENABLE;
 	}
 
 	if (DISPLAY_VER(display) < 11)
