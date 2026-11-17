@@ -136,6 +136,16 @@ void __drm_crtc_commit_free(struct kref *kref)
 }
 EXPORT_SYMBOL(__drm_crtc_commit_free);
 
+static void drm_crtc_commit_wait_timeout(struct drm_crtc_commit *commit,
+					 const char *what)
+{
+	if (commit->crtc)
+		drm_err(commit->dev, "[CRTC:%d:%s] %s timed out\n",
+			commit->crtc->base.id, commit->crtc->name, what);
+	else
+		drm_err(commit->dev, "fake commit %s timed out\n", what);
+}
+
 /**
  * drm_crtc_commit_wait - Waits for a commit to complete
  * @commit: &drm_crtc_commit to wait for
@@ -156,7 +166,7 @@ int drm_crtc_commit_wait(struct drm_crtc_commit *commit)
 
 	ret = wait_for_completion_timeout(&commit->hw_done, timeout);
 	if (!ret) {
-		drm_err(commit->crtc->dev, "hw_done timed out\n");
+		drm_crtc_commit_wait_timeout(commit, "hw_done");
 		return -ETIMEDOUT;
 	}
 
@@ -166,7 +176,7 @@ int drm_crtc_commit_wait(struct drm_crtc_commit *commit)
 	 */
 	ret = wait_for_completion_timeout(&commit->flip_done, timeout);
 	if (!ret) {
-		drm_err(commit->crtc->dev, "flip_done timed out\n");
+		drm_crtc_commit_wait_timeout(commit, "flip_done");
 		return -ETIMEDOUT;
 	}
 
