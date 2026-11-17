@@ -71,9 +71,16 @@
  */
 struct drm_crtc_commit {
 	/**
+	 * @dev:
+	 *
+	 * DRM device for this commit.
+	 */
+	struct drm_device *dev;
+
+	/**
 	 * @crtc:
 	 *
-	 * DRM CRTC for this commit.
+	 * DRM CRTC for this commit. NULL for &drm_atomic_commit.fake_commit.
 	 */
 	struct drm_crtc *crtc;
 
