@@ -246,6 +246,31 @@ static void wait_for_worker_completion(struct xe_late_bind *late_bind)
 	}
 }
 
+static bool xe_late_bind_ocode_is_current(struct xe_late_bind_fw *lbfw)
+{
+	struct xe_device *xe = late_bind_fw_to_xe(lbfw);
+	u16 running_ver;
+	int ret;
+
+	if (lbfw->type != INTEL_LB_TYPE_OCODE || !xe->info.has_sysctrl)
+		return false;
+
+	if (!xe_sysctrl_is_oobmsm_fw_ready(xe))
+		return false;
+
+	ret = xe_sysctrl_sdk_api_version(xe, &running_ver);
+	if (ret) {
+		drm_dbg(&xe->drm, "Failed to get running OCODE SDK API version: %pe\n",
+			ERR_PTR(ret));
+		return false;
+	}
+
+	drm_dbg(&xe->drm, "OCODE SDK API version running %u, payload %u\n",
+		running_ver, lbfw->sdk_api_version);
+
+	return running_ver == lbfw->sdk_api_version;
+}
+
 static void xe_late_bind_work(struct work_struct *work)
 {
 	struct xe_late_bind_fw *lbfw = container_of(work, struct xe_late_bind_fw, work);
@@ -257,6 +282,12 @@ static void xe_late_bind_work(struct work_struct *work)
 	int slept;
 
 	xe_device_assert_mem_access(xe);
+
+	if (xe_late_bind_ocode_is_current(lbfw)) {
+		drm_dbg(&xe->drm, "%s firmware already loaded, skipping\n",
+			fw_id_to_name[lbfw->id]);
+		goto out;
+	}
 
 	/* we can queue this before the component is bound */
 	for (slept = 0; slept < LB_INIT_TIMEOUT_MS; slept += 100) {
