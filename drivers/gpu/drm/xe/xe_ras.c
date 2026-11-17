@@ -3,6 +3,7 @@
  * Copyright © 2026 Intel Corporation
  */
 
+#include <linux/aer.h>
 #include <linux/bitfield.h>
 
 #include <generated/xe_device_wa_oob.h>
@@ -508,16 +509,79 @@ static void get_offline_list(struct xe_device *xe)
 			      &response, sizeof(response), &response.common, false);
 }
 
+static inline const char *action_to_str(enum xe_ras_config_action action)
+{
+	return action == XE_RAS_CONFIG_ACTION_GET ? "get" : "set";
+}
+
+static int ras_config(struct xe_device *xe, enum xe_ras_config config,
+		      enum xe_ras_config_action action)
+{
+	struct xe_sysctrl_mailbox_command command = {0};
+	struct xe_ras_config_response response = {0};
+	struct xe_ras_config_request request = {0};
+	size_t len;
+	int ret;
+
+	request.config = config;
+	request.action = action;
+
+	xe_sysctrl_create_command(&command, XE_SYSCTRL_GROUP_GFSP, XE_SYSCTRL_CMD_RAS_CONFIG,
+				  &request, sizeof(request), &response, sizeof(response));
+
+	guard(xe_pm_runtime)(xe);
+	ret = xe_sysctrl_send_command(&xe->sc, &command, &len);
+	if (ret) {
+		xe_err(xe, "sysctrl: failed to %s config %u: %d\n", action_to_str(action), config,
+		       ret);
+		return ret;
+	}
+
+	if (len != sizeof(response)) {
+		xe_err(xe, "sysctrl: unexpected %s config response length %zu (expected %zu)\n",
+		       action_to_str(action), len, sizeof(response));
+		return -EIO;
+	}
+
+	ret = ras_status_to_errno(response.status);
+	if (ret) {
+		xe_err(xe, "sysctrl: %s config command failed with status %#x\n",
+		       action_to_str(action), response.status);
+		return ret;
+	}
+
+	if (response.size)
+		xe_dbg(xe, "[RAS]: %s config %u, data (%u bytes): %*ph\n",
+		       action_to_str(response.action), response.config, response.size,
+		       (int)min(response.size, sizeof(response.data)), response.data);
+
+	return 0;
+}
+
 static void ras_usp_aer_init(struct xe_device *xe)
 {
 	struct pci_dev *pdev = to_pci_dev(xe->drm.dev);
+	enum xe_ras_config config;
 	struct pci_dev *usp;
 	u16 aer_cap;
 	u32 status;
+	int ret;
 
 	usp = xe_pci_get_usp_dev(pdev);
 	if (!usp)
 		return;
+
+	if (!pcie_aer_is_native(usp)) {
+		config = XE_RAS_CONFIG_USP_AER_UNCOR_INTERNAL_NONFATAL;
+
+		ret = ras_config(xe, config, XE_RAS_CONFIG_ACTION_SET);
+		if (ret)
+			return;
+
+		/* Read the configuration */
+		ras_config(xe, config, XE_RAS_CONFIG_ACTION_GET);
+		return;
+	}
 
 	aer_cap = pci_find_ext_capability(usp, PCI_EXT_CAP_ID_ERR);
 	if (!aer_cap) {
@@ -553,6 +617,7 @@ static void ras_usp_aer_init(struct xe_device *xe)
 	pci_save_state(usp);
 	dev_dbg(&usp->dev, "Uncorrectable Internal Errors downgraded and unmasked\n");
 }
+MODULE_IMPORT_NS("CXL");
 
 static void ras_send_error_event(struct xe_device *xe, u8 severity, u8 component)
 {

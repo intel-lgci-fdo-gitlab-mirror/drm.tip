@@ -51,6 +51,30 @@ enum xe_ras_recovery_action {
 };
 
 /**
+ * enum xe_ras_config_action - Action requested for a config
+ *
+ * @XE_RAS_CONFIG_ACTION_GET: Get the current state of the config
+ * @XE_RAS_CONFIG_ACTION_SET: Set the config
+ * @XE_RAS_CONFIG_ACTION_MAX: Max action value
+ */
+enum xe_ras_config_action {
+	XE_RAS_CONFIG_ACTION_GET = 0,
+	XE_RAS_CONFIG_ACTION_SET,
+	XE_RAS_CONFIG_ACTION_MAX
+};
+
+/**
+ * enum xe_ras_config - RAS configuration options
+ *
+ * @XE_RAS_CONFIG_USP_AER_UNCOR_INTERNAL_NONFATAL: Downgrade USP AER Uncorrectable Internal Error
+ * @XE_RAS_CONFIG_MAX: Max config value
+ */
+enum xe_ras_config {
+	XE_RAS_CONFIG_USP_AER_UNCOR_INTERNAL_NONFATAL = 0x01,
+	XE_RAS_CONFIG_MAX
+};
+
+/**
  * struct xe_ras_error_common - Error fields that are common across all products
  */
 struct xe_ras_error_common {
@@ -406,6 +430,40 @@ struct xe_ras_set_health_response {
 	u8 reserved[3];
 	/** @reserved1: Reserved for future use */
 	u32 reserved1[2];
+} __packed;
+
+/**
+ * struct xe_ras_config_request - Request structure for RAS configuration
+ */
+struct xe_ras_config_request {
+	/** @config: Config id, see &enum xe_ras_config */
+	u16 config;
+	/** @action: Action to perform, see &enum xe_ras_config_action */
+	u8 action;
+	/** @reserved: Reserved for future use */
+	u8 reserved;
+	/** @size: Bytes valid in the payload */
+	u32 size;
+	/** @data: Payload */
+	u32 data[16];
+} __packed;
+
+/**
+ * struct xe_ras_config_response - Response structure for RAS configuration
+ */
+struct xe_ras_config_response {
+	/** @status: Status of config operation */
+	u32 status;
+	/** @config: Config id from request, see &enum xe_ras_config */
+	u16 config;
+	/** @action: Action that was performed, see &enum xe_ras_config_action */
+	u8 action;
+	/** @reserved: Reserved for future use */
+	u8 reserved;
+	/** @size: Bytes valid in the payload */
+	u32 size;
+	/** @data: Payload */
+	u32 data[16];
 } __packed;
 
 /* Device structures */
