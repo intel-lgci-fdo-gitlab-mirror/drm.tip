@@ -147,6 +147,7 @@ struct fw_blobs_by_type {
 
 /* for the GSC FW we match the compatibility version and not the release one */
 #define XE_GSC_FIRMWARE_DEFS(fw_def, major_ver)		\
+	fw_def(NOVALAKE_P,	GT_TYPE_ANY,	major_ver(xe,	gsc,	nvl,	108, 1, 0))	\
 	fw_def(NOVALAKE_S,	GT_TYPE_ANY,	major_ver(xe,	gsc,	nvl,	108, 1, 0))	\
 	fw_def(PANTHERLAKE,	GT_TYPE_ANY,	major_ver(xe,	gsc,	ptl,	105, 1, 0))	\
 	fw_def(LUNARLAKE,	GT_TYPE_ANY,	major_ver(xe,	gsc,	lnl,	104, 1, 0))	\
@@ -776,6 +777,21 @@ static int uc_fw_request(struct xe_uc_fw *uc_fw, const struct firmware **firmwar
 		err = xe_uc_fw_check_version_requirements(uc_fw);
 		if (err)
 			goto fail;
+	}
+
+	/*
+	 * NVL-S and NVL-P use the same GSC binary, but NVL-P requires a
+	 * newer version (at least build 1242)
+	 */
+	if (uc_fw->type == XE_UC_FW_TYPE_GSC && xe->info.platform == XE_NOVALAKE_P) {
+		if (uc_fw->versions.found[XE_UC_FW_VER_RELEASE].build < 1242) {
+			xe_gt_info(gt, "%s firmware too old (got build %u, wanted at least 1242)\n",
+				   xe_uc_fw_type_repr(uc_fw->type),
+				   uc_fw->versions.found[XE_UC_FW_VER_RELEASE].build);
+			err = -ENOTSUPP;
+
+			goto fail;
+		}
 	}
 
 	*firmware_p = fw;
