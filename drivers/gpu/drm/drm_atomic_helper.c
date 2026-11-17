@@ -2462,13 +2462,15 @@ static void release_crtc_commit(struct completion *completion)
 	drm_crtc_commit_put(commit);
 }
 
-static void init_commit(struct drm_crtc_commit *commit, struct drm_crtc *crtc)
+static void init_commit(struct drm_crtc_commit *commit, struct drm_device *dev,
+			struct drm_crtc *crtc)
 {
 	init_completion(&commit->flip_done);
 	init_completion(&commit->hw_done);
 	init_completion(&commit->cleanup_done);
 	INIT_LIST_HEAD(&commit->commit_entry);
 	kref_init(&commit->ref);
+	commit->dev = dev;
 	commit->crtc = crtc;
 }
 
@@ -2488,7 +2490,7 @@ crtc_or_fake_commit(struct drm_atomic_commit *state, struct drm_crtc *crtc)
 		if (!state->fake_commit)
 			return NULL;
 
-		init_commit(state->fake_commit, NULL);
+		init_commit(state->fake_commit, state->dev, NULL);
 
 		/*
 		 * There is no event nor flip for the fake commit, so
@@ -2569,7 +2571,7 @@ int drm_atomic_helper_setup_commit(struct drm_atomic_commit *state,
 		if (!commit)
 			return -ENOMEM;
 
-		init_commit(commit, crtc);
+		init_commit(commit, state->dev, crtc);
 
 		new_crtc_state->commit = commit;
 
