@@ -1,0 +1,44 @@
+drm drm-fixes aebb7274476403040d582c61478df8f4a7bf9cd3
+	Linux 7.4-rc3
+drm-misc drm-misc-fixes 9bca2b5f1a4fa93ed628d47e66d1d8df86937131
+	accel/rocket: Keep scheduler allocation in rocket_file_priv
+drm-rust drm-rust-fixes 6628e7d4c6b25c8d18f1345e3a20d21829aae7e4
+	Linux 7.4-rc1
+drm-intel drm-intel-fixes 715f145f6204363a50853eb15719dc860db0bc01
+	drm/i915/dsb: Realign GOSUB only for QW slots 6 and 7
+drm-xe drm-xe-fixes c1234293de147949bf9cf06e3ed59ad8766e29a0
+	drm: xe: select configfs
+drm-amdgpu drm-amdgpu-fixes 566ed98e48be75a76eea34745815a51ba36687a8
+	drm/amdgpu: fix TLB invalidation fence handling v4
+drm drm-next 601c30449c80926947d4820d50cec974687d1d11
+	Merge tag 'drm-misc-next-2026-11-13' of https://gitlab.freedesktop.org/drm/misc/kernel into drm-next
+drm-misc drm-misc-next-fixes 9a96e169c9267af918d28fb291df948d83112807
+	drm/panthor: Move cache-flush after UPDATE(UNMAPPED)
+drm-rust drm-rust-next-fixes d511064b2e732b7152a542d589d07a4814c1b674
+	rust: drm: Remove unused flags argument from Registration::new()
+drm-intel drm-intel-next-fixes 6628e7d4c6b25c8d18f1345e3a20d21829aae7e4
+	Linux 7.4-rc1
+drm-xe drm-xe-next-fixes cee9395acd8043be0644b25c34bfa86623f2b935
+	Linux 7.3-rc1
+drm-amdgpu drm-amdgpu-next-fixes fbb201890156e04b062c4488d1b500de52367684
+	drm/amd/display: refresh cached HDMI FreeSync state
+drm-misc drm-misc-next 07940daf7b231273866376cc9657c09e47e7cef6
+	drm/ingenic: Allocate and register the internal bridge separately
+drm-rust drm-rust-next 8045d0e7d208ad389a387f1407ce0db9070805af
+	Documentation: nova: remove completed GSP log buffer task
+drm-intel drm-intel-next 65c9cad0e69e429666c9df9564ffa7ce324ca82a
+	drm/i915/fbc: Apply Wa_14028723391
+drm-intel drm-intel-gt-next 4e9db08db75f55c920986ac929cfd82a4ee99f41
+	drm/i915/gem: Reset err for each fence entry
+drm-xe drm-xe-next 8ffbbecde81c1ea5bb5c01b0905ec3690e96bad1
+	drm/xe/lrc: Fix math in LRC offset comments
+drm-amdgpu drm-amdgpu-next a6836fcbb5b22968019256025321d655b78bc49c
+	drm/amd/display: Add support for more PSP footer sizes
+drm-intel topic/core-for-CI 9fa2f96677178cdbfe83b7fc714c081312f482bf
+	Revert "lockdep: Enable PROVE_RAW_LOCK_NESTING with PROVE_LOCKING."
+drm-xe topic/xe-for-CI 2a3310be28182bbbe040fae6c8dfca24c1812c26
+	drm/xe/pvc: Add GuC firmware definition
+drm topic/drm-next-nouveau-r570 6cc6e08d4542473d79ea83d9123d9d35e9c01c92
+	drm/nouveau/kms: add support for GB20x
+drm topic/pci-vgaarb-rework 93d41424caf7569ab50092a922477e2a881232b4
+	PCI/VGA: pass a data pointer to be used in the decode callback (v2)
