@@ -423,6 +423,8 @@ static void drm_test_fake_commit_flip_done(struct kunit *test)
 
 	KUNIT_ASSERT_NOT_NULL(test, state->fake_commit);
 	KUNIT_EXPECT_PTR_EQ(test, plane_state->commit, state->fake_commit);
+	KUNIT_EXPECT_PTR_EQ(test, state->fake_commit->dev, &priv->drm);
+	KUNIT_EXPECT_NULL(test, state->fake_commit->crtc);
 	KUNIT_EXPECT_TRUE(test, try_wait_for_completion(&state->fake_commit->flip_done));
 	KUNIT_EXPECT_FALSE(test, try_wait_for_completion(&state->fake_commit->hw_done));
 
@@ -493,9 +495,45 @@ static void drm_test_fake_commit_not_busy(struct kunit *test)
 	drm_modeset_acquire_fini(&ctx);
 }
 
+/*
+ * Test that the commits know their device, and that only the one for a CRTC
+ * knows a CRTC, so that the waits can report timeouts for either.
+ */
+static void drm_test_commit_dev(struct kunit *test)
+{
+	struct drm_atomic_test_priv *priv;
+	struct drm_modeset_acquire_ctx ctx;
+	struct drm_atomic_commit *state;
+	struct drm_crtc_state *crtc_state;
+	int ret;
+
+	priv = drm_atomic_test_init_drm_components(test, false);
+	KUNIT_ASSERT_NOT_NULL(test, priv);
+
+	drm_modeset_acquire_init(&ctx, 0);
+
+	state = drm_kunit_helper_atomic_state_alloc(test, &priv->drm, &ctx);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, state);
+
+	crtc_state = drm_atomic_get_crtc_state(state, priv->crtc);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, crtc_state);
+
+	ret = drm_atomic_helper_setup_commit(state, false);
+	KUNIT_ASSERT_EQ(test, ret, 0);
+
+	KUNIT_ASSERT_NOT_NULL(test, crtc_state->commit);
+	KUNIT_EXPECT_PTR_EQ(test, crtc_state->commit->dev, &priv->drm);
+	KUNIT_EXPECT_PTR_EQ(test, crtc_state->commit->crtc, priv->crtc);
+
+	drm_atomic_commit_clear(state);
+	drm_modeset_drop_locks(&ctx);
+	drm_modeset_acquire_fini(&ctx);
+}
+
 static struct kunit_case drm_fake_commit_tests[] = {
 	KUNIT_CASE(drm_test_fake_commit_flip_done),
 	KUNIT_CASE(drm_test_fake_commit_not_busy),
+	KUNIT_CASE(drm_test_commit_dev),
 	{}
 };
 
