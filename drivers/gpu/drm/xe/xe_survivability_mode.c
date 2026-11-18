@@ -172,8 +172,14 @@ static void populate_survivability_info(struct xe_device *xe)
 	if (reg_value & AUXINFO_SUPPORT) {
 		for (id = REG_FIELD_GET(AUXINFO_REG_OFFSET, reg_value);
 		     id >= AUX_INFO0 && id < MAX_SCRATCH_REG;
-		     id =  REG_FIELD_GET(AUXINFO_HISTORY_OFFSET, info[id]))
+		     id =  REG_FIELD_GET(AUXINFO_HISTORY_OFFSET, info[id])) {
 			set_survivability_info(mmio, info, id);
+			if (REG_FIELD_GET(AUXINFO_HISTORY_OFFSET, info[id]) == id) {
+				xe_warn(xe, "survivability: %s points to itself, stopping aux info walk\n",
+					reg_map[id]);
+				break;
+			}
+		}
 	}
 }
 
