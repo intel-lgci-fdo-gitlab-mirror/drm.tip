@@ -18,6 +18,8 @@ struct drm_property_blob;
 enum pipe;
 enum plane_id;
 
+#define LUT_3D_SIZE 17
+
 void intel_color_init_hooks(struct intel_display *display);
 int intel_color_init(struct intel_display *display);
 void intel_color_crtc_init(struct intel_crtc *crtc);
