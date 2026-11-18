@@ -2122,6 +2122,18 @@ static const struct xe_sched_backend_ops xe_sched_ops = {
 	.process_msg = guc_exec_queue_process_msg,
 };
 
+static void guc_exec_queue_suspend_tdr(struct xe_exec_queue *q)
+{
+	lockdep_assert_held(&exec_queue_to_guc(q)->submission_state.lock);
+
+	if (q->guc->tdr_suspended)
+		return;
+
+	/* Caller runs on the TDR workqueue, or the queue is not published yet. */
+	disable_delayed_work(&q->guc->sched.base.work_tdr);
+	q->guc->tdr_suspended = true;
+}
+
 static int guc_exec_queue_init(struct xe_exec_queue *q)
 {
 	struct xe_gpu_scheduler *sched;
@@ -2191,6 +2203,8 @@ static int guc_exec_queue_init(struct xe_exec_queue *q)
 	mutex_lock(&guc->submission_state.lock);
 	if (xe_guc_read_stopped(guc) || vf_recovery(guc))
 		xe_sched_stop(sched);
+	if (guc->submission_state.tdr_suspended)
+		guc_exec_queue_suspend_tdr(q);
 	publish_guc_id(guc, q);
 	mutex_unlock(&guc->submission_state.lock);
 
@@ -3121,6 +3135,59 @@ static void guc_exec_queue_start(struct xe_exec_queue *q)
 	xe_sched_submission_resume_tdr(sched);
 }
 
+/**
+ * xe_guc_submit_suspend_tdr - Disable queue timeout work before suspend
+ * @guc: GuC submission being suspended
+ *
+ * Must run on the GT ordered workqueue, after reset preparation. This
+ * serializes against the whole DRM timeout worker, including pending-list
+ * removal and reinsertion outside the Xe timeout callback.
+ */
+void xe_guc_submit_suspend_tdr(struct xe_guc *guc)
+{
+	struct xe_exec_queue *q;
+	unsigned long index;
+
+	guard(mutex)(&guc->submission_state.lock);
+	guc->submission_state.tdr_suspended = true;
+	xa_for_each(&guc->submission_state.exec_queue_lookup, index, q) {
+		if (q->guc->id != index)
+			continue;
+		guc_exec_queue_suspend_tdr(q);
+	}
+}
+
+static void guc_submit_resume_tdr(struct xe_guc *guc)
+{
+	struct xe_exec_queue *q;
+	unsigned long index;
+
+	lockdep_assert_held(&guc->submission_state.lock);
+	if (!guc->submission_state.tdr_suspended)
+		return;
+
+	guc->submission_state.tdr_suspended = false;
+	xa_for_each(&guc->submission_state.exec_queue_lookup, index, q) {
+		if (q->guc->id != index || !q->guc->tdr_suspended)
+			continue;
+
+		q->guc->tdr_suspended = false;
+		enable_delayed_work(&q->guc->sched.base.work_tdr);
+		/* Cleanup requests made while disabled leave base.timeout at zero. */
+		xe_sched_submission_resume_tdr(&q->guc->sched);
+	}
+}
+
+/**
+ * xe_guc_submit_resume_tdr - Re-enable queue timeout work after suspend abort
+ * @guc: GuC submission whose timeout work was disabled
+ */
+void xe_guc_submit_resume_tdr(struct xe_guc *guc)
+{
+	guard(mutex)(&guc->submission_state.lock);
+	guc_submit_resume_tdr(guc);
+}
+
 int xe_guc_submit_start(struct xe_guc *guc)
 {
 	struct xe_exec_queue *q;
@@ -3137,6 +3204,8 @@ int xe_guc_submit_start(struct xe_guc *guc)
 
 		guc_exec_queue_start(q);
 	}
+	/* All queues must be restarted before any deferred TDR can run. */
+	guc_submit_resume_tdr(guc);
 	mutex_unlock(&guc->submission_state.lock);
 
 	wake_up_all(&guc->ct.wq);
@@ -3315,6 +3384,8 @@ void xe_guc_submit_pause_abort(struct xe_guc *guc)
 		xe_sched_submission_start(sched);
 		guc_exec_queue_kill(q);
 	}
+	/* Abort can tear down a device whose submission will never restart. */
+	guc_submit_resume_tdr(guc);
 	mutex_unlock(&guc->submission_state.lock);
 }
 

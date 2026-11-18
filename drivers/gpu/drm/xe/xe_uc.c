@@ -362,17 +362,41 @@ void xe_uc_suspend_prepare(struct xe_uc *uc)
 	xe_guc_stop_prepare(&uc->guc);
 }
 
+struct xe_uc_suspend_work {
+	struct work_struct work;
+	struct xe_uc *uc;
+};
+
+static void uc_suspend_work(struct work_struct *w)
+{
+	struct xe_uc_suspend_work *suspend =
+		container_of(w, struct xe_uc_suspend_work, work);
+	xe_guc_submit_suspend_tdr(&suspend->uc->guc);
+}
+
 int xe_uc_suspend(struct xe_uc *uc)
 {
+	struct xe_uc_suspend_work suspend = { .uc = uc };
+	int err;
+
 	/* GuC submission not enabled, nothing to do */
 	if (!xe_device_uc_enabled(uc_to_xe(uc)))
 		return 0;
 
 	uc_reset_wait(uc);
 
-	xe_uc_stop(uc);
+	/* Drain the complete timeout worker before examining queue state. */
+	INIT_WORK_ONSTACK(&suspend.work, uc_suspend_work);
+	queue_work(uc_to_gt(uc)->ordered_wq, &suspend.work);
+	flush_work(&suspend.work);
+	destroy_work_on_stack(&suspend.work);
 
-	return xe_guc_suspend(&uc->guc);
+	xe_uc_stop(uc);
+	err = xe_guc_suspend(&uc->guc);
+	if (err)
+		xe_guc_submit_resume_tdr(&uc->guc);
+
+	return err;
 }
 
 /**

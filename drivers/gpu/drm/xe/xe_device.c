@@ -1509,8 +1509,13 @@ int xe_device_resume(struct xe_device *xe, bool flr)
 
 	for_each_gt(gt, xe, id) {
 		err = xe_gt_resume(gt);
-		if (err)
+		if (err) {
+			/* GuC boot failed before submission could restart. */
+			if (!flr && err == -ENOEXEC)
+				xe_wedge_declare(xe, DRM_WEDGE_RECOVERY_REBIND |
+						 DRM_WEDGE_RECOVERY_BUS_RESET);
 			break;
+		}
 	}
 
 	if (flr) {

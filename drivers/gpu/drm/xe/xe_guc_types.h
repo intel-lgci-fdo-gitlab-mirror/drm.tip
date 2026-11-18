@@ -93,6 +93,8 @@ struct xe_guc {
 		atomic_t reset_blocked;
 		/** @submission_state.lock: protects submission state */
 		struct mutex lock;
+		/** @submission_state.tdr_suspended: disable TDR for existing and new queues */
+		bool tdr_suspended;
 		/** @submission_state.enabled: submission is enabled */
 		bool enabled;
 		/**
