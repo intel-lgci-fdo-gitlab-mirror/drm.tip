@@ -553,10 +553,10 @@ static int gt_init_with_gt_forcewake(struct xe_gt *gt)
 
 	if (xe_gt_is_main_type(gt)) {
 		err = xe_ggtt_init(gt_to_tile(gt)->mem.ggtt);
+		if (!err && IS_SRIOV_PF(gt_to_xe(gt)))
+			err = xe_lmtt_init(&gt_to_tile(gt)->sriov.pf.lmtt);
 		if (err)
 			return err;
-		if (IS_SRIOV_PF(gt_to_xe(gt)))
-			xe_lmtt_init(&gt_to_tile(gt)->sriov.pf.lmtt);
 	}
 
 	/* Enable per hw engine IRQs */
