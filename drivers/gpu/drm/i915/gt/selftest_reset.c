@@ -36,6 +36,8 @@ __igt_reset_stolen(struct intel_gt *gt,
 	intel_wakeref_t wakeref;
 	enum intel_engine_id id;
 	struct igt_spinner spin;
+	void (*insert_page)(struct i915_address_space *vm, dma_addr_t addr,
+			    u64 offset, unsigned int pat_index, u32 flags);
 	long max, count;
 	void *tmp;
 	u32 *crc;
@@ -90,18 +92,19 @@ __igt_reset_stolen(struct intel_gt *gt,
 		i915_request_add(rq);
 	}
 
+	insert_page = ggtt->vm.raw_insert_page ?: ggtt->vm.insert_page;
+
 	mutex_lock(&gt->i915->mm.stolen_lock);
 
+	mutex_lock(&ggtt->error_mutex);
 	for (page = 0; page < num_pages; page++) {
 		dma_addr_t dma = (dma_addr_t)dsm->start + (page << PAGE_SHIFT);
 		void __iomem *s;
 		void *in;
 
-		ggtt->vm.insert_page(&ggtt->vm, dma,
-				     ggtt->error_capture.start,
-				     i915_gem_get_pat_index(gt->i915,
-							    I915_CACHE_NONE),
-				     0);
+		insert_page(&ggtt->vm, dma, ggtt->error_capture.start,
+			    i915_gem_get_pat_index(gt->i915, I915_CACHE_NONE),
+			    0);
 		mb();
 
 		s = io_mapping_map_wc(&ggtt->iomap,
@@ -120,6 +123,7 @@ __igt_reset_stolen(struct intel_gt *gt,
 	}
 	mb();
 	ggtt->vm.clear_range(&ggtt->vm, ggtt->error_capture.start, PAGE_SIZE);
+	mutex_unlock(&ggtt->error_mutex);
 
 	if (mask == ALL_ENGINES) {
 		intel_gt_reset(gt, mask, NULL);
@@ -132,17 +136,17 @@ __igt_reset_stolen(struct intel_gt *gt,
 
 	max = -1;
 	count = 0;
+
+	mutex_lock(&ggtt->error_mutex);
 	for (page = 0; page < num_pages; page++) {
 		dma_addr_t dma = (dma_addr_t)dsm->start + (page << PAGE_SHIFT);
 		void __iomem *s;
 		void *in;
 		u32 x;
 
-		ggtt->vm.insert_page(&ggtt->vm, dma,
-				     ggtt->error_capture.start,
-				     i915_gem_get_pat_index(gt->i915,
-							    I915_CACHE_NONE),
-				     0);
+		insert_page(&ggtt->vm, dma, ggtt->error_capture.start,
+			    i915_gem_get_pat_index(gt->i915, I915_CACHE_NONE),
+			    0);
 		mb();
 
 		s = io_mapping_map_wc(&ggtt->iomap,
@@ -166,6 +170,8 @@ __igt_reset_stolen(struct intel_gt *gt,
 	}
 	mb();
 	ggtt->vm.clear_range(&ggtt->vm, ggtt->error_capture.start, PAGE_SIZE);
+
+	mutex_unlock(&ggtt->error_mutex);
 
 	mutex_unlock(&gt->i915->mm.stolen_lock);
 
