@@ -33,6 +33,7 @@ struct drm_device;
 struct drm_dp_aux;
 struct drm_panel;
 struct drm_printer;
+struct drm_dp_tunnel;
 
 bool drm_dp_channel_eq_ok(const u8 link_status[DP_LINK_STATUS_SIZE],
 			  int lane_count);
@@ -700,6 +701,9 @@ static inline int drm_dp_dpcd_write_byte(struct drm_dp_aux *aux,
 
 int drm_dp_read_dpcd_caps(struct drm_dp_aux *aux,
 			  u8 dpcd[DP_RECEIVER_CAP_SIZE]);
+
+int drm_dprx_max_rate(const struct drm_dp_tunnel *tunnel,
+		      const u8 dpcd[DP_RECEIVER_CAP_SIZE]);
 
 int drm_dp_dpcd_read_link_status(struct drm_dp_aux *aux,
 				 u8 status[DP_LINK_STATUS_SIZE]);
