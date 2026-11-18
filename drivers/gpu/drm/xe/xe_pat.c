@@ -338,11 +338,33 @@ bool xe_pat_wa_14026539277_reserved(struct xe_device *xe, u16 pat_index)
 	}
 
 	/*
+	 * Wa_14028564128 remaps PAT index 2 to a safe no-promote/UC/1-way
+	 * value, so it's no longer subject to this restriction once enabled.
+	 */
+	if (xe_pat_wa_14028564128_safe_userptr_index(xe, pat_index))
+		return false;
+
+	/*
 	 * Disallow 2-way coherency for any L3 cache policy because
 	 * XE_L3_POLICY_UC could still be promoted to a cached policy
 	 * by MOCS indices.
 	 */
 	return has_wa && xe_pat_index_get_coh_mode(xe, pat_index) == XE_COH_2WAY;
+}
+
+bool xe_pat_wa_14028564128_safe_userptr_index(struct xe_device *xe, u16 pat_index)
+{
+	struct xe_gt *gt;
+	u8 id;
+
+	if (pat_index != 2)
+		return false;
+
+	for_each_gt(gt, xe, id)
+		if (XE_GT_WA(gt, 14028564128))
+			return true;
+
+	return false;
 }
 
 static u32 wa_14026539277_fixup_pat_value(struct xe_gt *gt, u32 value)
@@ -354,6 +376,14 @@ static u32 wa_14026539277_fixup_pat_value(struct xe_gt *gt, u32 value)
 				 REG_FIELD_PREP(XE2_COH_MODE, XE_COH_1WAY);
 		}
 	}
+
+	return value;
+}
+
+static u32 wa_14028564128_fixup_pat_value(struct xe_gt *gt, int index, u32 value)
+{
+	if (index == 2 && XE_GT_WA(gt, 14028564128))
+		value |= XE2_NO_PROMOTE;
 
 	return value;
 }
@@ -419,6 +449,8 @@ static void program_pat_mcr(struct xe_gt *gt, const struct xe_pat_table_entry ta
 	for (int i = 0; i < n_entries; i++) {
 		struct xe_reg_mcr reg_mcr = XE_REG_MCR(_PAT_INDEX(i));
 		u32 pat = wa_14026539277_fixup_pat_value(gt, table[i].value);
+
+		pat = wa_14028564128_fixup_pat_value(gt, i, pat);
 
 		xe_gt_mcr_multicast_write(gt, reg_mcr, pat);
 	}

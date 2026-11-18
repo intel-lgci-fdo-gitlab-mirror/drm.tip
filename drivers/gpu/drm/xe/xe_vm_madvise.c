@@ -655,7 +655,8 @@ int xe_vm_madvise_ioctl(struct drm_device *dev, void *data, struct drm_file *fil
 		coh_mode = xe_pat_index_get_coh_mode(xe, pat_index);
 		if (XE_IOCTL_DBG(xe, madvise_range.has_svm_userptr_vmas &&
 				 xe_device_is_l2_flush_optimized(xe) &&
-				 (pat_index != 19 && coh_mode != XE_COH_2WAY))) {
+				 (pat_index != 19 && coh_mode != XE_COH_2WAY &&
+				  !xe_pat_wa_14028564128_safe_userptr_index(xe, pat_index)))) {
 			err = -EINVAL;
 			goto free_vmas;
 		}
@@ -685,10 +686,14 @@ int xe_vm_madvise_ioctl(struct drm_device *dev, void *data, struct drm_file *fil
 					continue;
 
 				if (args->type == DRM_XE_MEM_RANGE_ATTR_PAT) {
+					bool safe_pat = xe_pat_wa_14028564128_safe_userptr_index(xe,
+							pat_index);
+					bool invalid_pat = pat_index != 19 &&
+						coh_mode != XE_COH_2WAY && !safe_pat;
+
 					if (XE_IOCTL_DBG(xe, bo->ttm.base.import_attach &&
 							 xe_device_is_l2_flush_optimized(xe) &&
-							 (pat_index != 19 &&
-							  coh_mode != XE_COH_2WAY))) {
+							 invalid_pat)) {
 						err = -EINVAL;
 						goto err_fini;
 					}
