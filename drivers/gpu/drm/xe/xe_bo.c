@@ -805,9 +805,12 @@ static int xe_bo_trigger_rebind(struct xe_device *xe, struct xe_bo *bo,
 			drm_gpuvm_bo_evict(vm_bo, true);
 			/*
 			 * L2 cache may not be flushed, so ensure that is done in
-			 * xe_vm_invalidate_vma() below
+			 * xe_vm_invalidate_vma() below. For imported bos, the
+			 * PAT setting ensures either no cached L2 data or
+			 * 2-way coherency, making a flush unnecessary.
 			 */
-			if (!xe_device_is_l2_flush_optimized(xe))
+			if (!xe_device_is_l2_flush_optimized(xe) ||
+			    bo->ttm.base.import_attach)
 				continue;
 		}
 
