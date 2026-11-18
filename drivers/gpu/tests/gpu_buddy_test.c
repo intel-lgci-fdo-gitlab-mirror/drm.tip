@@ -283,6 +283,32 @@ static void gpu_test_buddy_fragmentation_performance(struct kunit *test)
 	gpu_buddy_fini(&mm);
 }
 
+static void gpu_test_buddy_range_bias_performance(struct kunit *test)
+{
+	struct gpu_buddy_block *block;
+	LIST_HEAD(allocated);
+	struct gpu_buddy mm;
+	ktime_t t0;
+	u64 i;
+
+	/* Fill one NPS4-like quarter top-down with cleared 64 KiB allocations. */
+	KUNIT_ASSERT_FALSE(test, gpu_buddy_init(&mm, SZ_4G, SZ_4K));
+	t0 = ktime_get();
+	for (i = 1; i <= SZ_1G / SZ_64K; i++) {
+		KUNIT_ASSERT_FALSE(test, gpu_buddy_alloc_blocks(&mm, SZ_1G, SZ_2G, SZ_64K,
+								SZ_64K, &allocated,
+								GPU_BUDDY_RANGE_ALLOCATION |
+								GPU_BUDDY_CLEAR_ALLOCATION |
+								GPU_BUDDY_TOPDOWN_ALLOCATION));
+		block = list_last_entry(&allocated, struct gpu_buddy_block, link);
+		KUNIT_ASSERT_EQ(test, gpu_buddy_block_offset(block), SZ_2G - i * SZ_64K);
+	}
+	kunit_info(test, "Range-biased fill took %lld ms\n",
+		   ktime_ms_delta(ktime_get(), t0));
+	gpu_buddy_free_list(&mm, &allocated, 0);
+	gpu_buddy_fini(&mm);
+}
+
 static void gpu_test_buddy_dirty_tracker_performance(struct kunit *test)
 {
 	struct gpu_buddy_block *block, *tmp;
@@ -1606,6 +1632,45 @@ static int gpu_buddy_suite_init(struct kunit_suite *suite)
 	return 0;
 }
 
+static void gpu_test_buddy_alloc_range_inverted(struct kunit *test)
+{
+	const unsigned long chunk = SZ_1M, mm_size = SZ_4M;
+	LIST_HEAD(low_dirty);
+	LIST_HEAD(barrier);
+	LIST_HEAD(high);
+	LIST_HEAD(res);
+	struct gpu_buddy mm;
+
+	KUNIT_ASSERT_FALSE_MSG(test, gpu_buddy_init(&mm, mm_size, chunk),
+			       "buddy_init failed\n");
+
+	/*
+	 *   [0,  1M)   dirty free
+	 *   [1M, 2M)   allocated
+	 *   [2M, 4M)   clear free, one order-1 block larger than @end below
+	 */
+	KUNIT_ASSERT_FALSE(test, gpu_buddy_alloc_blocks(&mm, 0, chunk, chunk, chunk,
+							&low_dirty, GPU_BUDDY_RANGE_ALLOCATION));
+	KUNIT_ASSERT_FALSE(test, gpu_buddy_alloc_blocks(&mm, chunk, 2 * chunk, chunk, chunk,
+							&barrier, GPU_BUDDY_RANGE_ALLOCATION));
+	KUNIT_ASSERT_FALSE(test, gpu_buddy_alloc_blocks(&mm, 2 * chunk, mm_size,
+							2 * chunk, 2 * chunk, &high,
+							GPU_BUDDY_RANGE_ALLOCATION));
+	gpu_buddy_free_list(&mm, &low_dirty, 0);
+	gpu_buddy_free_list(&mm, &high, GPU_BUDDY_CLEARED);
+
+	/* start > end: nothing lies in the range, so expect -ENOSPC */
+	KUNIT_EXPECT_EQ(test, gpu_buddy_alloc_blocks(&mm, 2 * chunk, chunk, chunk, chunk, &res,
+						     GPU_BUDDY_RANGE_ALLOCATION |
+						     GPU_BUDDY_CLEAR_ALLOCATION),
+			-ENOSPC);
+	KUNIT_EXPECT_TRUE(test, list_empty(&res));
+
+	gpu_buddy_free_list(&mm, &res, 0);
+	gpu_buddy_free_list(&mm, &barrier, 0);
+	gpu_buddy_fini(&mm);
+}
+
 static void gpu_test_buddy_alloc_range_clear_guard(struct kunit *test)
 {
 	const unsigned long chunk = SZ_1M, mm_size = SZ_4M;
@@ -1699,8 +1764,10 @@ static struct kunit_case gpu_buddy_tests[] = {
 	KUNIT_CASE(gpu_test_buddy_alloc_range),
 	KUNIT_CASE(gpu_test_buddy_alloc_range_bias),
 	KUNIT_CASE(gpu_test_buddy_alloc_range_clear_guard),
+	KUNIT_CASE(gpu_test_buddy_alloc_range_inverted),
 	KUNIT_CASE_SLOW(gpu_test_buddy_fragmentation_performance),
 	KUNIT_CASE_SLOW(gpu_test_buddy_dirty_tracker_performance),
+	KUNIT_CASE_SLOW(gpu_test_buddy_range_bias_performance),
 	KUNIT_CASE(gpu_test_buddy_alloc_exceeds_max_order),
 	KUNIT_CASE(gpu_test_buddy_offset_aligned_allocation),
 	KUNIT_CASE(gpu_test_buddy_subtree_offset_alignment_stress),
