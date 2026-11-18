@@ -226,21 +226,29 @@ int intel_dbuf_bw_calc_min_cdclk(struct intel_atomic_state *state,
 	return 0;
 }
 
-void intel_dbuf_bw_update_hw_state(struct intel_display *display)
+void intel_dbuf_bw_crtc_update_noatomic(struct intel_crtc *crtc)
 {
+	struct intel_display *display = to_intel_display(crtc);
 	struct intel_dbuf_bw_state *dbuf_bw_state =
 		to_intel_dbuf_bw_state(display->dbuf_bw.obj.state);
+	const struct intel_crtc_state *crtc_state =
+		to_intel_crtc_state(crtc->base.state);
+
+	if (DISPLAY_VER(display) < 9)
+		return;
+
+	skl_crtc_calc_dbuf_bw(&dbuf_bw_state->dbuf_bw[crtc->pipe], crtc_state);
+}
+
+void intel_dbuf_bw_update_hw_state(struct intel_display *display)
+{
 	struct intel_crtc *crtc;
 
 	if (DISPLAY_VER(display) < 9)
 		return;
 
-	for_each_intel_crtc(display, crtc) {
-		const struct intel_crtc_state *crtc_state =
-			to_intel_crtc_state(crtc->base.state);
-
-		skl_crtc_calc_dbuf_bw(&dbuf_bw_state->dbuf_bw[crtc->pipe], crtc_state);
-	}
+	for_each_intel_crtc(display, crtc)
+		intel_dbuf_bw_crtc_update_noatomic(crtc);
 }
 
 void intel_dbuf_bw_crtc_disable_noatomic(struct intel_crtc *crtc)

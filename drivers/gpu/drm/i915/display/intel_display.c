@@ -67,6 +67,7 @@
 #include "intel_cursor.h"
 #include "intel_cursor_regs.h"
 #include "intel_cx0_phy.h"
+#include "intel_dbuf_bw.h"
 #include "intel_ddi.h"
 #include "intel_de.h"
 #include "intel_dip.h"
@@ -678,6 +679,14 @@ void intel_plane_disable_noatomic(struct intel_crtc *crtc,
 	intel_plane_fixup_bitmasks(crtc_state);
 
 	skl_wm_plane_disable_noatomic(crtc, plane);
+
+	/*
+	 * Keep the global bandwidth states in sync with the updated
+	 * CRTC-local plane and DDB state. Otherwise a later atomic check
+	 * may skip the update when its old and new inputs are identical.
+	 */
+	intel_bw_crtc_update_noatomic(crtc);
+	intel_dbuf_bw_crtc_update_noatomic(crtc);
 
 	if ((crtc_state->active_planes & ~BIT(PLANE_CURSOR)) == 0 &&
 	    hsw_ips_disable(crtc_state)) {

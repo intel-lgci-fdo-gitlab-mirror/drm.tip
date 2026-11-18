@@ -32,6 +32,7 @@ int intel_dbuf_bw_calc_min_cdclk(struct intel_atomic_state *state,
 int intel_dbuf_bw_min_cdclk(struct intel_display *display,
 			    const struct intel_dbuf_bw_state *dbuf_bw_state);
 void intel_dbuf_bw_update_hw_state(struct intel_display *display);
+void intel_dbuf_bw_crtc_update_noatomic(struct intel_crtc *crtc);
 void intel_dbuf_bw_crtc_disable_noatomic(struct intel_crtc *crtc);
 
 #endif /* __INTEL_DBUF_BW_H__ */
