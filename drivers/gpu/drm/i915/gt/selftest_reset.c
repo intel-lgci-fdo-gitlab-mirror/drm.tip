@@ -44,7 +44,8 @@ __igt_reset_stolen(struct intel_gt *gt,
 	if (!drm_mm_node_allocated(&ggtt->error_capture))
 		return 0;
 
-	num_pages = resource_size(dsm) >> PAGE_SHIFT;
+	num_pages = min_t(resource_size_t, resource_size(dsm),
+			  gt->i915->dsm.usable_size) >> PAGE_SHIFT;
 	if (!num_pages)
 		return 0;
 
