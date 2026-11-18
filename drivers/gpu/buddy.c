@@ -628,6 +628,26 @@ rbtree_last_free_block(struct rb_root *root)
 	return rbtree_get_free_block(rb_last(root));
 }
 
+/* Return the highest free block with lo <= offset <= hi. */
+static struct gpu_buddy_block *
+rbtree_last_free_block_in(struct rb_root *root, u64 lo, u64 hi)
+{
+	struct gpu_buddy_block *block, *last = NULL;
+	struct rb_node *node = root->rb_node;
+
+	while (node) {
+		block = rbtree_get_free_block(node);
+		if (gpu_buddy_block_offset(block) > hi) {
+			node = node->rb_left;
+		} else {
+			last = block;
+			node = node->rb_right;
+		}
+	}
+
+	return last && gpu_buddy_block_offset(last) >= lo ? last : NULL;
+}
+
 static struct gpu_buddy_block *
 rbtree_last_clear_free_block(struct rb_root *root,
 			     enum gpu_block_state min_block_state)
@@ -664,6 +684,51 @@ rbtree_last_clear_free_block(struct rb_root *root,
 	}
 
 	return block;
+}
+
+static struct gpu_buddy_block *
+rbtree_range_best_block(struct rb_root *root, u64 lo, u64 hi,
+			enum gpu_block_state min_state)
+{
+	struct rb_node *node = root->rb_node;
+	struct gpu_buddy_block *best = NULL;
+	struct rb_node *prev = NULL;
+
+	while (node) {
+		struct gpu_buddy_block *block = rbtree_get_free_block(node);
+		bool pruned = block->subtree_block_state < min_state;
+		u64 off = gpu_buddy_block_offset(block);
+		bool desc_right = !pruned && off <= hi;
+		bool desc_left = !pruned && off >= lo;
+		struct rb_node *next;
+
+		if (prev == rb_parent(node) && desc_right && node->rb_right) {
+			/* First visit: higher offsets first. */
+			next = node->rb_right;
+		} else if (prev && prev == node->rb_left) {
+			next = rb_parent(node);
+		} else {
+			/* Right subtree done: score this node, then go left. */
+			if (!pruned && off >= lo && off <= hi &&
+			    gpu_block_cached_state(block) >= min_state) {
+				if (gpu_block_cached_state(block) == GPU_BLOCK_CLEAR)
+					return block;
+				/* Highest mixed block; only a clear one beats it. */
+				best = block;
+				min_state = GPU_BLOCK_CLEAR;
+			}
+
+			if (desc_left && node->rb_left)
+				next = node->rb_left;
+			else
+				next = rb_parent(node);
+		}
+
+		prev = node;
+		node = next;
+	}
+
+	return best;
 }
 
 static void rbtree_insert(struct gpu_buddy *mm,
@@ -1274,94 +1339,185 @@ static bool block_incompatible(struct gpu_buddy_block *block, unsigned int flags
 }
 
 static struct gpu_buddy_block *
-__alloc_range_bias(struct gpu_buddy *mm,
-		   u64 start, u64 end,
-		   unsigned int order,
-		   unsigned long flags,
-		   bool fallback)
+__alloc_range_clear_block(struct gpu_buddy *mm,
+			  u64 start, u64 end,
+			  unsigned int order,
+			  unsigned long flags)
 {
-	u64 req_size = mm->chunk_size << order;
 	struct gpu_buddy_block *block;
-	LIST_HEAD(dfs);
+	unsigned int tmp;
 	int err;
-	int i;
 
-	end = end - 1;
+	/* Only clear, non-top-down requests benefit from class navigation. */
+	if (!(flags & GPU_BUDDY_CLEAR_ALLOCATION) ||
+	    (flags & GPU_BUDDY_TOPDOWN_ALLOCATION))
+		return NULL;
 
-	/*
-	 * This range-constrained search hands back the highest/right-most
-	 * address that satisfies the request: the roots are seeded high-to-low
-	 * and the right (higher-address) child is descended first, making
-	 * top-down the default placement here.
-	 */
-	for (i = mm->n_roots - 1; i >= 0; --i)
-		list_add_tail(&mm->roots[i]->tmp_link, &dfs);
+	for (tmp = order; tmp <= mm->max_order; ++tmp) {
+		enum gpu_block_state min_state;
+		u64 size;
 
-	do {
-		u64 block_start;
-		u64 block_end;
-
-		block = list_first_entry_or_null(&dfs,
-						 struct gpu_buddy_block,
-						 tmp_link);
-		if (!block)
+		size = mm->chunk_size << tmp;
+		if (size > end - start)
 			break;
 
-		list_del(&block->tmp_link);
+		/*
+		 * At the requested order a clear or mixed block is handed back
+		 * whole (no split). At a higher order only a wholly-clear block
+		 * is accepted, so splitting it down produces clear children and
+		 * never strands a dirty sibling.
+		 */
+		min_state = (tmp == order) ? GPU_BLOCK_MIXED : GPU_BLOCK_CLEAR;
 
-		if (block->subtree_max_free_order < (int)order)
-			continue;
+		block = rbtree_range_best_block(&mm->free_tree[tmp],
+						start, end - size, min_state);
+		if (block)
+			goto split_down;
+	}
 
-		block_start = gpu_buddy_block_offset(block);
-		block_end = block_start + gpu_buddy_block_size(mm, block) - 1;
+	return NULL;
 
-		if (!overlaps(start, end, block_start, block_end))
-			continue;
+split_down:
+	while (gpu_buddy_block_order(block) != order) {
+		err = split_block(mm, block);
+		if (unlikely(err))
+			goto err_undo;
 
-		if (block_start < start || block_end > end) {
-			u64 adjusted_start = max(block_start, start);
-			u64 adjusted_end = min(block_end, end);
+		/*
+		 * The parent is wholly clear above the requested order, so both
+		 * children are clear and fully inside the window; descend the
+		 * higher-address child to match the top-down default placement.
+		 */
+		block = block->right;
+	}
 
-			if (round_down(adjusted_end + 1, req_size) <=
-			    round_up(adjusted_start, req_size))
-				continue;
-
-			/*
-			 * Strict pass: don't split a partially-overlapping free
-			 * block; rejecting its child would strand the split. Let
-			 * the fallback pass consume it (either class accepted).
-			 */
-			if (!fallback && gpu_buddy_block_is_free(block))
-				continue;
-		}
-
-		if (!fallback && block_incompatible(block, flags))
-			continue;
-
-		/* Not pruned at @order, so this block itself is FREE */
-		if (contains(start, end, block_start, block_end) &&
-		    order == gpu_buddy_block_order(block))
-			return block;
-
-		if (!gpu_buddy_block_is_split(block)) {
-			err = split_block(mm, block);
-			if (unlikely(err))
-				goto err_undo;
-		}
-
-		list_add(&block->left->tmp_link, &dfs);
-		list_add(&block->right->tmp_link, &dfs);
-	} while (1);
-
-	return ERR_PTR(-ENOSPC);
+	return block;
 
 err_undo:
-	/*
-	 * We really don't want to leave around a bunch of split blocks, since
-	 * bigger is better, so make sure we merge everything back before we
-	 * free the allocated blocks.
-	 */
 	__gpu_buddy_undo_splits(mm, block);
+	return ERR_PTR(err);
+}
+
+static struct gpu_buddy_block *
+__alloc_range_block(struct gpu_buddy *mm, struct rb_root *root,
+		    u64 start, u64 end, u64 req_size,
+		    bool strict, unsigned long flags,
+		    u64 *out_offset)
+{
+	struct gpu_buddy_block *last = rbtree_last_free_block_in(root, 0, end - 1);
+	struct rb_node *node;
+
+	/* Seek to the highest-offset block below @end, then walk down. */
+	for (node = last ? &last->rb : NULL; node; node = rb_prev(node)) {
+		u64 block_offset, block_end, low, high, offset;
+		struct gpu_buddy_block *block;
+
+		block = rbtree_get_free_block(node);
+		block_offset = gpu_buddy_block_offset(block);
+		block_end = block_offset + gpu_buddy_block_size(mm, block);
+
+		/* Offsets descend; once below the window nothing else fits. */
+		if (block_end <= start)
+			break;
+
+		if (strict && (block_offset < start || block_end > end))
+			continue;
+		if (strict && block_incompatible(block, flags))
+			continue;
+
+		low = max(block_offset, start);
+		high = min(block_end, end);
+		if (high < req_size)
+			continue;
+
+		offset = round_down(high - req_size, req_size);
+		if (offset < low)
+			continue;
+
+		*out_offset = offset;
+		return block;
+	}
+
+	return NULL;
+}
+
+static struct gpu_buddy_block *
+__alloc_range_freetree(struct gpu_buddy *mm,
+		       u64 start, u64 end,
+		       unsigned int order,
+		       unsigned long flags)
+{
+	u64 req_size = mm->chunk_size << order;
+	struct gpu_buddy_block *preferred_block;
+	u64 max_offset = 0;
+	unsigned int pass;
+	int err;
+
+	if (start >= end)
+		return ERR_PTR(-ENOSPC);
+
+	/* Clear, non-top-down: try clear space first, then placement. */
+	if ((flags & GPU_BUDDY_CLEAR_ALLOCATION) &&
+	    !(flags & GPU_BUDDY_TOPDOWN_ALLOCATION)) {
+		preferred_block = __alloc_range_clear_block(mm, start, end,
+							    order, flags);
+		if (IS_ERR(preferred_block))
+			return preferred_block;
+		if (preferred_block)
+			return preferred_block;
+	}
+
+	/* Pass 0: strict (contained, class-match); pass 1: fallback (any). */
+	for (pass = 0; pass < 2; pass++) {
+		bool strict = (pass == 0);
+		unsigned int tmp;
+
+		preferred_block = NULL;
+		for (tmp = order; tmp <= mm->max_order; ++tmp) {
+			struct gpu_buddy_block *block;
+			u64 offset;
+
+			block = __alloc_range_block(mm, &mm->free_tree[tmp],
+						    start, end,
+						    req_size, strict,
+						    flags, &offset);
+			if (block &&
+			    (!preferred_block || offset > max_offset)) {
+				preferred_block = block;
+				max_offset = offset;
+			}
+		}
+
+		if (preferred_block)
+			break;
+	}
+
+	if (!preferred_block)
+		return ERR_PTR(-ENOSPC);
+
+	/*
+	 * Split @preferred_block down to the order-@order block covering
+	 * @max_offset.
+	 */
+	while (gpu_buddy_block_order(preferred_block) != order) {
+		u64 mid_offset;
+
+		err = split_block(mm, preferred_block);
+		if (unlikely(err))
+			goto err_undo;
+
+		mid_offset = gpu_buddy_block_offset(preferred_block) +
+			     (gpu_buddy_block_size(mm, preferred_block) >> 1);
+		if (max_offset >= mid_offset)
+			preferred_block = preferred_block->right;
+		else
+			preferred_block = preferred_block->left;
+	}
+
+	return preferred_block;
+
+err_undo:
+	__gpu_buddy_undo_splits(mm, preferred_block);
 	return ERR_PTR(err);
 }
 
@@ -1371,18 +1527,7 @@ __gpu_buddy_alloc_range_bias(struct gpu_buddy *mm,
 			     unsigned int order,
 			     unsigned long flags)
 {
-	struct gpu_buddy_block *block;
-	bool fallback;
-
-	fallback = !(gpu_buddy_clear_avail(mm) && mm->dirty.total_dirty);
-
-	block = __alloc_range_bias(mm, start, end, order,
-				   flags, fallback);
-	if (IS_ERR(block) && !fallback)
-		return __alloc_range_bias(mm, start, end, order,
-					  flags, true);
-
-	return block;
+	return __alloc_range_freetree(mm, start, end, order, flags);
 }
 
 /* Return the highest-address free block of at least @order. */
