@@ -88,7 +88,7 @@ struct intel_colorop *intel_color_pipeline_plane_add_colorop(struct drm_plane *p
 		break;
 	case INTEL_PLANE_CB_3DLUT:
 		ret = drm_plane_colorop_3dlut_init(dev, &colorop->base, plane,
-						   &intel_colorop_funcs, 17,
+						   &intel_colorop_funcs, LUT_3D_SIZE,
 						   DRM_COLOROP_LUT3D_INTERPOLATION_TETRAHEDRAL,
 						   true);
 		break;
