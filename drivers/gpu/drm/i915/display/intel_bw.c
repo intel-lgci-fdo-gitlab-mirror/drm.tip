@@ -1444,6 +1444,20 @@ static void intel_bw_crtc_update(struct intel_bw_state *bw_state,
 		    bw_state->num_active_planes[crtc->pipe]);
 }
 
+void intel_bw_crtc_update_noatomic(struct intel_crtc *crtc)
+{
+	struct intel_display *display = to_intel_display(crtc);
+	struct intel_bw_state *bw_state =
+		to_intel_bw_state(display->bw.obj.state);
+	const struct intel_crtc_state *crtc_state =
+		to_intel_crtc_state(crtc->base.state);
+
+	if (DISPLAY_VER(display) < 11)
+		return;
+
+	intel_bw_crtc_update(bw_state, crtc_state);
+}
+
 void intel_bw_update_hw_state(struct intel_display *display)
 {
 	struct intel_bw_state *bw_state =
@@ -1456,12 +1470,9 @@ void intel_bw_update_hw_state(struct intel_display *display)
 	bw_state->pipe_sagv_reject = 0;
 
 	for_each_intel_crtc(display, crtc) {
-		const struct intel_crtc_state *crtc_state =
-			to_intel_crtc_state(crtc->base.state);
 		enum pipe pipe = crtc->pipe;
 
-		if (DISPLAY_VER(display) >= 11)
-			intel_bw_crtc_update(bw_state, crtc_state);
+		intel_bw_crtc_update_noatomic(crtc);
 
 		/* initially SAGV has been forced off */
 		bw_state->pipe_sagv_reject |= BIT(pipe);
