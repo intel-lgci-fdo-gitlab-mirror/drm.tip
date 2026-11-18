@@ -4278,9 +4278,10 @@ void intel_color_plane_commit_arm(struct intel_dsb *dsb,
 				  const struct intel_plane_state *plane_state)
 {
 	struct intel_display *display = to_intel_display(plane_state);
+	struct intel_plane *plane = to_intel_plane(plane_state->uapi.plane);
 	struct intel_crtc *crtc = to_intel_crtc(plane_state->uapi.crtc);
 
-	if (crtc && intel_color_crtc_has_3dlut(display, crtc->pipe))
+	if (crtc && intel_color_plane_has_3dlut(display, plane->pipe, plane->id))
 		glk_lut_3d_commit(dsb, crtc, !!plane_state->hw.lut_3d);
 }
 
@@ -4311,6 +4312,13 @@ intel_color_crtc_has_3dlut(struct intel_display *display, enum pipe pipe)
 		return pipe == PIPE_A || pipe == PIPE_B;
 	else
 		return false;
+}
+
+bool intel_color_plane_has_3dlut(struct intel_display *display,
+				 enum pipe pipe, enum plane_id plane_id)
+{
+	return DISPLAY_VER(display) >= 35 && plane_id == PLANE_PRIMARY &&
+		intel_color_crtc_has_3dlut(display, pipe);
 }
 
 static void
