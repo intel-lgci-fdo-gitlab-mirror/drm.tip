@@ -306,7 +306,17 @@ out:
 	xe_pm_runtime_put(xe);
 }
 
-static void xe_late_bind_fw_load(struct xe_late_bind *late_bind)
+static bool xe_late_bind_ocode_is_loaded(struct xe_late_bind_fw *lbfw)
+{
+	struct xe_device *xe = late_bind_fw_to_xe(lbfw);
+
+	if (lbfw->type != INTEL_LB_TYPE_OCODE || !xe->info.has_sysctrl)
+		return false;
+
+	return xe_sysctrl_is_oobmsm_fw_ready(xe);
+}
+
+static void xe_late_bind_fw_load(struct xe_late_bind *late_bind, bool resume)
 {
 	struct xe_device *xe = late_bind_to_xe(late_bind);
 	struct xe_late_bind_fw *lbfw;
@@ -314,6 +324,11 @@ static void xe_late_bind_fw_load(struct xe_late_bind *late_bind)
 
 	for (fw_id = 0; fw_id < XE_LB_FW_MAX_ID; fw_id++) {
 		lbfw = &late_bind->late_bind_fw[fw_id];
+		if (resume && lbfw->payload && xe_late_bind_ocode_is_loaded(lbfw)) {
+			drm_dbg(&xe->drm, "%s firmware already loaded, skipping\n",
+				fw_id_to_name[lbfw->id]);
+			continue;
+		}
 		if (lbfw->payload) {
 			xe_pm_runtime_get_noresume(xe);
 			queue_work(late_bind->wq, &lbfw->work);
@@ -511,7 +526,7 @@ void xe_late_bind_pm_resume(struct xe_late_bind *late_bind)
 	if (!late_bind->component_added || late_bind->disable)
 		return;
 
-	xe_late_bind_fw_load(late_bind);
+	xe_late_bind_fw_load(late_bind, true);
 }
 
 /**
@@ -550,7 +565,7 @@ int xe_late_bind_init(struct xe_late_bind *late_bind)
 	if (err)
 		return err;
 
-	xe_late_bind_fw_load(late_bind);
+	xe_late_bind_fw_load(late_bind, false);
 
 	return 0;
 }
