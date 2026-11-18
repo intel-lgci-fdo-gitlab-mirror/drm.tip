@@ -35,6 +35,7 @@
 #include "xe_gt_mcr.h"
 #include "xe_gt_printk.h"
 #include "xe_gt_sriov_pf.h"
+#include "xe_gt_sriov_pf_config.h"
 #include "xe_gt_sriov_vf.h"
 #include "xe_gt_stats.h"
 #include "xe_gt_sysfs.h"
@@ -890,6 +891,18 @@ static int do_gt_restart(struct xe_gt *gt)
 
 	/* Get CCS mode in sync between sw/hw */
 	xe_gt_apply_ccs_mode(gt);
+
+	/*
+	 * The GuC was reloaded and lost the PF configuration pushed to it,
+	 * including the scheduling parameters. Restore it before
+	 * xe_uc_start() resumes submission: exec queues re-registered with
+	 * the GuC under its default configuration may be accepted but never
+	 * dispatched, leaving their jobs unstarted and their fences unsignaled.
+	 * The asynchronous PF restart below pushes the configuration again,
+	 * which is harmless.
+	 */
+	if (IS_SRIOV_PF(gt_to_xe(gt)))
+		xe_gt_sriov_pf_config_restart(gt);
 
 	err = xe_uc_start(&gt->uc);
 	if (err)
