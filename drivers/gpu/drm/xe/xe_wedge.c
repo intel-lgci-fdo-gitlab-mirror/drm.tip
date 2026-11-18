@@ -157,7 +157,7 @@ void xe_wedge_declare(struct xe_device *xe, unsigned long method)
 	 * hangs, so wedge the device with 'none' recovery method and have
 	 * it available to the user for debugging.
 	 */
-	if (xe->wedged.mode == XE_WEDGED_MODE_UPON_ANY_HANG_NO_RESET)
+	if (xe_wedge_mode_is_no_reset(xe))
 		xe->wedged.method = DRM_WEDGE_RECOVERY_NONE;
 	else
 		xe->wedged.method = method;
@@ -184,7 +184,7 @@ static int wedge_validate_mode(struct xe_device *xe, unsigned int mode)
 	if (mode > XE_WEDGED_MODE_UPON_ANY_HANG_NO_RESET) {
 		xe_dbg(xe, "wedged_mode: invalid value (%u)\n", mode);
 		return -EINVAL;
-	} else if (mode == XE_WEDGED_MODE_UPON_ANY_HANG_NO_RESET && (IS_SRIOV_VF(xe) ||
+	} else if (xe_wedge_mode_is_no_reset(xe) && (IS_SRIOV_VF(xe) ||
 		   (IS_SRIOV_PF(xe) && !IS_ENABLED(CONFIG_DRM_XE_DEBUG)))) {
 		xe_dbg(xe, "wedged_mode: (%u) %s mode is not supported for %s\n",
 		       mode, wedge_mode_to_string(mode),
@@ -203,8 +203,7 @@ static bool wedge_mode_needs_policy_update(struct xe_device *xe, enum xe_wedged_
 	if (xe->wedged.mode == mode)
 		return false;
 
-	if (xe->wedged.mode == XE_WEDGED_MODE_UPON_ANY_HANG_NO_RESET ||
-	    mode == XE_WEDGED_MODE_UPON_ANY_HANG_NO_RESET)
+	if (xe_wedge_mode_is_no_reset(xe) || mode == XE_WEDGED_MODE_UPON_ANY_HANG_NO_RESET)
 		return true;
 
 	return false;
