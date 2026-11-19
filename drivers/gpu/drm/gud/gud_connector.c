@@ -13,6 +13,7 @@
 #include <drm/drm_edid.h>
 #include <drm/drm_encoder.h>
 #include <drm/drm_file.h>
+#include <drm/drm_framebuffer.h>
 #include <drm/drm_modeset_helper_vtables.h>
 #include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
@@ -314,17 +315,52 @@ static int gud_connector_atomic_check(struct drm_connector *connector,
 	return 0;
 }
 
+/*
+ * The device receives brightness as part of its display state, there is no
+ * dedicated request. Resend the current configuration with the new luminance
+ * and apply it, so that a luminance change doesn't need a modeset.
+ */
+static void gud_connector_set_luminance(const struct drm_connector_state *conn_state)
+{
+	struct drm_connector *connector = conn_state->connector;
+	struct gud_device *gdrm = to_gud_device(connector->dev);
+	struct drm_crtc_state *crtc_state = conn_state->crtc->state;
+	struct drm_plane_state *plane_state = gdrm->plane.state;
+	int idx, ret;
+
+	/*
+	 * gud_plane_atomic_check() sent the committed luminance with
+	 * GUD_REQ_SET_STATE_CHECK for these changes and gud_crtc_atomic_enable()
+	 * applied it. A modeset that only changed the active state didn't.
+	 */
+	if (crtc_state->mode_changed || crtc_state->connectors_changed)
+		return;
+
+	if (drm_WARN_ON_ONCE(connector->dev, !plane_state->fb))
+		return;
+
+	ret = gud_state_check(gdrm, &crtc_state->mode, plane_state->fb->format,
+			      plane_state->rotation, conn_state);
+	if (!ret && drm_dev_enter(connector->dev, &idx)) {
+		ret = gud_usb_set(gdrm, GUD_REQ_SET_STATE_COMMIT, 0, NULL, 0);
+		drm_dev_exit(idx);
+	}
+	if (ret)
+		gud_conn_err(connector, "Failed to set luminance", ret);
+}
+
 static const struct drm_connector_helper_funcs gud_connector_helper_funcs = {
 	.detect_ctx = gud_connector_detect,
 	.get_modes = gud_connector_get_modes,
 	.atomic_check = gud_connector_atomic_check,
+	.set_luminance = gud_connector_set_luminance,
 };
 
 static int gud_connector_late_register(struct drm_connector *connector)
 {
 	struct gud_connector *gconn = to_gud_connector(connector);
 
-	if (gconn->initial_brightness < 0)
+	if (IS_ENABLED(CONFIG_DRM_LUMINANCE) || gconn->initial_brightness < 0)
 		return 0;
 
 	return gud_connector_backlight_register(gconn);
@@ -593,10 +629,12 @@ out:
 	return ret;
 }
 
-int gud_connector_fill_properties(struct drm_connector_state *connector_state,
+int gud_connector_fill_properties(const struct drm_connector_state *connector_state,
 				  struct gud_property_req *properties)
 {
-	struct gud_connector *gconn = to_gud_connector(connector_state->connector);
+	struct drm_connector *connector = connector_state->connector;
+	struct gud_connector *gconn = to_gud_connector(connector);
+	struct drm_tv_connector_state tv = connector_state->tv;
 	unsigned int i;
 
 	for (i = 0; i < gconn->num_properties; i++) {
@@ -604,12 +642,16 @@ int gud_connector_fill_properties(struct drm_connector_state *connector_state,
 		u64 val;
 
 		if (prop == GUD_PROPERTY_BACKLIGHT_BRIGHTNESS) {
-			val = connector_state->tv.brightness;
+			/* The backlight device reuses tv.brightness to avoid subclassing */
+			if (connector->luminance_property)
+				val = connector_state->luminance;
+			else
+				val = tv.brightness;
 		} else {
 			unsigned int *state_val;
 
-			state_val = gud_connector_tv_state_val(prop, &connector_state->tv);
-			if (drm_WARN_ON_ONCE(connector_state->connector->dev, IS_ERR(state_val)))
+			state_val = gud_connector_tv_state_val(prop, &tv);
+			if (drm_WARN_ON_ONCE(connector->dev, IS_ERR(state_val)))
 				return PTR_ERR(state_val);
 
 			val = *state_val;
@@ -697,6 +739,13 @@ static int gud_connector_create(struct gud_device *gdrm, unsigned int index,
 	if (ret) {
 		gud_conn_err(connector, "Failed to add properties", ret);
 		return ret;
+	}
+
+	if (IS_ENABLED(CONFIG_DRM_LUMINANCE) && gconn->initial_brightness >= 0) {
+		ret = drm_connector_attach_luminance_property(connector, 0, 100,
+							      gconn->initial_brightness);
+		if (ret)
+			return ret;
 	}
 
 	gconn->encoder.possible_crtcs = drm_crtc_mask(&gdrm->crtc);
