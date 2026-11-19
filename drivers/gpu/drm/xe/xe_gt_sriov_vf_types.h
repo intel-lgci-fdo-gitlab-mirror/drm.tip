@@ -56,6 +56,8 @@ struct xe_gt_sriov_vf_migration {
 	spinlock_t lock;
 	/** @wq: wait queue for migration fixes */
 	wait_queue_head_t wq;
+	/** @scratch_lock: Mutex lock to serilize scratch buffer use */
+	struct mutex scratch_lock;
 	/** @scratch: Scratch memory for VF recovery */
 	void *scratch;
 	/** @fixups_complete_count: Counts completed fixups stages */
