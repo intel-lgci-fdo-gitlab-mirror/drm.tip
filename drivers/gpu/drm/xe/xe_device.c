@@ -437,6 +437,8 @@ struct xe_device *xe_device_create(struct pci_dev *pdev)
 	if (err)
 		return ERR_PTR(err);
 
+	xe->userptr_repin_timeout_ms = XE_USERPTR_REPIN_TIMEOUT_MS_DEFAULT;
+
 	return xe;
 }
 ALLOW_ERROR_INJECTION(xe_device_create, ERRNO); /* See xe_pci_probe() */
