@@ -2104,6 +2104,9 @@ static void __guc_exec_queue_process_msg_kill(struct xe_sched_msg *msg,
 	if (!kref_read(&q->refcount) || !bound || exec_queue_wedged(q))
 		return;
 
+	if (READ_ONCE(q->guc->kill_processed))
+		return;
+
 	ret = wait_event_timeout(q->guc->state_wq,
 				 (!exec_queue_pending_enable(q) &&
 				  !exec_queue_pending_disable(q)) ||
@@ -2122,6 +2125,10 @@ static void __guc_exec_queue_process_msg_kill(struct xe_sched_msg *msg,
 
 	if (exec_queue_enabled(q))
 		disable_scheduling(q, true);
+
+	/* Publish only after disable_scheduling() has established pending state. */
+	smp_store_release(&q->guc->kill_processed, true);
+	wake_up_all(&q->guc->state_wq);
 }
 
 #define CLEANUP				1	/* Non-zero values to catch uninitialized msg */
@@ -2349,6 +2356,45 @@ static void guc_exec_queue_kill(struct xe_exec_queue *q)
 	}
 
 	xe_guc_exec_queue_trigger_cleanup(q);
+}
+
+static bool guc_exec_queue_kill_complete(struct xe_exec_queue *primary)
+{
+	unsigned int state;
+
+	/*
+	 * Pair with the primary KILL handler's release so earlier submission
+	 * work has finished and any required DISABLE has been issued.
+	 */
+	if (!smp_load_acquire(&primary->guc->kill_processed))
+		return false;
+
+	state = atomic_read(&primary->guc->state);
+
+	return !(state & (EXEC_QUEUE_STATE_ENABLED |
+			  EXEC_QUEUE_STATE_PENDING_DISABLE |
+			  EXEC_QUEUE_STATE_PENDING_ENABLE));
+}
+
+static void guc_exec_queue_kill_sync(struct xe_exec_queue *q)
+{
+	struct xe_exec_queue *primary = xe_exec_queue_multi_queue_primary(q);
+	struct xe_guc *guc = exec_queue_to_guc(primary);
+	long ret;
+
+	xe_assert(guc_to_xe(guc), exec_queue_killed(q));
+
+	/* FD close has already killed every primary before waiting on any member. */
+	ret = wait_event_timeout(primary->guc->state_wq,
+				 guc_exec_queue_kill_complete(primary) ||
+				 xe_guc_read_stopped(guc) ||
+				 vf_recovery(guc) ||
+				 exec_queue_wedged(primary), HZ * 5);
+	if (!ret) {
+		xe_gt_warn(q->gt, "Queue kill failed to respond, guc_id=%d\n",
+			   primary->guc->id);
+		xe_gt_reset_async(q->gt);
+	}
 }
 
 static void guc_exec_queue_add_msg(struct xe_exec_queue *q, struct xe_sched_msg *msg,
@@ -2829,6 +2875,7 @@ static const struct xe_exec_queue_ops guc_exec_queue_ops = {
 	.init = guc_exec_queue_init,
 	.reinit_kernel = guc_exec_queue_reinit_kernel,
 	.kill = guc_exec_queue_kill,
+	.kill_sync = guc_exec_queue_kill_sync,
 	.fini = guc_exec_queue_fini,
 	.destroy = guc_exec_queue_destroy,
 	.set_priority = guc_exec_queue_set_priority,

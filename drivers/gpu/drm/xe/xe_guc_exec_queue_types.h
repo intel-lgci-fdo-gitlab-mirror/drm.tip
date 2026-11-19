@@ -55,6 +55,12 @@ struct xe_guc_exec_queue {
 	/** @state_wq: wait queue for scheduling enable/disable state changes */
 	wait_queue_head_t state_wq;
 	/**
+	 * @kill_processed: KILL handler has drained earlier submission work and
+	 * issued any required disable. Published with release semantics and
+	 * never cleared by repeated kill requests.
+	 */
+	bool kill_processed;
+	/**
 	 * @suspend_pending: a suspend of the exec_queue is pending.
 	 * Protected by @sched.msg_lock.
 	 */
