@@ -70,7 +70,10 @@ int gud_plane_atomic_check(struct drm_plane *plane,
 			   struct drm_atomic_commit *state);
 void gud_plane_atomic_update(struct drm_plane *plane,
 			     struct drm_atomic_commit *atomic_state);
-int gud_connector_fill_properties(struct drm_connector_state *connector_state,
+int gud_state_check(struct gud_device *gdrm, const struct drm_display_mode *mode,
+		    const struct drm_format_info *format, unsigned int rotation,
+		    const struct drm_connector_state *connector_state);
+int gud_connector_fill_properties(const struct drm_connector_state *connector_state,
 				  struct gud_property_req *properties);
 int gud_get_connectors(struct gud_device *gdrm);
 

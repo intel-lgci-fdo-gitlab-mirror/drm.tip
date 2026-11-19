@@ -450,6 +450,77 @@ static void gud_fb_handle_damage(struct gud_device *gdrm, struct drm_framebuffer
 	gud_flush_damage(gdrm, fb, src, !drm_gem_is_imported(fb->obj[0]), damage);
 }
 
+/*
+ * Send the display configuration to the device with GUD_REQ_SET_STATE_CHECK,
+ * a following GUD_REQ_SET_STATE_COMMIT applies it.
+ */
+int gud_state_check(struct gud_device *gdrm, const struct drm_display_mode *mode,
+		    const struct drm_format_info *format, unsigned int rotation,
+		    const struct drm_connector_state *connector_state)
+{
+	struct drm_device *drm = &gdrm->drm;
+	unsigned int i, num_properties;
+	struct gud_state_req *req;
+	int idx, ret;
+	size_t len;
+
+	if (format->format == DRM_FORMAT_XRGB8888 && gdrm->xrgb8888_emulation_format)
+		format = gdrm->xrgb8888_emulation_format;
+
+	len = struct_size(req, properties,
+			  size_add(GUD_PROPERTIES_MAX_NUM, GUD_CONNECTOR_PROPERTIES_MAX_NUM));
+	req = kzalloc(len, GFP_KERNEL);
+	if (!req)
+		return -ENOMEM;
+
+	gud_from_display_mode(&req->mode, mode);
+
+	req->format = gud_from_fourcc(format->format);
+	if (drm_WARN_ON_ONCE(drm, !req->format)) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	req->connector = drm_connector_index(connector_state->connector);
+
+	ret = gud_connector_fill_properties(connector_state, req->properties);
+	if (ret < 0)
+		goto out;
+
+	num_properties = ret;
+	for (i = 0; i < gdrm->num_properties; i++) {
+		u16 prop = gdrm->properties[i];
+		u64 val;
+
+		switch (prop) {
+		case GUD_PROPERTY_ROTATION:
+			/* DRM UAPI matches the protocol so use value directly */
+			val = rotation;
+			break;
+		default:
+			drm_WARN_ON_ONCE(drm, 1);
+			ret = -EINVAL;
+			goto out;
+		}
+
+		req->properties[num_properties].prop = cpu_to_le16(prop);
+		req->properties[num_properties].val = cpu_to_le64(val);
+		num_properties++;
+	}
+
+	if (drm_dev_enter(drm, &idx)) {
+		len = struct_size(req, properties, num_properties);
+		ret = gud_usb_set(gdrm, GUD_REQ_SET_STATE_CHECK, 0, req, len);
+		drm_dev_exit(idx);
+	} else {
+		ret = -ENODEV;
+	}
+out:
+	kfree(req);
+
+	return ret;
+}
+
 int gud_plane_atomic_check(struct drm_plane *plane,
 			   struct drm_atomic_commit *state)
 {
@@ -458,16 +529,13 @@ int gud_plane_atomic_check(struct drm_plane *plane,
 	struct drm_plane_state *new_plane_state = drm_atomic_get_new_plane_state(state, plane);
 	struct drm_crtc *crtc = new_plane_state->crtc;
 	struct drm_crtc_state *crtc_state = NULL;
-	const struct drm_display_mode *mode;
 	struct drm_framebuffer *old_fb = old_plane_state->fb;
 	struct drm_connector_state *connector_state = NULL;
 	struct drm_framebuffer *fb = new_plane_state->fb;
 	const struct drm_format_info *format;
 	struct drm_connector *connector;
-	unsigned int i, num_properties;
-	struct gud_state_req *req;
-	int idx, ret;
-	size_t len;
+	unsigned int i;
+	int ret;
 
 	if (crtc)
 		crtc_state = drm_atomic_get_new_crtc_state(state, crtc);
@@ -488,7 +556,6 @@ int gud_plane_atomic_check(struct drm_plane *plane,
 	if (old_plane_state->rotation != new_plane_state->rotation)
 		crtc_state->mode_changed = true;
 
-	mode = &crtc_state->mode;
 	format = fb->format;
 
 	if (old_fb && old_fb->format != format)
@@ -500,9 +567,6 @@ int gud_plane_atomic_check(struct drm_plane *plane,
 	/* Only one connector is supported */
 	if (hweight32(crtc_state->connector_mask) != 1)
 		return -EINVAL;
-
-	if (format->format == DRM_FORMAT_XRGB8888 && gdrm->xrgb8888_emulation_format)
-		format = gdrm->xrgb8888_emulation_format;
 
 	for_each_new_connector_in_state(state, connector, connector_state, i) {
 		if (connector_state->crtc)
@@ -530,58 +594,8 @@ int gud_plane_atomic_check(struct drm_plane *plane,
 	if (drm_WARN_ON_ONCE(plane->dev, !connector_state))
 		return -ENOENT;
 
-	len = struct_size(req, properties,
-			  size_add(GUD_PROPERTIES_MAX_NUM, GUD_CONNECTOR_PROPERTIES_MAX_NUM));
-	req = kzalloc(len, GFP_KERNEL);
-	if (!req)
-		return -ENOMEM;
-
-	gud_from_display_mode(&req->mode, mode);
-
-	req->format = gud_from_fourcc(format->format);
-	if (drm_WARN_ON_ONCE(plane->dev, !req->format)) {
-		ret = -EINVAL;
-		goto out;
-	}
-
-	req->connector = drm_connector_index(connector_state->connector);
-
-	ret = gud_connector_fill_properties(connector_state, req->properties);
-	if (ret < 0)
-		goto out;
-
-	num_properties = ret;
-	for (i = 0; i < gdrm->num_properties; i++) {
-		u16 prop = gdrm->properties[i];
-		u64 val;
-
-		switch (prop) {
-		case GUD_PROPERTY_ROTATION:
-			/* DRM UAPI matches the protocol so use value directly */
-			val = new_plane_state->rotation;
-			break;
-		default:
-			drm_WARN_ON_ONCE(plane->dev, 1);
-			ret = -EINVAL;
-			goto out;
-		}
-
-		req->properties[num_properties].prop = cpu_to_le16(prop);
-		req->properties[num_properties].val = cpu_to_le64(val);
-		num_properties++;
-	}
-
-	if (drm_dev_enter(fb->dev, &idx)) {
-		len = struct_size(req, properties, num_properties);
-		ret = gud_usb_set(gdrm, GUD_REQ_SET_STATE_CHECK, 0, req, len);
-		drm_dev_exit(idx);
-	}  else {
-		ret = -ENODEV;
-	}
-out:
-	kfree(req);
-
-	return ret;
+	return gud_state_check(gdrm, &crtc_state->mode, format, new_plane_state->rotation,
+			       connector_state);
 }
 
 void gud_crtc_atomic_enable(struct drm_crtc *crtc,
