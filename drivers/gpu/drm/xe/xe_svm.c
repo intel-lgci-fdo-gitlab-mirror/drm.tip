@@ -2055,7 +2055,7 @@ out_unlock:
 static int xe_svm_get_pagemaps(struct xe_vm *vm)
 {
 	struct xe_device *xe = vm->xe;
-	struct xe_pagemap *xpagemap;
+	struct xe_pagemap *xpagemap = NULL;
 	struct xe_tile *tile;
 	int id;
 
