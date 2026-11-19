@@ -559,6 +559,30 @@ static bool vf_recovery(struct xe_guc *guc)
 	return xe_gt_recovery_pending(guc_to_gt(guc));
 }
 
+/**
+ * xe_guc_submit_wake_state_waiters() - Wake all scheduling-state waiters
+ * @guc: the &xe_guc
+ *
+ * Notify per-queue waiters when a GuC-wide stop or recovery changes their
+ * wait conditions. May be called from interrupt context.
+ */
+void xe_guc_submit_wake_state_waiters(struct xe_guc *guc)
+{
+	struct xarray *lookup = &guc->submission_state.exec_queue_lookup;
+	struct xe_exec_queue *q;
+	unsigned long index, flags;
+
+	if (!guc->submission_state.initialized)
+		return;
+
+	/* Prevent removal and freeing of queues while waking their waiters. */
+	xa_lock_irqsave(lookup, flags);
+	xa_for_each(lookup, index, q)
+		if (q->guc->id == index)
+			wake_up_all(&q->guc->state_wq);
+	xa_unlock_irqrestore(lookup, flags);
+}
+
 static void xe_guc_exec_queue_trigger_cleanup(struct xe_exec_queue *q)
 {
 	struct xe_guc *guc = exec_queue_to_guc(q);
@@ -1380,7 +1404,7 @@ static void disable_scheduling_deregister(struct xe_guc *guc,
 		set_min_preemption_timeout(guc, q);
 
 	smp_rmb();
-	ret = wait_event_timeout(guc->ct.wq,
+	ret = wait_event_timeout(q->guc->state_wq,
 				 (!exec_queue_pending_enable(q) &&
 				  !exec_queue_pending_disable(q)) ||
 					 xe_guc_read_stopped(guc) ||
@@ -1441,6 +1465,7 @@ void xe_guc_submit_wedge(struct xe_guc *guc)
 			if (xe_exec_queue_get_unless_zero(q))
 				set_exec_queue_wedged(q);
 		mutex_unlock(&guc->submission_state.lock);
+		xe_guc_submit_wake_state_waiters(guc);
 	} else {
 		/* Forcefully kill any remaining exec queues, signal fences */
 		guc_submit_reset_prepare(guc);
@@ -1545,7 +1570,7 @@ static void enable_scheduling(struct xe_exec_queue *q)
 		xe_guc_ct_send(&guc->ct, action, ARRAY_SIZE(action),
 			       G2H_LEN_DW_SCHED_CONTEXT_MODE_SET, 1);
 
-	ret = wait_event_timeout(guc->ct.wq,
+	ret = wait_event_timeout(q->guc->state_wq,
 				 !exec_queue_pending_enable(q) ||
 				 xe_guc_read_stopped(guc) ||
 				 vf_recovery(guc), HZ * 5);
@@ -1697,7 +1722,7 @@ guc_exec_queue_timedout_job(struct drm_sched_job *drm_job)
 			 * Wait for any pending G2H to flush out before
 			 * modifying state
 			 */
-			ret = wait_event_timeout(guc->ct.wq,
+			ret = wait_event_timeout(primary->guc->state_wq,
 						 (!exec_queue_pending_enable(primary) &&
 						  !exec_queue_pending_disable(primary)) ||
 						 xe_guc_read_stopped(guc) ||
@@ -1719,7 +1744,7 @@ guc_exec_queue_timedout_job(struct drm_sched_job *drm_job)
 		 * lost. If this occurs, trigger a GT reset to recover.
 		 */
 		smp_rmb();
-		ret = wait_event_timeout(guc->ct.wq,
+		ret = wait_event_timeout(primary->guc->state_wq,
 					 !xe_uc_fw_is_running(&guc->fw) ||
 					 !exec_queue_pending_disable(primary) ||
 					 xe_guc_read_stopped(guc) ||
@@ -1997,7 +2022,7 @@ static void __guc_exec_queue_process_msg_suspend(struct xe_sched_msg *msg,
 
 	if (guc_exec_queue_allowed_to_change_state(q) && !exec_queue_suspended(q) &&
 	    exec_queue_enabled(q) && bound) {
-		wait_event(guc->ct.wq, vf_recovery(guc) ||
+		wait_event(q->guc->state_wq, vf_recovery(guc) ||
 			   ((q->guc->resume_time != RESUME_PENDING ||
 			   xe_guc_read_stopped(guc)) && !exec_queue_pending_disable(q)));
 
@@ -2146,6 +2171,7 @@ static int guc_exec_queue_init(struct xe_exec_queue *q)
 	ge->q = q;
 	init_rcu_head(&ge->rcu);
 	init_waitqueue_head(&ge->suspend_wait);
+	init_waitqueue_head(&ge->state_wq);
 
 	for (i = 0; i < MAX_STATIC_MSG_TYPE; ++i)
 		INIT_LIST_HEAD(&ge->static_msgs[i].link);
@@ -2813,6 +2839,7 @@ static int guc_submit_reset_prepare(struct xe_guc *guc)
 	ret = atomic_fetch_or(1, &guc->submission_state.stopped);
 	smp_wmb();
 	wake_up_all(&guc->ct.wq);
+	xe_guc_submit_wake_state_waiters(guc);
 
 	return ret;
 }
@@ -3376,6 +3403,7 @@ static void handle_sched_done(struct xe_guc *guc, struct xe_exec_queue *q,
 		clear_exec_queue_pending_enable(q);
 		smp_wmb();
 		wake_up_all(&guc->ct.wq);
+		wake_up_all(&q->guc->state_wq);
 	} else {
 		bool was_pending;
 
@@ -3420,7 +3448,7 @@ static void handle_sched_done(struct xe_guc *guc, struct xe_exec_queue *q,
 		 * such as the TDR see the updated state on the first re-check.
 		 */
 		smp_wmb();
-		wake_up_all(&guc->ct.wq);
+		wake_up_all(&q->guc->state_wq);
 	}
 }
 
