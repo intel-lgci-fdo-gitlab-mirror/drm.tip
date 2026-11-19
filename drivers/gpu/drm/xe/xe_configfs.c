@@ -13,6 +13,8 @@
 #include <linux/pci.h>
 #include <linux/string.h>
 
+#include <drm/drm_managed.h>
+
 #include "instructions/xe_mi_commands.h"
 #include "xe_configfs.h"
 #include "xe_defaults.h"
@@ -277,6 +279,24 @@
  *
  * This attribute can only be set before binding to the device.
  *
+ * GuC firmware override
+ * ---------------------
+ *
+ * Override the GuC firmware path for the primary and/or media GT. This is
+ * useful for testing a newer GuC firmware version without having to update the
+ * driver. The specified path must be relative to the /lib/firmware directory::
+ *
+ *	# echo 'path/to/guc_firmware' > /sys/kernel/config/xe/0000:03:00.0/primary_gt_guc_override
+ *	# echo 'path/to/guc_firmware' > /sys/kernel/config/xe/0000:03:00.0/media_gt_guc_override
+ *
+ * Writing an empty string disables the override::
+ *
+ *	# echo '' > /sys/kernel/config/xe/0000:03:00.0/primary_gt_guc_override
+ *	# echo '' > /sys/kernel/config/xe/0000:03:00.0/media_gt_guc_override
+ *
+ * A modparam is also available to override the GuC firmware path for all GTs,
+ * which takes precedence over the configfs override.
+ *
  * Remove devices
  * ==============
  *
@@ -309,6 +329,11 @@ struct xe_config_group_device {
 			unsigned int max_vfs;
 			bool admin_only_pf;
 		} sriov;
+
+		struct {
+			char *primary_gt;
+			char *media_gt;
+		} guc_overrides;
 	} config;
 
 	/* protects attributes */
@@ -330,6 +355,10 @@ static const struct xe_config_device device_defaults = {
 	.sriov = {
 		.max_vfs = XE_DEFAULT_MAX_VFS,
 		.admin_only_pf = XE_DEFAULT_ADMIN_ONLY_PF,
+	},
+	.guc_overrides = {
+		.primary_gt = NULL,
+		.media_gt = NULL,
 	},
 };
 
@@ -937,6 +966,84 @@ static ssize_t ctx_restore_post_bb_store(struct config_item *item,
 	return wa_bb_store(dev->config.ctx_restore_post_bb, dev, data, sz);
 }
 
+static ssize_t __gt_guc_override_show(struct xe_config_group_device *dev,
+				      char **override, char *page)
+{
+	guard(mutex)(&dev->lock);
+
+	return sprintf(page, "%s\n", *override ? *override : "no override");
+}
+
+static ssize_t __gt_guc_override_store(struct xe_config_group_device *dev,
+				       char **override, const char *page, size_t len)
+{
+	char *path;
+
+	if (len > PATH_MAX)
+		return -EINVAL;
+
+	guard(mutex)(&dev->lock);
+	if (is_bound(dev))
+		return -EBUSY;
+
+	/*
+	 * An empty string disables the override. Some bash commands can add a
+	 * '\n' or '\0 ' at the end of the string, so consider a string of
+	 * length 1 containing one of those characters as empty.
+	 */
+	if (!len || (len == 1 && (page[0] == '\n' || page[0] == '\0'))) {
+		kfree(*override);
+		*override = NULL;
+	} else {
+		path = krealloc(*override, len + 1, GFP_KERNEL);
+		if (!path)
+			return -ENOMEM;
+
+		memcpy(path, page, len);
+
+		/*
+		 * the echo command adds a trailing newline unless the -n option
+		 * is used, so replace it if present.
+		 */
+		if (path[len - 1] == '\n')
+			path[len - 1] = '\0';
+		else
+			path[len] = '\0';
+
+		*override = path;
+	}
+
+	return len;
+}
+
+static ssize_t primary_gt_guc_override_show(struct config_item *item, char *page)
+{
+	struct xe_config_group_device *dev = to_xe_config_group_device(item);
+
+	return __gt_guc_override_show(dev, &dev->config.guc_overrides.primary_gt, page);
+}
+
+static ssize_t primary_gt_guc_override_store(struct config_item *item, const char *page, size_t len)
+{
+	struct xe_config_group_device *dev = to_xe_config_group_device(item);
+
+	return __gt_guc_override_store(dev, &dev->config.guc_overrides.primary_gt, page, len);
+}
+
+static ssize_t media_gt_guc_override_show(struct config_item *item, char *page)
+{
+	struct xe_config_group_device *dev = to_xe_config_group_device(item);
+
+	return __gt_guc_override_show(dev, &dev->config.guc_overrides.media_gt, page);
+}
+
+static ssize_t media_gt_guc_override_store(struct config_item *item, const char *page, size_t len)
+{
+	struct xe_config_group_device *dev = to_xe_config_group_device(item);
+
+	return __gt_guc_override_store(dev, &dev->config.guc_overrides.media_gt, page, len);
+}
+
 CONFIGFS_ATTR(, ctx_restore_mid_bb);
 CONFIGFS_ATTR(, ctx_restore_post_bb);
 CONFIGFS_ATTR(, enable_multi_queue);
@@ -945,6 +1052,8 @@ CONFIGFS_ATTR(, enable_psmi);
 CONFIGFS_ATTR(, disable_vram_page_offline);
 CONFIGFS_ATTR(, engines_allowed);
 CONFIGFS_ATTR(, gt_types_allowed);
+CONFIGFS_ATTR(, media_gt_guc_override);
+CONFIGFS_ATTR(, primary_gt_guc_override);
 CONFIGFS_ATTR(, survivability_mode);
 
 static struct configfs_attribute *xe_config_device_attrs[] = {
@@ -956,6 +1065,8 @@ static struct configfs_attribute *xe_config_device_attrs[] = {
 	&attr_disable_vram_page_offline,
 	&attr_engines_allowed,
 	&attr_gt_types_allowed,
+	&attr_media_gt_guc_override,
+	&attr_primary_gt_guc_override,
 	&attr_survivability_mode,
 	NULL,
 };
@@ -966,6 +1077,8 @@ static void xe_config_device_release(struct config_item *item)
 
 	mutex_destroy(&dev->lock);
 
+	kfree(dev->config.guc_overrides.primary_gt);
+	kfree(dev->config.guc_overrides.media_gt);
 	kfree(dev->config.ctx_restore_mid_bb[0].cs);
 	kfree(dev->config.ctx_restore_post_bb[0].cs);
 	kfree(dev);
@@ -1477,6 +1590,43 @@ u32 xe_configfs_get_ctx_restore_post_bb(struct pci_dev *pdev,
 	config_group_put(&dev->group);
 
 	return len;
+}
+
+/**
+ * xe_configfs_guc_override - get configfs guc override path
+ * @pdev: pci device
+ * @gt_type: type of the GT for which to get the guc override path
+ *
+ * Return: A new drmm-managed allocation containing the path to the specified GT
+ * guc override if set, NULL otherwise
+ */
+const char *xe_configfs_guc_override(struct pci_dev *pdev, enum xe_gt_type gt_type)
+{
+	struct xe_config_group_device *dev = find_xe_config_group_device(pdev);
+	struct drm_device *drm = pci_get_drvdata(pdev);
+	const char *override, *path = NULL;
+
+	if (!dev)
+		return NULL;
+
+	if (!drm)
+		goto out_put;
+
+	scoped_guard(mutex, &dev->lock) {
+		if (gt_type == XE_GT_TYPE_MAIN)
+			override = dev->config.guc_overrides.primary_gt;
+		else if (gt_type == XE_GT_TYPE_MEDIA)
+			override = dev->config.guc_overrides.media_gt;
+		else
+			override = NULL;
+
+		if (override)
+			path = drmm_kstrdup(drm, override, GFP_KERNEL);
+	}
+
+out_put:
+	config_group_put(&dev->group);
+	return path;
 }
 
 #ifdef CONFIG_PCI_IOV

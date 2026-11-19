@@ -10,7 +10,9 @@
 #include <drm/drm_managed.h>
 
 #include "regs/xe_guc_regs.h"
+#include "xe_any.h"
 #include "xe_bo.h"
+#include "xe_configfs.h"
 #include "xe_device_types.h"
 #include "xe_force_wake.h"
 #include "xe_gsc.h"
@@ -291,13 +293,16 @@ uc_fw_auto_select(struct xe_device *xe, struct xe_uc_fw *uc_fw)
 static void
 uc_fw_override(struct xe_uc_fw *uc_fw)
 {
-	char *path_override = NULL;
+	struct xe_gt *gt = uc_fw_to_gt(uc_fw);
+	const char *path_override = NULL;
 
 	/* empty string disables, but it's not allowed for GuC */
 	switch (uc_fw->type) {
 	case XE_UC_FW_TYPE_GUC:
 		if (xe_modparam.guc_firmware_path && *xe_modparam.guc_firmware_path)
 			path_override = xe_modparam.guc_firmware_path;
+		else
+			path_override = xe_configfs_guc_override(xe_any_to_pdev(gt), gt->info.type);
 		break;
 	case XE_UC_FW_TYPE_HUC:
 		path_override = xe_modparam.huc_firmware_path;
