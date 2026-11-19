@@ -18,6 +18,7 @@
 #include <linux/delay.h>
 #include <linux/kthread.h>
 #include <linux/mm.h>
+#include <linux/mutex.h>
 #include <linux/sched/signal.h>
 #include <linux/swap.h>
 
@@ -540,7 +541,7 @@ static bool vm_suspend_rebind_worker(struct xe_vm *vm)
  */
 void xe_vm_resume_rebind_worker(struct xe_vm *vm)
 {
-	queue_work(vm->xe->ordered_wq, &vm->preempt.rebind_work);
+	xe_vm_queue_rebind_worker(vm);
 }
 
 #if IS_ENABLED(CONFIG_DRM_XE_USERPTR_INVAL_INJECT)
@@ -581,16 +582,19 @@ static void preempt_rebind_work_func(struct work_struct *w)
 	xe_assert(vm->xe, xe_vm_in_preempt_fence_mode(vm));
 	trace_xe_vm_rebind_worker_enter(vm);
 
+	mutex_lock(&vm->xe->rebind_lock);
 	down_write(&vm->lock);
 
 	if (xe_vm_is_closed_or_banned(vm)) {
 		up_write(&vm->lock);
+		mutex_unlock(&vm->xe->rebind_lock);
 		trace_xe_vm_rebind_worker_exit(vm);
 		return;
 	}
 
 	if (!try_wait_for_completion(&vm->xe->pm_block) && vm_suspend_rebind_worker(vm)) {
 		up_write(&vm->lock);
+		mutex_unlock(&vm->xe->rebind_lock);
 		/* We don't actually block but don't make progress. */
 		xe_pm_might_block_on_suspend();
 		return;
@@ -666,6 +670,7 @@ out_unlock_outer:
 		 * lock make progress between attempts.
 		 */
 		up_write(&vm->lock);
+		mutex_unlock(&vm->xe->rebind_lock);
 		free_preempt_fences(&preempt_fences);
 		xe_vm_queue_rebind_worker(vm);
 		trace_xe_vm_rebind_worker_exit(vm);
@@ -679,6 +684,7 @@ out_unlock_outer:
 		xe_vm_kill(vm, true);
 	}
 	up_write(&vm->lock);
+	mutex_unlock(&vm->xe->rebind_lock);
 
 	free_preempt_fences(&preempt_fences);
 

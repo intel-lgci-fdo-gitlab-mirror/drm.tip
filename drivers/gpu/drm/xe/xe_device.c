@@ -8,7 +8,9 @@
 #include <linux/aperture.h>
 #include <linux/delay.h>
 #include <linux/error-injection.h>
+#include <linux/mutex.h>
 #include <linux/units.h>
+#include <linux/workqueue.h>
 
 #include <drm/drm_client.h>
 #include <drm/drm_gem_ttm_helper.h>
@@ -396,6 +398,11 @@ static void xe_device_destroy(struct drm_device *dev, void *dummy)
 	if (xe->destroy_wq)
 		destroy_workqueue(xe->destroy_wq);
 
+	if (xe->rebind_wq)
+		destroy_workqueue(xe->rebind_wq);
+
+	mutex_destroy(&xe->rebind_lock);
+
 	ttm_device_fini(&xe->ttm);
 
 	if (atomic_dec_and_test(&xe_device_count))
@@ -472,6 +479,7 @@ int xe_device_init_early(struct xe_device *xe)
 		return err;
 
 	xe_bo_dev_init(&xe->bo_device);
+	mutex_init(&xe->rebind_lock);
 	atomic_inc(&xe_device_count);
 	err = drmm_add_action_or_reset(&xe->drm, xe_device_destroy, NULL);
 	if (err)
@@ -518,10 +526,11 @@ int xe_device_init_early(struct xe_device *xe)
 
 	xe->preempt_fence_wq = alloc_ordered_workqueue("xe-preempt-fence-wq",
 						       WQ_MEM_RECLAIM);
+	xe->rebind_wq = alloc_workqueue("xe-rebind-wq", WQ_UNBOUND, 1);
 	xe->ordered_wq = alloc_ordered_workqueue("xe-ordered-wq", 0);
 	xe->unordered_wq = alloc_workqueue("xe-unordered-wq", WQ_PERCPU, 0);
 	xe->destroy_wq = alloc_workqueue("xe-destroy-wq", WQ_PERCPU | WQ_MEM_RECLAIM, 0);
-	if (!xe->ordered_wq || !xe->unordered_wq ||
+	if (!xe->ordered_wq || !xe->unordered_wq || !xe->rebind_wq ||
 	    !xe->preempt_fence_wq || !xe->destroy_wq) {
 		/*
 		 * Cleanup done in xe_device_destroy via
