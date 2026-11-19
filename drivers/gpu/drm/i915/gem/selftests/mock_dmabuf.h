@@ -11,7 +11,7 @@
 
 struct mock_dmabuf {
 	int npages;
-	struct page *pages[];
+	struct page *pages[] __counted_by(npages);
 };
 
 static inline struct mock_dmabuf *to_mock(struct dma_buf *buf)

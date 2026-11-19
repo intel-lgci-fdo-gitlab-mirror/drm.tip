@@ -1114,6 +1114,7 @@ static struct i915_gem_engines *alloc_engines(unsigned int count)
 	if (!e)
 		return NULL;
 
+	e->num_engines = count;
 	i915_sw_fence_init(&e->fence, engines_notify);
 	return e;
 }
@@ -1124,6 +1125,7 @@ static struct i915_gem_engines *default_engines(struct i915_gem_context *ctx,
 	const unsigned int max = I915_NUM_ENGINES;
 	struct intel_engine_cs *engine;
 	struct i915_gem_engines *e, *err;
+	unsigned int num_engines = 0;
 
 	e = alloc_engines(max);
 	if (!e)
@@ -1147,7 +1149,7 @@ static struct i915_gem_engines *default_engines(struct i915_gem_context *ctx,
 		}
 
 		e->engines[engine->legacy_idx] = ce;
-		e->num_engines = max(e->num_engines, engine->legacy_idx + 1);
+		num_engines = max(num_engines, engine->legacy_idx + 1);
 
 		if (engine->class == RENDER_CLASS)
 			sseu = rcs_sseu;
@@ -1159,6 +1161,7 @@ static struct i915_gem_engines *default_engines(struct i915_gem_context *ctx,
 		}
 
 	}
+	e->num_engines = num_engines;
 
 	return e;
 
@@ -1211,7 +1214,6 @@ static struct i915_gem_engines *user_engines(struct i915_gem_context *ctx,
 	e = alloc_engines(num_engines);
 	if (!e)
 		return ERR_PTR(-ENOMEM);
-	e->num_engines = num_engines;
 
 	for (n = 0; n < num_engines; n++) {
 		struct intel_context *ce, *child;

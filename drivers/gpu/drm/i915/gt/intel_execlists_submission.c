@@ -201,7 +201,7 @@ struct virtual_engine {
 
 	/* And finally, which physical engines this virtual engine maps onto. */
 	unsigned int num_siblings;
-	struct intel_engine_cs *siblings[];
+	struct intel_engine_cs *siblings[] __counted_by(num_siblings);
 };
 
 static struct virtual_engine *to_virtual_engine(struct intel_engine_cs *engine)
@@ -3931,6 +3931,7 @@ execlists_create_virtual(struct intel_engine_cs **siblings, unsigned int count,
 	if (!ve)
 		goto err;
 
+	ve->num_siblings = 0;
 	ve->base.i915 = i915;
 	ve->base.gt = siblings[0]->gt;
 	ve->base.uncore = siblings[0]->uncore;
@@ -4009,7 +4010,8 @@ execlists_create_virtual(struct intel_engine_cs **siblings, unsigned int count,
 		GEM_BUG_ON(RB_EMPTY_NODE(&ve->nodes[sibling->id].rb));
 		RB_CLEAR_NODE(&ve->nodes[sibling->id].rb);
 
-		ve->siblings[ve->num_siblings++] = sibling;
+		ve->num_siblings++;
+		ve->siblings[ve->num_siblings - 1] = sibling;
 		ve->base.mask |= sibling->mask;
 		ve->base.logical_mask |= sibling->logical_mask;
 

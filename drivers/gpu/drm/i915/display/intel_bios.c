@@ -148,7 +148,8 @@ static u32 raw_block_offset(const void *bdb, enum bdb_block_id section_id)
 struct bdb_block_entry {
 	struct list_head node;
 	enum bdb_block_id section_id;
-	u8 data[];
+	size_t data_size;
+	u8 data[] __counted_by(data_size);
 };
 
 static const void *
@@ -468,6 +469,7 @@ init_bdb_block(struct intel_display *display,
 	void *temp_block = NULL;
 	const void *block;
 	size_t block_size;
+	size_t data_size;
 
 	block = find_raw_section(bdb, section_id);
 
@@ -492,12 +494,14 @@ init_bdb_block(struct intel_display *display,
 	if (section_id == BDB_MIPI_SEQUENCE && *(const u8 *)block >= 3)
 		block_size += 5;
 
-	entry = kzalloc_flex(*entry, data, max(min_size, block_size) + 3);
+	data_size = max(min_size, block_size) + 3;
+	entry = kzalloc_flex(*entry, data, data_size);
 	if (!entry) {
 		kfree(temp_block);
 		return;
 	}
 
+	entry->data_size = data_size;
 	entry->section_id = section_id;
 	memcpy(entry->data, block - 3, block_size + 3);
 
