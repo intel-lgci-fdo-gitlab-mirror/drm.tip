@@ -929,8 +929,6 @@ static void xe_oa_stream_destroy(struct xe_oa_stream *stream)
 
 	WRITE_ONCE(u->exclusive_stream, NULL);
 
-	mutex_destroy(&stream->stream_lock);
-
 	xe_oa_stream_drain(stream);
 
 	if (stream->sample)
@@ -938,8 +936,6 @@ static void xe_oa_stream_destroy(struct xe_oa_stream *stream)
 
 	xe_oa_disable_metric_set(stream);
 	xe_exec_queue_put(stream->k_exec_q);
-
-	xe_oa_free_oa_buffer(stream);
 
 	xe_force_wake_put(gt_to_fw(gt), stream->fw_ref);
 	xe_pm_runtime_put(stream->oa->xe);
@@ -1772,7 +1768,6 @@ static void xe_oa_destroy_locked(struct xe_oa_stream *stream)
 
 	drm_syncobj_put(stream->ufence_syncobj);
 	xe_pm_runtime_put(gt_to_xe(stream->gt));
-	kfree(stream);
 }
 
 static int xe_oa_release(struct inode *inode, struct file *file)
@@ -1783,6 +1778,10 @@ static int xe_oa_release(struct inode *inode, struct file *file)
 	mutex_lock(&gt->oa.gt_lock);
 	xe_oa_destroy_locked(stream);
 	mutex_unlock(&gt->oa.gt_lock);
+
+	xe_oa_free_oa_buffer(stream);
+	mutex_destroy(&stream->stream_lock);
+	kfree(stream);
 
 	/* Release the reference the OA stream kept on the driver */
 	drm_dev_put(&gt_to_xe(gt)->drm);
@@ -2052,6 +2051,8 @@ err_disable:
 		xe_oa_disable_locked(stream);
 err_destroy:
 	xe_oa_stream_destroy(stream);
+	xe_oa_free_oa_buffer(stream);
+	mutex_destroy(&stream->stream_lock);
 err_free:
 	kfree(stream);
 err_syncobj:
