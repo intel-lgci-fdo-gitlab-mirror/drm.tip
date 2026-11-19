@@ -709,7 +709,19 @@ static int __guc_add_request(struct intel_guc *guc, struct i915_request *rq)
 	 * request resubmitted after the context was banned.
 	 */
 	if (unlikely(!intel_context_is_schedulable(ce))) {
-		i915_request_put(i915_request_mark_eio(rq));
+		struct i915_request *pos;
+
+		/*
+		 * rq and the requests merged before it are on
+		 * ce->guc_state.requests. If the context is off the HW, complete
+		 * them all here; otherwise the schedule disable done handler will.
+		 */
+		spin_lock(&ce->guc_state.lock);
+		if (!context_enabled(ce) && !context_pending_disable(ce))
+			list_for_each_entry(pos, &ce->guc_state.requests, sched.link)
+				i915_request_put(i915_request_mark_eio(pos));
+		spin_unlock(&ce->guc_state.lock);
+
 		intel_engine_signal_breadcrumbs(ce->engine);
 		return 0;
 	}
