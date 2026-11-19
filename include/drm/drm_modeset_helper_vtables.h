@@ -1148,6 +1148,34 @@ struct drm_connector_helper_funcs {
 			      struct drm_atomic_commit *state);
 
 	/**
+	 * @set_luminance:
+	 *
+	 * Apply &drm_connector_state.luminance to an active panel. The
+	 * atomic helpers call this after a modeset enabled the display
+	 * pipeline, and for commits changing the luminance while the connector
+	 * remains active. It is not called when the luminance is unchanged,
+	 * unless a modeset other than a self refresh exit happened.
+	 *
+	 * This callback is optional and is only used by connectors exposing the
+	 * ``LUMINANCE`` property.
+	 */
+	void (*set_luminance)(const struct drm_connector_state *new_state);
+
+	/**
+	 * @disable_luminance:
+	 *
+	 * Turn panel light emission off before disabling the display pipeline.
+	 * It is not called when the pipeline enters self refresh.
+	 * This callback does not change the ``LUMINANCE`` property; the
+	 * stored value is restored through @set_luminance when the panel
+	 * is enabled again.
+	 *
+	 * This callback is optional and is only used by connectors exposing the
+	 * ``LUMINANCE`` property.
+	 */
+	void (*disable_luminance)(const struct drm_connector_state *old_state);
+
+	/**
 	 * @prepare_writeback_job:
 	 *
 	 * As writeback jobs contain a framebuffer, drivers may need to
