@@ -969,6 +969,26 @@ static u8 intel_lt_phy_get_owned_lane_mask(struct intel_encoder *encoder)
 		? INTEL_LT_PHY_BOTH_LANES : INTEL_LT_PHY_LANE0;
 }
 
+/*
+ * Get the owned PHY lanes that have a transmitter in use, and so need to be in
+ * the active power state, see "PHY Lane and Transmitter Usage" in Bspec. The
+ * rest of the owned lanes stay in the ready state.
+ */
+static u8 intel_lt_phy_get_active_lane_mask(struct intel_encoder *encoder, u8 lane_count)
+{
+	struct intel_digital_port *dig_port = enc_to_dig_port(encoder);
+	u8 owned_lane_mask = intel_lt_phy_get_owned_lane_mask(encoder);
+
+	if (lane_count > 2)
+		return owned_lane_mask;
+
+	/* The FIA muxing handles the orientation flip in DP-alt mode. */
+	if (!intel_tc_port_in_dp_alt_mode(dig_port) && dig_port->lane_reversal)
+		return owned_lane_mask & INTEL_LT_PHY_LANE1;
+
+	return owned_lane_mask & INTEL_LT_PHY_LANE0;
+}
+
 static u8 intel_lt_phy_read(struct intel_encoder *encoder, u8 lane_mask, u16 addr)
 {
 	return intel_cx0_read(encoder, lane_mask, addr);
@@ -1913,6 +1933,7 @@ void intel_lt_phy_pll_enable(struct intel_encoder *encoder,
 	struct intel_digital_port *dig_port = enc_to_dig_port(encoder);
 	bool lane_reversal = dig_port->lane_reversal;
 	u8 owned_lane_mask = intel_lt_phy_get_owned_lane_mask(encoder);
+	u8 active_lane_mask;
 	enum phy phy = intel_encoder_to_phy(encoder);
 	enum port port = encoder->port;
 	struct ref_tracker *wakeref = 0;
@@ -2033,7 +2054,9 @@ void intel_lt_phy_pll_enable(struct intel_encoder *encoder,
 	 * We handle this step in bxt_set_cdclk()
 	 */
 	/* 19. Move the PHY powerdown state to Active and program to enable/disable transmitters */
-	intel_lt_phy_powerdown_change_sequence(encoder, owned_lane_mask,
+	active_lane_mask = intel_lt_phy_get_active_lane_mask(encoder,
+							     dpll_hw_state->ltpll.lane_count);
+	intel_lt_phy_powerdown_change_sequence(encoder, active_lane_mask,
 					       XELPDP_P0_STATE_ACTIVE);
 
 	intel_lt_phy_enable_disable_tx(encoder, &dpll_hw_state->ltpll);
