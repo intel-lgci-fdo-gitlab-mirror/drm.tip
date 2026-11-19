@@ -682,6 +682,13 @@ struct amdgpu_display_manager {
 	 * last successfully applied backlight values.
 	 */
 	u32 actual_brightness[AMDGPU_DM_MAX_NUM_EDP];
+	/**
+	 * @luminance:
+	 *
+	 * backlight is controlled through the connector LUMINANCE property
+	 * instead of a backlight class device.
+	 */
+	bool luminance[AMDGPU_DM_MAX_NUM_EDP];
 
 	/**
 	 * @aux_hpd_discon_quirk:

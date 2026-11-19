@@ -1983,10 +1983,7 @@ static int dm_resume(struct amdgpu_ip_block *ip_block)
 		mutex_unlock(&dm->dc_lock);
 
 		/* set the backlight after a reset */
-		for (i = 0; i < dm->num_of_edps; i++) {
-			if (dm->backlight_dev[i])
-				amdgpu_dm_backlight_set_level(dm, i, dm->brightness[i]);
-		}
+		amdgpu_dm_backlight_restore(dm);
 
 		return 0;
 	}
@@ -4926,6 +4923,10 @@ static void amdgpu_dm_commit_streams(struct drm_atomic_commit *state,
 	 * It will cause the dm->actual_brightness is not the current panel brightness
 	 * level. (the dm->brightness is the correct panel level)
 	 * So we set the backlight level with dm->brightness value after set mode
+	 *
+	 * Panels controlled through the LUMINANCE property are reprogrammed by
+	 * drm_atomic_helper_commit_luminance_enables() in the commit tail from
+	 * the committed connector state, so only restore backlight class devices.
 	 */
 	if (set_backlight_level) {
 		for (i = 0; i < dm->num_of_edps; i++) {
@@ -5313,6 +5314,13 @@ static void amdgpu_dm_atomic_commit_tail(struct drm_atomic_commit *state)
 		amdgpu_dm_commit_streams(state, dc_state);
 	}
 
+	/*
+	 * Apply connector luminance now that the streams are committed. Display
+	 * Core resets the panel brightness when it enables a stream, and the
+	 * helper reprograms LUMINANCE panels after a modeset.
+	 */
+	drm_atomic_helper_commit_luminance_enables(state);
+
 	amdgpu_dm_update_hdcp(state);
 
 	/* Handle connector state changes */
@@ -5545,8 +5553,8 @@ static void amdgpu_dm_atomic_commit_tail(struct drm_atomic_commit *state)
 
 	/* restore the backlight level */
 	for (i = 0; i < dm->num_of_edps; i++) {
-		if (dm->backlight_dev[i] &&
-		    (dm->actual_brightness[i] != dm->brightness[i]))
+		if ((dm->backlight_dev[i] || dm->luminance[i]) &&
+		    dm->actual_brightness[i] != dm->brightness[i])
 			amdgpu_dm_backlight_set_level(dm, i, dm->brightness[i]);
 	}
 
