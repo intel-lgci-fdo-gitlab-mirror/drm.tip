@@ -22,6 +22,7 @@
 #include "xe_bo.h"
 #include "xe_gt.h"
 #include "xe_gt_printk.h"
+#include "xe_gt_sriov_vf.h"
 #include "xe_gt_types.h"
 #include "xe_log.h"
 #include "xe_map.h"
@@ -34,6 +35,7 @@
 #include "xe_tile_sriov_vf.h"
 #include "xe_tlb_inval.h"
 #include "xe_wa.h"
+#include "xe_wedge.h"
 #include "xe_wopcm.h"
 
 /**
@@ -1016,7 +1018,9 @@ static int __xe_ggtt_insert_bo_at(struct xe_ggtt *ggtt, struct xe_bo *bo,
 				  u64 start, u64 end, struct drm_exec *exec)
 {
 	u64 alignment = bo->min_align > 0 ? bo->min_align : XE_PAGE_SIZE;
+	u64 rel_start, rel_end;
 	u8 tile_id = ggtt->tile->id;
+	int marker;
 	int err;
 
 	if (xe_bo_is_vram(bo) && ggtt->flags & XE_GGTT_FLAGS_64K)
@@ -1041,6 +1045,8 @@ static int __xe_ggtt_insert_bo_at(struct xe_ggtt *ggtt, struct xe_bo *bo,
 		goto out;
 	}
 
+	marker = xe_gt_sriov_vf_wait_valid_ggtt(ggtt->tile->primary_gt);
+
 	mutex_lock(&ggtt->lock);
 	/*
 	 * When inheriting the initial framebuffer, the framebuffer is
@@ -1050,24 +1056,24 @@ static int __xe_ggtt_insert_bo_at(struct xe_ggtt *ggtt, struct xe_bo *bo,
 	 * remainder of GGTT, unaware that the start is reserved by WOPCM.
 	 */
 	if (start >= ggtt->start)
-		start -= ggtt->start;
+		rel_start = start - ggtt->start;
 	else
-		start = 0;
+		rel_start = 0;
 
 	/* Should never happen, but since we handle start, fail graciously for end */
 	if (end >= ggtt->start)
-		end -= ggtt->start;
+		rel_end = end - ggtt->start;
 	else
-		end = 0;
+		rel_end = 0;
 
-	end = min(end, ggtt->size);
+	rel_end = min(rel_end, ggtt->size);
 
-	if (end < start + xe_bo_size(bo))
+	if (rel_end < rel_start + xe_bo_size(bo))
 		err = -ENOSPC;
 	else
 		err = drm_mm_insert_node_in_range(&ggtt->mm, &bo->ggtt_node[tile_id]->base,
-						  xe_bo_size(bo), alignment, 0, start, end,
-						  ggtt_usable_insert_flags(ggtt));
+						  xe_bo_size(bo), alignment, 0, rel_start,
+						  rel_end, ggtt_usable_insert_flags(ggtt));
 	if (err) {
 		ggtt_node_fini(bo->ggtt_node[tile_id]);
 		bo->ggtt_node[tile_id] = NULL;
@@ -1079,6 +1085,38 @@ static int __xe_ggtt_insert_bo_at(struct xe_ggtt *ggtt, struct xe_bo *bo,
 		xe_ggtt_map_bo(ggtt, bo->ggtt_node[tile_id], bo, pte);
 	}
 	mutex_unlock(&ggtt->lock);
+
+	if (!err) {
+		/*
+		 * If VF migration happens during BO mapping, some PTE value writes may
+		 * be ignored by HW. This can happen in case GGTT range changed; already
+		 * set PTEs are moved by the VF restore, but xe_ggtt_map_bo() within VM
+		 * may still loop at old position. To be sure, redo all PTE writes.
+		 * Make this a loop as another VF migration could start immediately.
+		 */
+		while (marker != xe_vf_migration_fixups_complete_count(ggtt->tile->primary_gt)) {
+			u16 cache_mode = bo->flags & XE_BO_FLAG_NEEDS_UC ?
+					 XE_CACHE_NONE : XE_CACHE_WB;
+			u16 pat_index = xe_cache_pat_idx(tile_to_xe(ggtt->tile), cache_mode);
+			u64 pte = ggtt->pt_ops->pte_encode_flags(bo, pat_index);
+
+			marker = xe_gt_sriov_vf_wait_valid_ggtt(ggtt->tile->primary_gt);
+			/*
+			 * Only abort fixing the PTEs if we're signalled or wedged; in
+			 * case of timeout the migration recovery may be just repeated
+			 * or prolonged, so do not treat that as bailout condition.
+			 * If the VF migration was detected, we can be sure that recovery
+			 * will start or already has started. The recovery worker assures
+			 * on finish that this loop will exit.
+			 */
+			if (marker == -ERESTARTSYS || xe_wedged(tile_to_xe(ggtt->tile)))
+				break;
+
+			mutex_lock(&ggtt->lock);
+			xe_ggtt_map_bo(ggtt, bo->ggtt_node[tile_id], bo, pte);
+			mutex_unlock(&ggtt->lock);
+		}
+	}
 
 	if (!err && bo->flags & XE_BO_FLAG_GGTT_INVALIDATE)
 		xe_ggtt_invalidate(ggtt);

@@ -524,8 +524,14 @@ bool xe_memirq_guc_sw_int_0_irq_pending(struct xe_memirq *memirq, struct xe_guc 
 {
 	struct xe_gt *gt = guc_to_gt(guc);
 	u32 offset = xe_gt_is_media_type(gt) ? ilog2(INTR_MGUC) : ilog2(INTR_GUC);
-	struct iosys_map map = IOSYS_MAP_INIT_OFFSET(&memirq->bo->vmap,
-						     XE_MEMIRQ_VECTOR_OFFSET(0, offset));
+	struct iosys_map map;
+
+	/* protect for a call during driver probe */
+	if (!iosys_map_is_set(&memirq->source))
+		return false;
+
+	map = IOSYS_MAP_INIT_OFFSET(&memirq->bo->vmap,
+				    XE_MEMIRQ_VECTOR_OFFSET(0, offset));
 
 	return memirq_received_noclear(memirq, &map, ilog2(GUC_INTR_SW_INT_0),
 				       guc_name(guc));
