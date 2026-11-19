@@ -29,6 +29,11 @@
 
 #include "drm.h"
 
+/* Non-Linux builds of drm.h do not pull in linux/stddef.h. */
+#ifndef __counted_by
+#define __counted_by(m)
+#endif
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -3381,7 +3386,7 @@ struct drm_i915_query_engine_info {
 	__u32 rsvd[3];
 
 	/** @engines: Marker for drm_i915_engine_info structures. */
-	struct drm_i915_engine_info engines[];
+	struct drm_i915_engine_info engines[] __counted_by(num_engines);
 };
 
 /**
@@ -3617,7 +3622,7 @@ struct drm_i915_query_memory_regions {
 	__u32 rsvd[3];
 
 	/** @regions: Info about each supported region */
-	struct drm_i915_memory_region_info regions[];
+	struct drm_i915_memory_region_info regions[] __counted_by(num_regions);
 };
 
 /**
