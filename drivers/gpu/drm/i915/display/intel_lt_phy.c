@@ -1827,8 +1827,6 @@ intel_lt_phy_enable_disable_tx(struct intel_encoder *encoder,
 	u8 lane_count = ltpll->lane_count;
 	bool is_dp_alt =
 		intel_tc_port_in_dp_alt_mode(dig_port);
-	enum intel_tc_pin_assignment tc_pin =
-		intel_tc_port_get_pin_assignment(dig_port);
 	u8 transmitter_mask = 0;
 
 	/*
@@ -1841,12 +1839,8 @@ intel_lt_phy_enable_disable_tx(struct intel_encoder *encoder,
 	switch (lane_count) {
 	case 1:
 		transmitter_mask = lane_reversal ? REG_BIT8(3) : REG_BIT8(0);
-		if (is_dp_alt) {
-			if (tc_pin == INTEL_TC_PIN_ASSIGNMENT_D)
-				transmitter_mask = REG_BIT8(0);
-			else
-				transmitter_mask = REG_BIT8(1);
-		}
+		if (is_dp_alt)
+			transmitter_mask = REG_BIT8(1);
 		break;
 	case 2:
 		transmitter_mask = lane_reversal ? REG_GENMASK8(3, 2) : REG_GENMASK8(1, 0);
@@ -2116,6 +2110,23 @@ void intel_lt_phy_pll_disable(struct intel_encoder *encoder)
 	intel_lt_phy_transaction_end(encoder, wakeref);
 }
 
+/*
+ * Get the transmitter (lane * 2 + TX - 1) used by a main link, which is also
+ * the lane and TX to program the voltage swing for, see "PHY Lane and
+ * Transmitter Usage" in Bspec.
+ */
+static int intel_lt_phy_ml_to_tx_idx(struct intel_encoder *encoder, int ml)
+{
+	struct intel_digital_port *dig_port = enc_to_dig_port(encoder);
+	static const u8 dp_alt_tx_idx[] = { 1, 0, 2, 3 };
+
+	/* The FIA muxing handles the orientation flip in DP-alt mode. */
+	if (intel_tc_port_in_dp_alt_mode(dig_port))
+		return dp_alt_tx_idx[ml];
+
+	return dig_port->lane_reversal ? 3 - ml : ml;
+}
+
 void intel_lt_phy_set_signal_levels(struct intel_encoder *encoder,
 				    const struct intel_crtc_state *crtc_state)
 {
@@ -2141,8 +2152,9 @@ void intel_lt_phy_set_signal_levels(struct intel_encoder *encoder,
 
 	for (ln = 0; ln < crtc_state->lane_count; ln++) {
 		int level = intel_ddi_level(encoder, crtc_state, ln);
-		int lane = ln / 2;
-		int tx = ln % 2;
+		int tx_idx = intel_lt_phy_ml_to_tx_idx(encoder, ln);
+		int lane = tx_idx / 2;
+		int tx = tx_idx % 2;
 		u8 lane_mask = lane == 0 ? INTEL_LT_PHY_LANE0 : INTEL_LT_PHY_LANE1;
 
 		if (!(lane_mask & owned_lane_mask))
