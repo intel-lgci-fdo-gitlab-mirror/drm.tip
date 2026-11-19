@@ -261,13 +261,18 @@ static bool mert_wa_14026633728(struct xe_oa_stream *s)
 
 static bool xe_oa_buffer_check_unlocked(struct xe_oa_stream *stream)
 {
-	u32 gtt_offset = xe_bo_ggtt_addr(stream->oa_buffer.bo);
-	u32 tail, hw_tail, partial_report_size, available;
+	u32 gtt_offset, tail, hw_tail, partial_report_size, available;
 	int report_size = stream->oa_buffer.format->size;
 	unsigned long flags;
 
 	spin_lock_irqsave(&stream->oa_buffer.ptr_lock, flags);
 
+	if (stream->dead) {
+		spin_unlock_irqrestore(&stream->oa_buffer.ptr_lock, flags);
+		return false;
+	}
+
+	gtt_offset = xe_bo_ggtt_addr(stream->oa_buffer.bo);
 	hw_tail = xe_oa_hw_tail_read(stream);
 	hw_tail -= gtt_offset;
 
@@ -327,6 +332,9 @@ static enum hrtimer_restart xe_oa_poll_check_timer_cb(struct hrtimer *hrtimer)
 {
 	struct xe_oa_stream *stream =
 		container_of(hrtimer, typeof(*stream), poll_check_timer);
+
+	if (READ_ONCE(stream->dead))
+		return HRTIMER_NORESTART;
 
 	if (xe_oa_buffer_check_unlocked(stream))
 		wake_up(&stream->poll_wq);
@@ -539,12 +547,19 @@ static void xe_oa_disable(struct xe_oa_stream *stream)
 
 static int xe_oa_wait_unlocked(struct xe_oa_stream *stream)
 {
+	int ret;
+
 	/* We might wait indefinitely if periodic sampling is not enabled */
 	if (!stream->periodic)
 		return -EINVAL;
 
-	return wait_event_interruptible(stream->poll_wq,
-					xe_oa_buffer_check_unlocked(stream));
+	ret = wait_event_interruptible(stream->poll_wq,
+				       READ_ONCE(stream->dead) ||
+				       xe_oa_buffer_check_unlocked(stream));
+	if (ret)
+		return ret;
+
+	return READ_ONCE(stream->dead) ? -ENODEV : 0;
 }
 
 #define OASTATUS_RELEVANT_BITS (OASTATUS_MMIO_TRG_Q_FULL | OASTATUS_COUNTER_OVERFLOW | \
@@ -573,6 +588,9 @@ static ssize_t xe_oa_read(struct file *file, char __user *buf,
 	size_t offset = 0;
 	int ret;
 
+	if (READ_ONCE(stream->dead))
+		return -ENODEV;
+
 	if (!stream->sample)
 		return -EINVAL;
 
@@ -583,13 +601,14 @@ static ssize_t xe_oa_read(struct file *file, char __user *buf,
 				return ret;
 
 			mutex_lock(&stream->stream_lock);
-			ret = __xe_oa_read(stream, buf, count, &offset);
+			ret = stream->dead ? -ENODEV :
+				__xe_oa_read(stream, buf, count, &offset);
 			mutex_unlock(&stream->stream_lock);
 		} while (!offset && !ret);
 	} else {
 		xe_oa_buffer_check_unlocked(stream);
 		mutex_lock(&stream->stream_lock);
-		ret = __xe_oa_read(stream, buf, count, &offset);
+		ret = stream->dead ? -ENODEV : __xe_oa_read(stream, buf, count, &offset);
 		mutex_unlock(&stream->stream_lock);
 	}
 
@@ -615,6 +634,9 @@ static __poll_t xe_oa_poll_locked(struct xe_oa_stream *stream,
 	__poll_t events = 0;
 
 	poll_wait(file, &stream->poll_wq, wait);
+
+	if (stream->dead)
+		return EPOLLERR | EPOLLHUP;
 
 	/*
 	 * We don't explicitly check whether there's something to read here since this
@@ -936,6 +958,13 @@ static void xe_oa_stream_destroy(struct xe_oa_stream *stream)
 
 	xe_oa_disable_metric_set(stream);
 	xe_exec_queue_put(stream->k_exec_q);
+
+	/*
+	 * The OA buffer is freed on release of the stream fd, an mmap may still hold a
+	 * reference on it. Drop its DMA mapping now, while pinned: the fd may be released, and
+	 * the BO unpinned, while xe_bo_pinned_fini() DMA-unmaps it without the BO lock.
+	 */
+	xe_bo_dma_unmap_pinned(stream->oa_buffer.bo);
 
 	xe_force_wake_put(gt_to_fw(gt), stream->fw_ref);
 	xe_pm_runtime_put(stream->oa->xe);
@@ -1715,6 +1744,9 @@ static long xe_oa_ioctl_locked(struct xe_oa_stream *stream,
 			       unsigned int cmd,
 			       unsigned long arg)
 {
+	if (stream->dead)
+		return -ENODEV;
+
 	switch (cmd) {
 	case DRM_XE_OBSERVATION_IOCTL_ENABLE:
 		return xe_oa_enable_locked(stream);
@@ -1754,12 +1786,27 @@ static long xe_oa_ioctl(struct file *file,
 	return ret;
 }
 
+/*
+ * Disable the stream, restore the HW state and release everything but the OA buffer and the
+ * stream struct, the same whether the stream fd is closed or the device goes away, and
+ * whether or not the HW still responds: all HW waits are bounded. Afterwards the stream is
+ * dead and any further read, poll, mmap or ioctl on the stream fd fails with -ENODEV.
+ */
 static void xe_oa_destroy_locked(struct xe_oa_stream *stream)
 {
+	unsigned long flags;
+
 	xe_pm_runtime_get(gt_to_xe(stream->gt));
+	mutex_lock(&stream->stream_lock);
+
+	spin_lock_irqsave(&stream->oa_buffer.ptr_lock, flags);
+	WRITE_ONCE(stream->dead, true);
+	spin_unlock_irqrestore(&stream->oa_buffer.ptr_lock, flags);
 
 	if (stream->enabled)
 		xe_oa_disable_locked(stream);
+
+	wake_up_all(&stream->poll_wq);
 
 	xe_oa_stream_destroy(stream);
 
@@ -1767,6 +1814,7 @@ static void xe_oa_destroy_locked(struct xe_oa_stream *stream)
 		xe_exec_queue_put(stream->exec_q);
 
 	drm_syncobj_put(stream->ufence_syncobj);
+	mutex_unlock(&stream->stream_lock);
 	xe_pm_runtime_put(gt_to_xe(stream->gt));
 }
 
@@ -1775,13 +1823,23 @@ static int xe_oa_release(struct inode *inode, struct file *file)
 	struct xe_oa_stream *stream = file->private_data;
 	struct xe_gt *gt = stream->gt;
 
+	/* gt_lock serializes against xe_oa_fini(), which destroys the stream on device removal */
 	mutex_lock(&gt->oa.gt_lock);
-	xe_oa_destroy_locked(stream);
+	if (!stream->dead)
+		xe_oa_destroy_locked(stream);
 	mutex_unlock(&gt->oa.gt_lock);
 
 	xe_oa_free_oa_buffer(stream);
 	mutex_destroy(&stream->stream_lock);
 	kfree(stream);
+
+	/*
+	 * Freeing the OA buffer may defer the BO destroy to the TTM workqueue. Once the device
+	 * is unplugged, this may be the last reference on the drm device, so let the destroy
+	 * finish before drm_dev_put() releases the GGTT.
+	 */
+	if (drm_dev_is_unplugged(&gt_to_xe(gt)->drm))
+		flush_workqueue(gt_to_xe(gt)->ttm.wq);
 
 	/* Release the reference the OA stream kept on the driver */
 	drm_dev_put(&gt_to_xe(gt)->drm);
@@ -1809,6 +1867,11 @@ static int xe_oa_mmap(struct file *file, struct vm_area_struct *vma)
 	 */
 	if (!drm_dev_enter(&xe->drm, &idx))
 		return -ENODEV;
+
+	if (READ_ONCE(stream->dead)) {
+		ret = -ENODEV;
+		goto exit;
+	}
 
 	/*
 	 * Userspace always maps the OA buffer at offset 0, the mapping is moved to the OA
@@ -2674,6 +2737,37 @@ static void xe_oa_unregister(void *arg)
 	oa->metrics_kobj = NULL;
 }
 
+static void xe_oa_quiesce_gt(struct xe_gt *gt)
+{
+	int i;
+
+	mutex_lock(&gt->oa.gt_lock);
+	for (i = 0; i < gt->oa.num_oa_units; i++)
+		if (gt->oa.oa_unit[i].exclusive_stream)
+			xe_oa_destroy_locked(gt->oa.oa_unit[i].exclusive_stream);
+	mutex_unlock(&gt->oa.gt_lock);
+}
+
+/**
+ * xe_oa_quiesce - Disable all active OA streams on driver unbind or PCI slot reset
+ * @xe: @xe_device
+ *
+ * Destroys every active stream like closing its fd would, see xe_oa_destroy_locked().
+ * Only the stream struct and the pinned OA buffer stay allocated until userspace closes
+ * the fd, at which point xe_oa_release() frees them.
+ */
+static void xe_oa_quiesce(struct xe_device *xe)
+{
+	struct xe_gt *gt;
+	u8 id;
+
+	if (!xe->oa.xe)
+		return;
+
+	for_each_gt(gt, xe, id)
+		xe_oa_quiesce_gt(gt);
+}
+
 /**
  * xe_oa_register - Xe OA registration
  * @xe: @xe_device
@@ -2984,6 +3078,8 @@ static void xe_oa_fini(void *arg)
 
 	if (!oa->xe)
 		return;
+
+	xe_oa_quiesce(xe);
 
 	idr_for_each(&oa->metrics_idr, destroy_config, oa);
 	idr_destroy(&oa->metrics_idr);
