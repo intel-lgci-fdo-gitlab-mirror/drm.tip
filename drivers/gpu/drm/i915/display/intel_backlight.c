@@ -9,6 +9,7 @@
 #include <linux/string_helpers.h>
 #include <acpi/video.h>
 
+#include <drm/drm_connector.h>
 #include <drm/drm_file.h>
 #include <drm/drm_print.h>
 #include <drm/intel/pci_config.h>
@@ -74,6 +75,16 @@ static u32 clamp_user_to_hw(struct intel_connector *connector,
 	hw_level = clamp(hw_level, panel->backlight.min, panel->backlight.max);
 
 	return hw_level;
+}
+
+/* Scale user_level in range [0..user_max] to [hw_min..hw_max]. */
+static u32 scale_user_to_hw(struct intel_connector *connector,
+			    u32 user_level, u32 user_max)
+{
+	struct intel_panel *panel = &connector->panel;
+
+	return scale(user_level, 0, user_max,
+		     panel->backlight.min, panel->backlight.max);
 }
 
 /* Scale hw_level in range [hw_min..hw_max] to [0..user_max]. */
@@ -778,6 +789,16 @@ static void __intel_backlight_enable(const struct intel_crtc_state *crtc_state,
 
 	WARN_ON(panel->backlight.max == 0);
 
+	/*
+	 * Enable at the luminance committed in this atomic state, rather than
+	 * at a stale level which would only be corrected afterwards by
+	 * drm_atomic_helper_commit_luminance_enables().
+	 */
+	if (connector->base.luminance_property)
+		panel->backlight.level =
+			scale_user_to_hw(connector, conn_state->luminance,
+					 panel->backlight.max);
+
 	if (panel->backlight.level < panel->backlight.min) {
 		panel->backlight.level = panel->backlight.min;
 		if (panel->backlight.device)
@@ -829,16 +850,6 @@ static u32 intel_panel_get_backlight(struct intel_connector *connector)
 
 	drm_dbg_kms(display->drm, "get backlight PWM = %d\n", val);
 	return val;
-}
-
-/* Scale user_level in range [0..user_max] to [hw_min..hw_max]. */
-static u32 scale_user_to_hw(struct intel_connector *connector,
-			    u32 user_level, u32 user_max)
-{
-	struct intel_panel *panel = &connector->panel;
-
-	return scale(user_level, 0, user_max,
-		     panel->backlight.min, panel->backlight.max);
 }
 
 /* set backlight brightness to level in range [0..max], scaling wrt hw min */
@@ -1670,6 +1681,9 @@ int intel_backlight_setup(struct intel_connector *connector, enum pipe pipe)
 {
 	struct intel_display *display = to_intel_display(connector);
 	struct intel_panel *panel = &connector->panel;
+	struct drm_connector *base = &connector->base;
+	u32 brightness;
+	u32 max;
 	int ret;
 
 	if (!connector->panel.vbt.backlight.present) {
@@ -1703,6 +1717,19 @@ int intel_backlight_setup(struct intel_connector *connector, enum pipe pipe)
 
 	panel->backlight.present = true;
 
+	/*
+	 * acpi_video_backlight_use_native() also tells the ACPI video code that
+	 * a native backlight is available. If native control should not be
+	 * used, leave the backlight to acpi_video, which is registered later
+	 * from intel_acpi_video_register().
+	 */
+	if (IS_ENABLED(CONFIG_DRM_LUMINANCE) && acpi_video_backlight_use_native()) {
+		max = panel->backlight.max;
+		brightness = scale_hw_to_user(connector, panel->backlight.level, max);
+		ret = drm_connector_attach_luminance_property(base, 0, max, brightness);
+		drm_WARN_ON(display->drm, ret);
+	}
+
 	drm_dbg_kms(display->drm,
 		    "[CONNECTOR:%d:%s] backlight initialized, %s, brightness %u/%u\n",
 		    connector->base.base.id, connector->base.name,
@@ -1710,6 +1737,33 @@ int intel_backlight_setup(struct intel_connector *connector, enum pipe pipe)
 		    panel->backlight.level, panel->backlight.max);
 
 	return 0;
+}
+
+void intel_backlight_set_luminance(const struct drm_connector_state *conn_state)
+{
+	struct intel_connector *connector =
+		to_intel_connector(conn_state->connector);
+	struct intel_display *display = to_intel_display(connector);
+	struct intel_panel *panel = &connector->panel;
+	u32 hw_level;
+
+	if (!panel->backlight.present)
+		return;
+
+	guard(mutex)(&display->backlight.lock);
+
+	/*
+	 * Nothing to do if __intel_backlight_enable() already programmed this
+	 * level as part of a modeset enable.
+	 */
+	hw_level = scale_user_to_hw(connector, conn_state->luminance,
+				    panel->backlight.max);
+	if (hw_level == panel->backlight.level)
+		return;
+
+	panel->backlight.level = hw_level;
+	if (panel->backlight.enabled)
+		intel_panel_actually_set_backlight(conn_state, hw_level);
 }
 
 void intel_backlight_destroy(struct intel_panel *panel)
