@@ -105,6 +105,20 @@ u16 xe_pat_index_get_l3_policy(struct xe_device *xe, u16 pat_index);
  */
 bool xe_pat_wa_14026539277_reserved(struct xe_device *xe, u16 pat_index);
 
+/**
+ * xe_pat_wa_14028564128_safe_userptr_index - Is this PAT index safe for
+ * misaligned host-pointer userptr/SVM binds due to Wa_14028564128?
+ * @xe: xe device
+ * @pat_index: The pat_index to query
+ *
+ * Wa_14028564128 reprograms PAT index 2 to the no-promote/UC/1-way policy
+ * required for misaligned host pointers; once that WA is enabled, index 2
+ * should be accepted anywhere PAT 19 or a 2-way coherent index already is.
+ *
+ * Return: a boolean indicating whether the PAT index is safe to use.
+ */
+bool xe_pat_wa_14028564128_safe_userptr_index(struct xe_device *xe, u16 pat_index);
+
 #define xe_cache_pat_idx(xe, cache_mode) ({					\
 	const struct xe_device *__xedev = (xe);					\
 	enum xe_cache_level __mode = (cache_mode);				\

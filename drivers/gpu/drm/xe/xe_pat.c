@@ -338,11 +338,38 @@ bool xe_pat_wa_14026539277_reserved(struct xe_device *xe, u16 pat_index)
 	}
 
 	/*
+	 * Wa_14028564128 remaps every PAT index that is statically 2-way
+	 * coherent (indices 2, 7, 23, 27 and 31 in this table) to a safe
+	 * no-promote/UC/1-way value, so none of them are subject to this
+	 * restriction once that WA is enabled.
+	 */
+	for_each_gt(gt, xe, id) {
+		if (XE_GT_WA(gt, 14028564128) &&
+		    xe_pat_index_get_coh_mode(xe, pat_index) == XE_COH_2WAY)
+			return false;
+	}
+
+	/*
 	 * Disallow 2-way coherency for any L3 cache policy because
 	 * XE_L3_POLICY_UC could still be promoted to a cached policy
 	 * by MOCS indices.
 	 */
 	return has_wa && xe_pat_index_get_coh_mode(xe, pat_index) == XE_COH_2WAY;
+}
+
+bool xe_pat_wa_14028564128_safe_userptr_index(struct xe_device *xe, u16 pat_index)
+{
+	struct xe_gt *gt;
+	u8 id;
+
+	if (pat_index != 2)
+		return false;
+
+	for_each_gt(gt, xe, id)
+		if (XE_GT_WA(gt, 14028564128))
+			return true;
+
+	return false;
 }
 
 static u32 wa_14026539277_fixup_pat_value(struct xe_gt *gt, u32 value)
@@ -354,6 +381,15 @@ static u32 wa_14026539277_fixup_pat_value(struct xe_gt *gt, u32 value)
 				 REG_FIELD_PREP(XE2_COH_MODE, XE_COH_1WAY);
 		}
 	}
+
+	return value;
+}
+
+static u32 wa_14028564128_fixup_pat_value(struct xe_gt *gt, u32 orig_value, u32 value)
+{
+	if (XE_GT_WA(gt, 14028564128) &&
+	    REG_FIELD_GET(XE2_COH_MODE, orig_value) == XE_COH_2WAY)
+		value |= XE2_NO_PROMOTE;
 
 	return value;
 }
@@ -419,6 +455,8 @@ static void program_pat_mcr(struct xe_gt *gt, const struct xe_pat_table_entry ta
 	for (int i = 0; i < n_entries; i++) {
 		struct xe_reg_mcr reg_mcr = XE_REG_MCR(_PAT_INDEX(i));
 		u32 pat = wa_14026539277_fixup_pat_value(gt, table[i].value);
+
+		pat = wa_14028564128_fixup_pat_value(gt, table[i].value, pat);
 
 		xe_gt_mcr_multicast_write(gt, reg_mcr, pat);
 	}
@@ -810,6 +848,7 @@ int xe_pat_dump_sw_config(struct xe_gt *gt, struct drm_printer *p)
 		u32 pat = xe->pat.table[i].value;
 
 		pat = wa_14026539277_fixup_pat_value(gt, pat);
+		pat = wa_14028564128_fixup_pat_value(gt, xe->pat.table[i].value, pat);
 
 		if (GRAPHICS_VER(xe) >= 20) {
 			bool rsvd = !xe->pat.table[i].valid ||
