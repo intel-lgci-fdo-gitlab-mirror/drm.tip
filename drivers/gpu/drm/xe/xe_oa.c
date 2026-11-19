@@ -271,6 +271,15 @@ static bool xe_oa_buffer_check_unlocked(struct xe_oa_stream *stream)
 	hw_tail -= gtt_offset;
 
 	/*
+	 * A device that stopped responding, or was reset, returns a tail outside the OA
+	 * buffer. Don't walk the buffer from there.
+	 */
+	if (hw_tail >= stream->oa_buffer.circ_size) {
+		spin_unlock_irqrestore(&stream->oa_buffer.ptr_lock, flags);
+		return false;
+	}
+
+	/*
 	 * The tail pointer increases in 64 byte (cacheline size), not in report_size
 	 * increments. Also report size may not be a power of 2. Compute potential
 	 * partially landed report in OA buffer.
