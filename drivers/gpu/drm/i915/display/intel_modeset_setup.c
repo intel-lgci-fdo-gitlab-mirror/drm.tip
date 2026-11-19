@@ -695,7 +695,6 @@ static void intel_modeset_readout_hw_state(struct intel_display *display)
 {
 	struct intel_pmdemand_state *pmdemand_state =
 		to_intel_pmdemand_state(display->pmdemand.obj.state);
-	enum pipe pipe;
 	struct intel_crtc *crtc;
 	struct intel_encoder *encoder;
 	struct intel_connector *connector;
@@ -726,8 +725,7 @@ static void intel_modeset_readout_hw_state(struct intel_display *display)
 
 	for_each_intel_encoder(display->drm, encoder) {
 		struct intel_crtc_state *crtc_state = NULL;
-
-		pipe = 0;
+		enum pipe pipe = PIPE_A;
 
 		if (encoder->get_hw_state(encoder, &pipe)) {
 			crtc = intel_crtc_for_pipe(display, pipe);
@@ -869,7 +867,8 @@ static void intel_modeset_readout_hw_state(struct intel_display *display)
 		drm_dbg_kms(display->drm, "[CRTC:%d:%s] min_cdclk %d kHz\n",
 			    crtc->base.base.id, crtc->base.name, crtc_state->min_cdclk);
 
-		intel_pmdemand_update_port_clock(display, pmdemand_state, pipe,
+		intel_pmdemand_update_port_clock(display, pmdemand_state,
+						 crtc->pipe,
 						 crtc_state->port_clock);
 	}
 
