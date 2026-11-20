@@ -2926,6 +2926,33 @@ intel_psr_apply_su_area_workarounds(struct intel_crtc_state *crtc_state)
 		intel_psr_apply_pr_link_on_su_wa(crtc_state);
 }
 
+static int psr2_sel_fetch_add_biplanar_planes(struct intel_atomic_state *state,
+					    struct intel_crtc *crtc)
+{
+	struct intel_display *display = to_intel_display(state);
+	struct intel_plane *plane;
+
+	for_each_intel_plane_on_crtc(display->drm, crtc, plane) {
+		const struct intel_plane_state *plane_state =
+			to_intel_plane_state(plane->base.state);
+		struct intel_plane *linked = plane_state->planar_linked_plane;
+		struct intel_plane_state *new_plane_state;
+
+		if (!linked)
+			continue;
+
+		new_plane_state = intel_atomic_get_plane_state(state, plane);
+		if (IS_ERR(new_plane_state))
+			return PTR_ERR(new_plane_state);
+
+		new_plane_state = intel_atomic_get_plane_state(state, linked);
+		if (IS_ERR(new_plane_state))
+			return PTR_ERR(new_plane_state);
+	}
+
+	return 0;
+}
+
 static void psr2_sel_fetch_compute_su_area(struct intel_atomic_state *state,
 					   struct intel_crtc *crtc,
 					   bool *full_update)
@@ -3001,6 +3028,18 @@ static void psr2_sel_fetch_compute_su_area(struct intel_atomic_state *state,
 			continue;
 		} else if (new_plane_state->uapi.alpha != old_plane_state->uapi.alpha) {
 			/* If alpha changed mark the whole plane area as damaged */
+			damaged_area.y1 = new_plane_state->uapi.dst.y1;
+			damaged_area.y2 = new_plane_state->uapi.dst.y2;
+			clip_area_update(&crtc_state->psr2_su_area, &damaged_area,
+					 &display_area);
+			continue;
+		}
+
+		/*
+		 * Work around corruption when selective fetch is disabled and
+		 * re-enabled for biplanar planes by keeping them fully in the SU area.
+		 */
+		if (new_plane_state->uapi.visible && new_plane_state->planar_linked_plane) {
 			damaged_area.y1 = new_plane_state->uapi.dst.y1;
 			damaged_area.y2 = new_plane_state->uapi.dst.y2;
 			clip_area_update(&crtc_state->psr2_su_area, &damaged_area,
@@ -3233,6 +3272,10 @@ int intel_psr2_sel_fetch_update(struct intel_atomic_state *state,
 	joined_pipes = intel_crtc_joined_pipe_mask(crtc_state);
 
 	for_each_intel_crtc_in_pipe_mask(display, joined_crtc, joined_pipes) {
+		ret = psr2_sel_fetch_add_biplanar_planes(state, joined_crtc);
+		if (ret)
+			return ret;
+
 		psr2_sel_fetch_compute_su_area(state, joined_crtc, &full_update);
 
 		/* One pipe falling back takes all of them with it. */
