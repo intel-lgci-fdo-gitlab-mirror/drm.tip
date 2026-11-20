@@ -290,9 +290,6 @@ static int gsc_upload_and_init(struct xe_gsc *gsc)
 
 	xe_uc_fw_change_status(&gsc->fw, XE_UC_FIRMWARE_TRANSFERRED);
 
-	/* GSC load is done, restore expected GT frequencies */
-	xe_gt_sanitize_freq(gt);
-
 	xe_gt_dbg(gt, "GSC FW async load completed\n");
 
 	/* HuC auth failure is not fatal */
@@ -376,6 +373,9 @@ static void gsc_work(struct work_struct *work)
 			xe_uc_fw_change_status(&gsc->fw, XE_UC_FIRMWARE_LOAD_FAIL);
 		else
 			xe_uc_fw_change_status(&gsc->fw, XE_UC_FIRMWARE_RUNNING);
+
+		/* Restore the mert cap now that GSC load was attempted */
+		xe_gt_sanitize_freq(gt);
 	}
 
 	if (actions & GSC_ACTION_SW_PROXY)
