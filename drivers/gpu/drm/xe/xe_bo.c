@@ -1680,8 +1680,9 @@ int xe_bo_evict_pinned(struct xe_bo *bo)
 						   XE_BO_FLAG_SYSTEM | XE_BO_FLAG_NEEDS_CPU_ACCESS |
 						   XE_BO_FLAG_PINNED, NULL, &exec);
 			if (IS_ERR(backup)) {
-				drm_exec_retry_on_contention(&exec);
 				ret = PTR_ERR(backup);
+				backup = NULL;
+				drm_exec_retry_on_contention(&exec);
 				xe_validation_retry_on_oom(&ctx, &ret);
 				break;
 			}
