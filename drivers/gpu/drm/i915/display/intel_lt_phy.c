@@ -1827,8 +1827,6 @@ intel_lt_phy_enable_disable_tx(struct intel_encoder *encoder,
 	u8 lane_count = ltpll->lane_count;
 	bool is_dp_alt =
 		intel_tc_port_in_dp_alt_mode(dig_port);
-	enum intel_tc_pin_assignment tc_pin =
-		intel_tc_port_get_pin_assignment(dig_port);
 	u8 transmitter_mask = 0;
 
 	/*
@@ -1841,12 +1839,8 @@ intel_lt_phy_enable_disable_tx(struct intel_encoder *encoder,
 	switch (lane_count) {
 	case 1:
 		transmitter_mask = lane_reversal ? REG_BIT8(3) : REG_BIT8(0);
-		if (is_dp_alt) {
-			if (tc_pin == INTEL_TC_PIN_ASSIGNMENT_D)
-				transmitter_mask = REG_BIT8(0);
-			else
-				transmitter_mask = REG_BIT8(1);
-		}
+		if (is_dp_alt)
+			transmitter_mask = REG_BIT8(1);
 		break;
 	case 2:
 		transmitter_mask = lane_reversal ? REG_GENMASK8(3, 2) : REG_GENMASK8(1, 0);
