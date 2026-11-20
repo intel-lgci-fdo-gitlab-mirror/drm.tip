@@ -3114,6 +3114,8 @@ static int psr2_sel_fetch_apply_su_area(struct intel_atomic_state *state,
 					bool full_update)
 {
 	struct intel_crtc_state *crtc_state = intel_atomic_get_new_crtc_state(state, crtc);
+	const struct intel_crtc_state *old_crtc_state =
+		intel_atomic_get_old_crtc_state(state, crtc);
 	struct intel_plane_state *new_plane_state, *old_plane_state;
 	struct intel_plane *plane;
 	struct drm_rect display_area = {
@@ -3122,6 +3124,7 @@ static int psr2_sel_fetch_apply_su_area(struct intel_atomic_state *state,
 		.x2 = drm_rect_width(&crtc_state->pipe_src),
 		.y2 = drm_rect_height(&crtc_state->pipe_src),
 	};
+	bool et_pos_changed;
 	int i;
 
 	/*
@@ -3132,6 +3135,10 @@ static int psr2_sel_fetch_apply_su_area(struct intel_atomic_state *state,
 	 */
 	if (full_update)
 		crtc_state->psr2_su_area = display_area;
+
+	/* With early transport the plane position is relative to the SU start. */
+	et_pos_changed = crtc_state->enable_psr2_su_region_et &&
+		crtc_state->psr2_su_area.y1 != old_crtc_state->psr2_su_area.y1;
 
 	/*
 	 * Now that we have the pipe damaged area check if it intersect with
@@ -3154,7 +3161,8 @@ static int psr2_sel_fetch_apply_su_area(struct intel_atomic_state *state,
 		}
 
 		if (!drm_rect_equals(&old_plane_state->psr2_sel_fetch_area,
-				     sel_fetch_area))
+				     sel_fetch_area) ||
+		    (et_pos_changed && drm_rect_height(sel_fetch_area) > 0))
 			crtc_state->update_planes |= BIT(plane->id);
 
 		/*
@@ -3177,7 +3185,8 @@ static int psr2_sel_fetch_apply_su_area(struct intel_atomic_state *state,
 			linked_sel_fetch_area->y2 = sel_fetch_area->y2;
 
 			if (!drm_rect_equals(&linked_old_plane_state->psr2_sel_fetch_area,
-					     linked_sel_fetch_area))
+					     linked_sel_fetch_area) ||
+			    (et_pos_changed && drm_rect_height(linked_sel_fetch_area) > 0))
 				crtc_state->update_planes |= BIT(linked->id);
 		}
 	}
