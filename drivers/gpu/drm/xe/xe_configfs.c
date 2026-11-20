@@ -96,6 +96,9 @@
  * will always return one GT type per line. "primary" and "media" are the
  * GT type names supported by this interface.
  *
+ * Note that the ``enable_media=0`` module parameter takes precedence over
+ * this attribute: it disables the media GT even if "media" is listed here.
+ *
  * This attribute can only be set before binding to the device.
  *
  * Examples:

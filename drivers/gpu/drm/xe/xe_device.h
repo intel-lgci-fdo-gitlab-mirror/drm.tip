@@ -279,6 +279,7 @@ static inline bool xe_device_is_admin_only(const struct xe_device *xe)
 }
 #endif
 
+bool xe_device_media_allowed(struct xe_device *xe);
 void xe_device_exit(void);
 
 /*

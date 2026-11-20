@@ -641,7 +641,7 @@ static int read_gmdid(struct xe_device *xe, enum xe_gmdid_type type, u32 *ver, u
 		int err;
 
 		/* Don't try to read media ver if media GT is not allowed */
-		if (type == GMDID_MEDIA && !xe_configfs_media_gt_allowed(to_pci_dev(xe->drm.dev))) {
+		if (type == GMDID_MEDIA && !xe_device_media_allowed(xe)) {
 			*ver = *revid = 0;
 			return 0;
 		}
@@ -779,6 +779,18 @@ static int xe_probe_info_early(struct xe_device *xe,
 }
 
 /*
+ * Whether the user wants media at all.  The default (-1) leaves the decision
+ * to the driver.
+ */
+static bool media_wanted(struct xe_device *xe)
+{
+	if (xe_modparam.enable_media < 0)
+		return true;
+
+	return xe_modparam.enable_media;
+}
+
+/*
  * Initialize device info content that only depends on static driver_data
  * passed to the driver at probe time from PCI ID table.
  */
@@ -808,6 +820,9 @@ static int xe_info_init_early(struct xe_device *xe,
 		return err;
 
 	xe_wa_process_device_oob(xe);
+
+	xe->info.media_allowed = media_wanted(xe) &&
+		xe_configfs_media_gt_allowed(to_pci_dev(xe->drm.dev));
 
 	xe->info.dma_mask_size = desc->dma_mask_size;
 	xe->info.va_bits = desc->va_bits;
@@ -952,8 +967,8 @@ static struct xe_gt *alloc_media_gt(struct xe_tile *tile,
 	struct xe_device *xe = tile_to_xe(tile);
 	struct xe_gt *gt;
 
-	if (!xe_configfs_media_gt_allowed(to_pci_dev(xe->drm.dev))) {
-		xe_tile_info(tile, "Media GT disabled via configfs\n");
+	if (!xe_device_media_allowed(xe)) {
+		xe_tile_info(tile, "Media GT disabled\n");
 		return NULL;
 	}
 

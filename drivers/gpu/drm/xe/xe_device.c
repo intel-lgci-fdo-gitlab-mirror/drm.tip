@@ -377,6 +377,20 @@ bool xe_device_is_admin_only(const struct xe_device *xe)
 }
 #endif
 
+/**
+ * xe_device_media_allowed() - Check whether the media IP may be used.
+ * @xe: the &xe_device to check
+ *
+ * Returns the decision latched during early probe, see
+ * @xe_device.info.media_allowed.
+ *
+ * Return: true if media may be used, false otherwise.
+ */
+bool xe_device_media_allowed(struct xe_device *xe)
+{
+	return xe->info.media_allowed;
+}
+
 /* Number of allocated struct xe_device */
 static atomic_t xe_device_count;
 
