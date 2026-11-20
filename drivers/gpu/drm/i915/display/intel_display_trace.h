@@ -475,6 +475,39 @@ TRACE_EVENT(intel_plane_update_arm,
 		      DRM_RECT_ARG((const struct drm_rect *)__entry->dst))
 );
 
+TRACE_EVENT(intel_psr2_su_area,
+	    TP_PROTO(struct intel_crtc *crtc,
+		     const struct intel_crtc_state *crtc_state, bool full_update),
+	    TP_ARGS(crtc, crtc_state, full_update),
+
+	    TP_STRUCT__entry(
+			     __string(dev, __dev_name_kms(crtc))
+			     __field(u32, pipe)
+			     __field(u32, frame)
+			     __field(int, x1)
+			     __field(int, y1)
+			     __field(int, x2)
+			     __field(int, y2)
+			     __field(u32, full_update)
+			     ),
+
+	    TP_fast_assign(
+			   __assign_str(dev);
+			   __entry->pipe = crtc->pipe;
+			   __entry->frame = intel_crtc_get_vblank_counter(crtc);
+			   __entry->x1 = crtc_state->psr2_su_area.x1;
+			   __entry->y1 = crtc_state->psr2_su_area.y1;
+			   __entry->x2 = crtc_state->psr2_su_area.x2;
+			   __entry->y2 = crtc_state->psr2_su_area.y2;
+			   __entry->full_update = full_update;
+			   ),
+
+	    TP_printk("dev=%s pipe=%u frame=%u su_area=%dx%d+%d+%d full_update=%u",
+		      __get_str(dev), __entry->pipe, __entry->frame,
+		      __entry->x2 - __entry->x1, __entry->y2 - __entry->y1,
+		      __entry->x1, __entry->y1, __entry->full_update)
+);
+
 TRACE_EVENT(intel_plane_disable_arm,
 	    TP_PROTO(struct intel_plane *plane, struct intel_crtc *crtc),
 	    TP_ARGS(plane, crtc),

@@ -40,6 +40,7 @@
 #include "intel_display_irq.h"
 #include "intel_display_regs.h"
 #include "intel_display_rpm.h"
+#include "intel_display_trace.h"
 #include "intel_display_types.h"
 #include "intel_display_utils.h"
 #include "intel_display_wa.h"
@@ -3332,6 +3333,10 @@ apply_su_area:
 		ret = psr2_sel_fetch_apply_su_area(state, joined_crtc, full_update);
 		if (ret)
 			return ret;
+
+		trace_intel_psr2_su_area(joined_crtc,
+					 intel_atomic_get_new_crtc_state(state, joined_crtc),
+					 full_update);
 	}
 
 	return 0;
