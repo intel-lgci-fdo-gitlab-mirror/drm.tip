@@ -35,6 +35,8 @@ struct xe_guc_pc {
 	bool freq_ready;
 	/** @power_profile: Base or power_saving profile */
 	u32 power_profile;
+	/** @mert_freq_cap_active: Wa_22019338487 min/max cap is currently in force */
+	bool mert_freq_cap_active;
 };
 
 #endif	/* _XE_GUC_PC_TYPES_H_ */

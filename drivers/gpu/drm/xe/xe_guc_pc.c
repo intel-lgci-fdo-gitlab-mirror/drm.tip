@@ -344,13 +344,18 @@ static void pc_set_cur_freq(struct xe_guc_pc *pc, u32 freq)
 	pc_set_manual_rp_ctrl(pc, false);
 }
 
-static int pc_set_min_freq(struct xe_guc_pc *pc, u32 freq)
+static bool pc_freq_in_range(struct xe_guc_pc *pc, u32 freq)
 {
 	/*
 	 * Let's only check for the rpn-rp0 range. If max < min,
 	 * min becomes a fixed request.
 	 */
-	if (freq < pc->rpn_freq || freq > pc->rp0_freq)
+	return freq >= pc->rpn_freq && freq <= pc->rp0_freq;
+}
+
+static int pc_set_min_freq(struct xe_guc_pc *pc, u32 freq)
+{
+	if (!pc_freq_in_range(pc, freq))
 		return -EINVAL;
 
 	/*
@@ -377,12 +382,8 @@ static int pc_get_max_freq(struct xe_guc_pc *pc)
 
 static int pc_set_max_freq(struct xe_guc_pc *pc, u32 freq)
 {
-	/*
-	 * Let's only check for the rpn-rp0 range. If max < min,
-	 * min becomes a fixed request.
-	 * Also, overclocking is not supported.
-	 */
-	if (freq < pc->rpn_freq || freq > pc->rp0_freq)
+	/* Overclocking is not supported. */
+	if (!pc_freq_in_range(pc, freq))
 		return -EINVAL;
 
 	return pc_action_set_param(pc,
@@ -612,6 +613,12 @@ static int xe_guc_pc_get_min_freq_locked(struct xe_guc_pc *pc, u32 *freq)
 	if (!pc->freq_ready)
 		return -EAGAIN;
 
+	/* In the middle of a temporary freq cap, return stashed value */
+	if (XE_GT_WA(pc_to_gt(pc), 22019338487) && pc->mert_freq_cap_active) {
+		*freq = pc->user_requested_min ?: pc->stashed_min_freq;
+		return 0;
+	}
+
 	ret = pc_action_query_task_state(pc);
 	if (ret)
 		return ret;
@@ -638,17 +645,26 @@ int xe_guc_pc_get_min_freq(struct xe_guc_pc *pc, u32 *freq)
 
 static int xe_guc_pc_set_min_freq_locked(struct xe_guc_pc *pc, u32 freq)
 {
-	int ret;
-
 	lockdep_assert_held(&pc->freq_lock);
 
 	/* Might be in the middle of a gt reset */
 	if (!pc->freq_ready)
 		return -EAGAIN;
 
-	ret = pc_set_min_freq(pc, freq);
-	if (ret)
-		return ret;
+	/*
+	 * While the Wa_22019338487 cap is active, defer applying the new min
+	 * to GuC; xe_guc_pc_restore_stashed_freq() will apply it once the
+	 * cap is removed.
+	 */
+	if (pc->mert_freq_cap_active) {
+		if (!pc_freq_in_range(pc, freq))
+			return -EINVAL;
+	} else {
+		int ret = pc_set_min_freq(pc, freq);
+
+		if (ret)
+			return ret;
+	}
 
 	pc->user_requested_min = freq;
 
@@ -681,6 +697,12 @@ static int xe_guc_pc_get_max_freq_locked(struct xe_guc_pc *pc, u32 *freq)
 	if (!pc->freq_ready)
 		return -EAGAIN;
 
+	/* In the middle of a temporary freq cap, return stashed value */
+	if (XE_GT_WA(pc_to_gt(pc), 22019338487) && pc->mert_freq_cap_active) {
+		*freq = pc->user_requested_max ?: pc->stashed_max_freq;
+		return 0;
+	}
+
 	ret = pc_action_query_task_state(pc);
 	if (ret)
 		return ret;
@@ -707,17 +729,26 @@ int xe_guc_pc_get_max_freq(struct xe_guc_pc *pc, u32 *freq)
 
 static int xe_guc_pc_set_max_freq_locked(struct xe_guc_pc *pc, u32 freq)
 {
-	int ret;
-
 	lockdep_assert_held(&pc->freq_lock);
 
 	/* Might be in the middle of a gt reset */
 	if (!pc->freq_ready)
 		return -EAGAIN;
 
-	ret = pc_set_max_freq(pc, freq);
-	if (ret)
-		return ret;
+	/*
+	 * While the Wa_22019338487 cap is active, defer applying the new max
+	 * to GuC; xe_guc_pc_restore_stashed_freq() will apply it once the
+	 * cap is lifted.
+	 */
+	if (pc->mert_freq_cap_active) {
+		if (!pc_freq_in_range(pc, freq))
+			return -EINVAL;
+	} else {
+		int ret = pc_set_max_freq(pc, freq);
+
+		if (ret)
+			return ret;
+	}
 
 	pc->user_requested_max = freq;
 
@@ -1094,6 +1125,9 @@ static int pc_set_mert_freq_cap(struct xe_guc_pc *pc)
 	if (!ret)
 		ret = pc_set_max_freq(pc, min(pc->rp0_freq, pc_max_freq_cap(pc)));
 
+	if (!ret)
+		pc->mert_freq_cap_active = true;
+
 	return ret;
 }
 
@@ -1112,9 +1146,13 @@ int xe_guc_pc_restore_stashed_freq(struct xe_guc_pc *pc)
 		return 0;
 
 	mutex_lock(&pc->freq_lock);
-	ret = pc_set_max_freq(pc, pc->stashed_max_freq);
+	/* Apply any user min/max request made while the cap was active, else the stash. */
+	ret = pc_set_max_freq(pc, pc->user_requested_max ?: pc->stashed_max_freq);
+
 	if (!ret)
-		ret = pc_set_min_freq(pc, pc->stashed_min_freq);
+		ret = pc_set_min_freq(pc, pc->user_requested_min ?: pc->stashed_min_freq);
+	if (!ret)
+		pc->mert_freq_cap_active = false;
 	mutex_unlock(&pc->freq_lock);
 
 	return ret;
@@ -1345,6 +1383,8 @@ void xe_guc_pc_stop(struct xe_guc_pc *pc)
 		return;
 
 	mutex_lock(&pc->freq_lock);
+	/* GT reset could occur while mert cap is active */
+	pc->mert_freq_cap_active = false;
 	pc->freq_ready = false;
 	mutex_unlock(&pc->freq_lock);
 }
