@@ -662,6 +662,10 @@ int xe_pm_runtime_resume(struct xe_device *xe)
 	 */
 	xe_sysctrl_pm_resume(xe);
 
+	err = xe_sysctrl_media_defeature(xe);
+	if (err)
+		goto out;
+
 	xe_display_pm_runtime_resume_early(xe);
 
 	xe_irq_resume(xe);

@@ -7,6 +7,9 @@
 
 #include <kunit/static_stub.h>
 #include <linux/device/driver.h>
+#include <linux/dma-mapping.h>
+#include <linux/iommu.h>
+#include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/pm_runtime.h>
@@ -817,13 +820,51 @@ static int xe_probe_info_early(struct xe_device *xe,
 }
 
 /*
+ * Number of address bits media is able to reach on CRI, where it has no
+ * address translation of its own.
+ */
+#define XE_CRI_MEDIA_ADDR_BITS	46
+
+static bool device_iommu_iova_backed(struct device *dev)
+{
+	struct iommu_domain *domain = iommu_get_domain_for_dev(dev);
+
+	return domain && domain->type != IOMMU_DOMAIN_IDENTITY;
+}
+
+/*
+ * Decide whether media can be used on CRI.  Media there cannot translate
+ * addresses, so it is only usable if device DMA is guaranteed to stay within
+ * XE_CRI_MEDIA_ADDR_BITS.  The IOMMU guarantees that by allocating IOVAs
+ * below the device dma mask.  Without it, DMA addresses are host physical
+ * addresses, so media is only usable when the host cannot produce an address
+ * wider than media can reach.
+ */
+static bool cri_media_addressable(struct xe_device *xe)
+{
+	u64 host_max_addr = DIRECT_MAP_PHYSMEM_END;
+
+	if (device_iommu_iova_backed(xe->drm.dev))
+		return true;
+
+	if (host_max_addr <= DMA_BIT_MASK(XE_CRI_MEDIA_ADDR_BITS))
+		return true;
+
+	drm_info(&xe->drm,
+		 "IOMMU is not translating device DMA and the host can produce %u bit physical addresses, media is limited to %u\n",
+		 fls64(host_max_addr), XE_CRI_MEDIA_ADDR_BITS);
+
+	return false;
+}
+
+/*
  * Whether the user wants media at all.  The default (-1) leaves the decision
  * to the driver.
  */
 static bool media_wanted(struct xe_device *xe)
 {
 	if (xe_modparam.enable_media < 0)
-		return true;
+		return !XE_DEVICE_WA(xe, 14028632488);
 
 	return xe_modparam.enable_media;
 }
@@ -860,9 +901,18 @@ static int xe_info_init_early(struct xe_device *xe,
 	xe_wa_process_device_oob(xe);
 
 	xe->info.media_allowed = media_wanted(xe) &&
-		xe_configfs_media_gt_allowed(to_pci_dev(xe->drm.dev));
+		xe_configfs_media_gt_allowed(to_pci_dev(xe->drm.dev)) &&
+		(!XE_DEVICE_WA(xe, 14028632488) || cri_media_addressable(xe));
 
 	xe->info.dma_mask_size = desc->dma_mask_size;
+	/*
+	 * Some device media blocks cannot address beyond 46 bits. Clamp the
+	 * dma_mask_size to reflect this.
+	 */
+	if (XE_DEVICE_WA(xe, 14028632488) && xe_device_media_allowed(xe))
+		xe->info.dma_mask_size = min_t(u8, xe->info.dma_mask_size,
+					       XE_CRI_MEDIA_ADDR_BITS);
+
 	xe->info.va_bits = desc->va_bits;
 	xe->info.vm_max_level = desc->vm_max_level;
 	xe->info.vram_flags = desc->vram_flags;
