@@ -47,15 +47,16 @@
 #include "xe_sleep.h"
 #include "xe_sriov.h"
 #include "xe_sriov_pf_migration.h"
+#include "xe_tile.h"
 #include "xe_uc.h"
 #include "xe_uc_fw.h"
 #include "xe_wa.h"
-#include "xe_wopcm.h"
 
 static u32 guc_bo_ggtt_addr(struct xe_guc *guc,
 			    struct xe_bo *bo)
 {
-	struct xe_device *xe = guc_to_xe(guc);
+	struct xe_tile *tile = gt_to_tile(guc_to_gt(guc));
+	struct xe_device *xe = tile_to_xe(tile);
 	u32 addr;
 
 	/*
@@ -64,10 +65,12 @@ static u32 guc_bo_ggtt_addr(struct xe_guc *guc,
 	 * might be different for each tile. So, just always ask for the address
 	 * on the target GuC.
 	 */
-	addr = __xe_bo_ggtt_addr(bo, gt_to_tile(guc_to_gt(guc))->id);
+	addr = __xe_bo_ggtt_addr(bo, tile->id);
+
+	if (!IS_SRIOV_VF(xe))
+		xe_assert(xe, addr >= xe_tile_wopcm_size(tile));
 
 	/* GuC addresses above GUC_GGTT_TOP don't map through the GTT */
-	xe_assert(xe, addr >= xe_wopcm_size(guc_to_xe(guc)));
 	xe_assert(xe, addr < GUC_GGTT_TOP);
 	xe_assert(xe, xe_bo_size(bo) <= GUC_GGTT_TOP - addr);
 
@@ -1734,6 +1737,35 @@ void xe_guc_sanitize(struct xe_guc *guc)
 	xe_uc_fw_sanitize(&guc->fw);
 	xe_guc_ct_disable(&guc->ct);
 	xe_guc_submit_disable(guc);
+}
+
+/**
+ * xe_guc_flr_prepare() - Prepare GuC for FLR
+ * @guc: The GuC object
+ *
+ * Stop GuC submission and tear down exec queues.
+ */
+void xe_guc_flr_prepare(struct xe_guc *guc)
+{
+	if (!xe_uc_fw_is_loadable(&guc->fw))
+		return;
+
+	xe_guc_submit_stop(guc);
+	xe_guc_submit_pause_abort(guc);
+}
+
+/**
+ * xe_guc_reinit() - Re-initialize GuC after FLR
+ * @guc: The GuC object
+ *
+ * Returns: 0 on success, negative error code otherwise.
+ */
+int xe_guc_reinit(struct xe_guc *guc)
+{
+	if (!xe_uc_fw_is_loadable(&guc->fw))
+		return 0;
+
+	return xe_uc_fw_reinit(&guc->fw);
 }
 
 int xe_guc_reset_prepare(struct xe_guc *guc)
