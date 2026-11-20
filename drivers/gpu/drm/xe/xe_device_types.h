@@ -7,6 +7,7 @@
 #define _XE_DEVICE_TYPES_H_
 
 #include <linux/pci.h>
+#include <linux/workqueue.h>
 
 #include <drm/drm_device.h>
 #include <drm/drm_file.h>
@@ -375,7 +376,10 @@ struct xe_device {
 	/** @preempt_fence_wq: used to serialize preempt fences */
 	struct workqueue_struct *preempt_fence_wq;
 
-	/** @ordered_wq: used to serialize compute mode resume */
+	/** @rebind_wq: used to run compute mode rebind work on device node */
+	struct workqueue_struct *rebind_wq;
+
+	/** @ordered_wq: used to serialize ordered work */
 	struct workqueue_struct *ordered_wq;
 
 	/** @unordered_wq: used to serialize unordered work */
