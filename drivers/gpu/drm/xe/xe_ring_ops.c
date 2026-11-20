@@ -562,14 +562,31 @@ static int emit_ulls_ring_tail(struct xe_gt *gt, struct xe_lrc *lrc, u32 *dw,
 static int emit_ulls_postamble(struct xe_gt *gt, struct xe_lrc *lrc, u32 *dw,
 			       int i, u32 seqno, u32 head)
 {
-	dw[i++] = MI_SEMAPHORE_WAIT |
-		MI_SEMW_GGTT |
-		MI_SEMW_POLL |
-		MI_SEMW_COMPARE(SAD_EQ_SDD);
-	dw[i++] = LRC_MIGRATION_ULLS_SEMAPHORE_SIGNAL;
-	dw[i++] = xe_lrc_ulls_semaphore_ggtt_addr(lrc, seqno + 1);
-	dw[i++] = 0;
-	dw[i++] = 0;
+	u32 addr = xe_lrc_ulls_semaphore_ggtt_addr(lrc, seqno + 1);
+
+	if (gt->info.has_sem64) {
+		/* 32b compare: addr is only 4-byte aligned, slots are packed at 4-byte stride */
+		dw[i++] = MI_SEMAPHORE_WAIT_64 |
+			MI_SEMW_GGTT |
+			MI_SEMW64_32BIT_COMPARE |
+			MI_SEMW64_INHIBIT_CTX_SWITCH |
+			MI_SEMW_COMPARE(SAD_EQ_SDD);
+		dw[i++] = LRC_MIGRATION_ULLS_SEMAPHORE_SIGNAL;
+		dw[i++] = 0; /* upper SDD dword, ignored with 32b compare */
+		dw[i++] = addr;
+		dw[i++] = 0;
+		dw[i++] = 0;
+		dw[i++] = 0;
+	} else {
+		dw[i++] = MI_SEMAPHORE_WAIT |
+			MI_SEMW_GGTT |
+			MI_SEMW_POLL |
+			MI_SEMW_COMPARE(SAD_EQ_SDD);
+		dw[i++] = LRC_MIGRATION_ULLS_SEMAPHORE_SIGNAL;
+		dw[i++] = addr;
+		dw[i++] = 0;
+		dw[i++] = 0;
+	}
 
 	return emit_ulls_ring_tail(gt, lrc, dw, i, head);
 }
