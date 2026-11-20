@@ -51,6 +51,7 @@
 #include "intel_dsb.h"
 #include "intel_frontbuffer.h"
 #include "intel_hdmi.h"
+#include "intel_plane.h"
 #include "intel_psr.h"
 #include "intel_psr_regs.h"
 #include "intel_quirks.h"
@@ -3244,10 +3245,12 @@ int intel_psr2_sel_fetch_update(struct intel_atomic_state *state,
 	const struct intel_crtc_state *old_crtc_state =
 		intel_atomic_get_old_crtc_state(state, crtc);
 	struct intel_crtc_state *crtc_state = intel_atomic_get_new_crtc_state(state, crtc);
+	struct intel_plane_state *new_plane_state;
 	struct intel_crtc *joined_crtc;
+	struct intel_plane *plane;
 	bool full_update = false;
 	u8 joined_pipes;
-	int ret;
+	int i, ret;
 
 	/*
 	 * Selective fetch is not always usable, for instance it is dropped
@@ -3291,7 +3294,24 @@ int intel_psr2_sel_fetch_update(struct intel_atomic_state *state,
 	if (!full_update && !psr2_sel_fetch_merge_su_area(state, joined_pipes))
 		full_update = true;
 
+	for_each_intel_crtc_in_pipe_mask(display, joined_crtc, joined_pipes) {
+		ret = intel_plane_add_affected(state, joined_crtc);
+		if (ret)
+			return ret;
+	}
+
 	if (!full_update) {
+		for_each_new_intel_plane_in_state(state, plane, new_plane_state, i) {
+			if ((joined_pipes & BIT(plane->pipe)) == 0 ||
+			    !new_plane_state->uapi.visible)
+				continue;
+
+			if (!psr2_sel_fetch_plane_state_supported(new_plane_state)) {
+				full_update = true;
+				goto apply_su_area;
+			}
+		}
+
 		/*
 		 * The WAs clamp the SU region that ends up in the per
 		 * transcoder PSR2_MAN_TRK_CTL, so they have to run on the
@@ -3307,6 +3327,7 @@ int intel_psr2_sel_fetch_update(struct intel_atomic_state *state,
 		psr2_sel_fetch_align_su_area(state, joined_pipes);
 	}
 
+apply_su_area:
 	for_each_intel_crtc_in_pipe_mask(display, joined_crtc, joined_pipes) {
 		ret = psr2_sel_fetch_apply_su_area(state, joined_crtc, full_update);
 		if (ret)
