@@ -3410,6 +3410,9 @@ intel_dp_compute_hdr_metadata_infoframe_sdp(struct intel_dp *intel_dp,
 	int ret;
 	struct hdmi_drm_infoframe *drm_infoframe = &crtc_state->infoframes.drm.drm;
 
+	if (!intel_dp_has_gamut_metadata_dip(&dp_to_dig_port(intel_dp)->base))
+		return;
+
 	if (!conn_state->hdr_output_metadata)
 		return;
 
@@ -7195,7 +7198,9 @@ intel_dp_add_properties(struct intel_dp *intel_dp, struct drm_connector *_connec
 		intel_attach_dp_colorspace_property(&connector->base);
 	}
 
-	if (intel_dp_has_gamut_metadata_dip(&dp_to_dig_port(intel_dp)->base))
+	if (intel_dp_has_gamut_metadata_dip(&dp_to_dig_port(intel_dp)->base) ||
+	    (intel_dp_is_edp(intel_dp) &&
+	     connector->panel.backlight.edp.intel_cap.supports_2084_decode))
 		drm_connector_attach_hdr_output_metadata_property(&connector->base);
 
 	if (HAS_VRR(display))
