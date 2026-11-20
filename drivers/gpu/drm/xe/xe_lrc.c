@@ -7,6 +7,8 @@
 
 #include <generated/xe_wa_oob.h>
 
+#include <drm/drm_managed.h>
+
 #include <linux/ascii85.h>
 #include <linux/panic.h>
 
@@ -1180,18 +1182,50 @@ static ssize_t setup_timestamp_wa(struct xe_lrc *lrc, struct xe_hw_engine *hwe,
 	return cmd - batch;
 }
 
+/**
+ * xe_lrc_snapshot_configfs_post_bb() - Copy configfs ctx_restore_post_bb setting
+ * @xe: the &xe_device
+ *
+ * Keep a private copy of the configfs setting, so that LRC setup, which may run
+ * in the job submission path, doesn't depend on configfs locks.
+ * Must be called at probe, before any LRC is created.
+ *
+ * Return: zero on success, negative error code on failure
+ */
+int xe_lrc_snapshot_configfs_post_bb(struct xe_device *xe)
+{
+	struct pci_dev *pdev = to_pci_dev(xe->drm.dev);
+	enum xe_engine_class class;
+
+	for (class = 0; class < XE_ENGINE_CLASS_MAX; class++) {
+		const u32 *cs = NULL;
+		u32 len;
+
+		len = xe_configfs_get_ctx_restore_post_bb(pdev, class, &cs);
+		if (!len)
+			continue;
+
+		xe->ctx_restore_post_bb[class].cs =
+			devm_kmemdup(xe->drm.dev, cs, len * sizeof(u32), GFP_KERNEL);
+		if (!xe->ctx_restore_post_bb[class].cs)
+			return -ENOMEM;
+
+		xe->ctx_restore_post_bb[class].len = len;
+	}
+
+	return 0;
+}
+
 static ssize_t setup_configfs_post_ctx_restore_bb(struct xe_lrc *lrc,
 						  struct xe_hw_engine *hwe,
 						  u32 *batch, size_t max_len,
 						  bool indirect)
 {
 	struct xe_device *xe = gt_to_xe(lrc->gt);
-	const u32 *user_batch;
+	const u32 *user_batch = xe->ctx_restore_post_bb[hwe->class].cs;
+	u32 count = xe->ctx_restore_post_bb[hwe->class].len;
 	u32 *cmd = batch;
-	u32 count;
 
-	count = xe_configfs_get_ctx_restore_post_bb(to_pci_dev(xe->drm.dev),
-						    hwe->class, &user_batch);
 	if (!count)
 		return 0;
 
