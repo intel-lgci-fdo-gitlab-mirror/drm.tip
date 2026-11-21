@@ -1470,7 +1470,7 @@ int i915_vma_pin_ww(struct i915_vma *vma, struct i915_gem_ww_ctx *ww,
 
 		err = i915_gem_object_get_moving_fence(vma->obj, &moving);
 		if (err)
-			goto err_rpm;
+			goto err_fence;
 
 		dma_fence_work_chain(&work->base, moving);
 
