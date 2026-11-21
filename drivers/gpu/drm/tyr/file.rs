@@ -19,14 +19,17 @@ use crate::driver::{
 #[pin_data]
 pub(crate) struct TyrDrmFileData {}
 
-/// Convenience type alias for our DRM `File` type
-pub(crate) type TyrDrmFile = drm::file::File<TyrDrmFileData>;
+/// Convenience type alias for our DRM `File` type.
+pub(crate) type TyrDrmFile = drm::file::File<TyrDrmDriver>;
 
-impl drm::file::DriverFile for TyrDrmFileData {
+impl drm::file::DriverFile<'_> for TyrDrmFileData {
     type Driver = TyrDrmDriver;
 
-    fn open(_dev: &drm::Device<Self::Driver>) -> Result<Pin<KBox<Self>>> {
-        KBox::try_pin_init(try_pin_init!(Self {}), GFP_KERNEL)
+    fn open(
+        _device: &TyrDrmDevice<Registered>,
+        _reg_data: &TyrDrmRegistrationData<'_>,
+    ) -> impl PinInit<Self, Error> {
+        Ok(Self {})
     }
 }
 
@@ -54,7 +57,7 @@ impl TyrDrmFileData {
                     )
                     .writer();
 
-                    writer.write(&reg_data.gpu_info)?;
+                    writer.write_slice(reg_data.gpu_info.as_bytes())?;
 
                     Ok(0)
                 }
