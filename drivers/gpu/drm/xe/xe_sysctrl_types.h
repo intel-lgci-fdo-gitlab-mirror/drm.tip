@@ -75,6 +75,12 @@ struct xe_sysctrl {
 	/** @event_lock: Mutex protecting pending events */
 	struct mutex event_lock;
 
+	/**
+	 * @has_media_feature_disable: The System Controller accepts media
+	 * defeature requests.
+	 */
+	bool has_media_feature_disable;
+
 	/** @debugfs: Debugfs entries */
 	struct {
 		/** @debugfs.root: Root debugfs directory */

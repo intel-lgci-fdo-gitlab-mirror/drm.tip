@@ -998,6 +998,12 @@ int xe_device_probe(struct xe_device *xe)
 	if (err)
 		return err;
 
+	/*
+	 * Let the System Controller know how media is configured as early as
+	 * the mailbox allows, before any media GT is brought up.
+	 */
+	xe_sysctrl_media_probe(xe);
+
 	err = xe_ras_init(xe);
 	if (err)
 		return err;
@@ -1524,6 +1530,10 @@ int xe_device_resume(struct xe_device *xe, bool flr)
 	xe_i2c_pm_resume(xe, true);
 
 	xe_sysctrl_pm_resume(xe);
+
+	err = xe_sysctrl_media_defeature(xe);
+	if (err)
+		return err;
 
 	xe_irq_resume(xe);
 
