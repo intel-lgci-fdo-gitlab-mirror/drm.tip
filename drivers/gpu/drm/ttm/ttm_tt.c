@@ -117,7 +117,8 @@ EXPORT_SYMBOL_FOR_TESTS_ONLY(ttm_tt_create);
  */
 static int ttm_tt_alloc_page_directory(struct ttm_tt *ttm)
 {
-	ttm->pages = kvcalloc(ttm->num_pages, sizeof(void*), GFP_KERNEL);
+	ttm->pages = kvcalloc(ttm->num_pages, sizeof(void *),
+			      GFP_KERNEL | __GFP_NOWARN);
 	if (!ttm->pages)
 		return -ENOMEM;
 
@@ -127,7 +128,8 @@ static int ttm_tt_alloc_page_directory(struct ttm_tt *ttm)
 static int ttm_dma_tt_alloc_page_directory(struct ttm_tt *ttm)
 {
 	ttm->pages = kvcalloc(ttm->num_pages, sizeof(*ttm->pages) +
-			      sizeof(*ttm->dma_address), GFP_KERNEL);
+			      sizeof(*ttm->dma_address),
+			      GFP_KERNEL | __GFP_NOWARN);
 	if (!ttm->pages)
 		return -ENOMEM;
 
