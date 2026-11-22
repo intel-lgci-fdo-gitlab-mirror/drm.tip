@@ -4159,8 +4159,20 @@ void xe_bo_put_commit(struct llist_head *deferred)
 static void xe_bo_dev_work_func(struct work_struct *work)
 {
 	struct xe_bo_dev *bo_dev = container_of(work, typeof(*bo_dev), async_free);
+	struct xe_device *xe = container_of(bo_dev, struct xe_device, bo_device);
+	/*
+	 * Freeing a BO may drop the last VM reference, and with it the last
+	 * device reference. Hold a device reference while freeing so that
+	 * the final put, if any, happens only after the whole list has been
+	 * processed. The refcount is already zero if xe_bo_dev_fini() is
+	 * flushing this work from another context.
+	 */
+	bool dev_ref = kref_get_unless_zero(&xe->drm.ref);
 
 	xe_bo_put_commit(&bo_dev->async_list);
+
+	if (dev_ref)
+		drm_dev_put(&xe->drm);
 }
 
 /**
@@ -4178,7 +4190,17 @@ void xe_bo_dev_init(struct xe_bo_dev *bo_dev)
  */
 void xe_bo_dev_fini(struct xe_bo_dev *bo_dev)
 {
-	flush_work(&bo_dev->async_free);
+	/*
+	 * The final device put may come from xe_bo_dev_work_func() itself,
+	 * where flushing would wait on ourselves. The work may have been
+	 * requeued meanwhile, so cancel it and free the pending BOs here.
+	 */
+	if (current_work() == &bo_dev->async_free) {
+		cancel_work(&bo_dev->async_free);
+		xe_bo_put_commit(&bo_dev->async_list);
+	} else {
+		flush_work(&bo_dev->async_free);
+	}
 }
 
 void xe_bo_put(struct xe_bo *bo)
