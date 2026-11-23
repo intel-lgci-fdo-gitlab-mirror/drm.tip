@@ -43,6 +43,8 @@ struct xe_late_bind_fw {
 	size_t payload_size;
 	/** @work: worker to upload latebind blob */
 	struct work_struct work;
+	/** @probe: whether the work was queued at probe */
+	bool probe;
 	/** @version: late binding blob manifest version */
 	struct gsc_version version;
 	/** @sdk_api_version: late binding blob manifest SDK API version */
@@ -75,6 +77,8 @@ struct xe_late_bind {
 	bool component_added;
 	/** @disable: to block late binding reload during pm resume flow*/
 	bool disable;
+	/** @force_ocode_load: force OCODE loading at probe */
+	bool force_ocode_load;
 };
 
 #endif
