@@ -1318,7 +1318,6 @@ static size_t post_migration_scratch_size(struct xe_device *xe)
 
 static int vf_post_migration_fixups(struct xe_gt *gt)
 {
-	void *buf = gt->sriov.vf.migration.scratch;
 	int err;
 
 	VF_MIGRATION_INJECT_WAIT(gt, FIXUPS);
@@ -1332,9 +1331,6 @@ static int vf_post_migration_fixups(struct xe_gt *gt)
 		xe_sriov_vf_ccs_rebase(gt_to_xe(gt));
 
 	xe_gt_sriov_vf_default_lrcs_hwsp_rebase(gt);
-	err = xe_guc_contexts_hwsp_rebase(&gt->uc.guc, buf);
-	if (err)
-		return err;
 
 	atomic_inc(&gt->sriov.vf.migration.fixups_complete_count);
 
@@ -1497,16 +1493,24 @@ static void vf_migration_fini(void *arg)
  */
 int xe_gt_sriov_vf_init_early(struct xe_gt *gt)
 {
+	struct xe_device *xe = gt_to_xe(gt);
 	void *buf;
+	int err;
 
-	if (!xe_sriov_vf_migration_supported(gt_to_xe(gt)))
+	if (!xe_sriov_vf_migration_supported(xe))
 		return 0;
 
-	buf = drmm_kmalloc(&gt_to_xe(gt)->drm,
-			   post_migration_scratch_size(gt_to_xe(gt)),
+	buf = drmm_kmalloc(&xe->drm,
+			   post_migration_scratch_size(xe),
 			   GFP_KERNEL);
 	if (!buf)
 		return -ENOMEM;
+
+	err = drmm_mutex_init(&xe->drm, &gt->sriov.vf.migration.scratch_lock);
+	if (err) {
+		drmm_kfree(&xe->drm, buf);
+		return err;
+	}
 
 	gt->sriov.vf.migration.scratch = buf;
 	spin_lock_init(&gt->sriov.vf.migration.lock);
