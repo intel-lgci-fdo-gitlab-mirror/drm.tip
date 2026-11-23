@@ -80,6 +80,7 @@ enum xe_ras_response_status {
 	XE_RAS_STATUS_TIMEOUT,
 	XE_RAS_STATUS_HARDWARE_FAILURE,
 	XE_RAS_STATUS_INSUFFICIENT_RESOURCES,
+	XE_RAS_STATUS_OUT_OF_RESOURCES = 0x9,
 	XE_RAS_STATUS_MAX
 };
 
@@ -226,6 +227,7 @@ static int ras_status_to_errno(u32 status)
 	case XE_RAS_STATUS_HARDWARE_FAILURE:
 		return -EIO;
 	case XE_RAS_STATUS_INSUFFICIENT_RESOURCES:
+	case XE_RAS_STATUS_OUT_OF_RESOURCES:
 		return -ENOSPC;
 	default:
 		return -EPROTO;
@@ -299,6 +301,11 @@ static int send_page_offline_cmd(struct xe_device *xe, u64 page_address,
 	if (ret) {
 		xe_log_err(xe, SYSCTRL, ret, "page offline command failed with status %u\n",
 			   response.status);
+		if (response.status == XE_RAS_STATUS_OUT_OF_RESOURCES) {
+			xe_log_err(xe, SYSCTRL, ret,
+				   "No space left in SPI flash for bad pages, manual intervention required\n");
+			xe_wedge_declare(xe, 0);
+		}
 		return ret;
 	}
 
@@ -504,8 +511,17 @@ static void get_offline_list(struct xe_device *xe)
 	struct xe_ras_offline_list_response response = {0};
 	struct xe_ras_offline_list_request request = {0};
 
+	struct xe_ras_state *state = &xe->ras.state;
+
 	process_offline_pages(xe, XE_SYSCTRL_CMD_GET_OFFLINE_LIST, &request, sizeof(request),
 			      &response, sizeof(response), &response.common, false);
+
+	if (state->max_pages && response.common.total_pages >= state->max_pages) {
+		xe_log_err(xe, SYSCTRL, -ENOSPC,
+			   "Offline list full (%u/%u), manual intervention required\n",
+			   response.common.total_pages, state->max_pages);
+		xe_wedge_declare(xe, 0);
+	}
 }
 
 static void ras_usp_aer_init(struct xe_device *xe)
