@@ -494,7 +494,7 @@ static void intel_crtc_dbuf_weights(const struct intel_dbuf_state *dbuf_state,
 				    unsigned int *weight_end,
 				    unsigned int *weight_total)
 {
-	struct intel_display *display = to_intel_display(dbuf_state->base.state->base.dev);
+	struct intel_display *display = dbuf_state->base.obj->display;
 	enum pipe pipe;
 
 	*weight_start = 0;
@@ -2477,7 +2477,7 @@ skl_ddb_add_affected_planes(struct intel_atomic_state *state,
 
 static u8 intel_dbuf_enabled_slices(const struct intel_dbuf_state *dbuf_state)
 {
-	struct intel_display *display = to_intel_display(dbuf_state->base.state->base.dev);
+	struct intel_display *display = dbuf_state->base.obj->display;
 	u8 enabled_slices;
 	enum pipe pipe;
 
