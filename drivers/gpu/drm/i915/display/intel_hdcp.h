@@ -10,6 +10,7 @@
 
 #define HDCP_ENCRYPT_STATUS_CHANGE_TIMEOUT_MS	50
 
+struct drm_atomic_commit;
 struct drm_connector;
 struct drm_connector_state;
 struct drm_printer;
@@ -22,7 +23,8 @@ struct intel_encoder;
 struct intel_hdcp_shim;
 enum port;
 
-void intel_hdcp_atomic_check(struct drm_connector *connector,
+void intel_hdcp_atomic_check(struct drm_atomic_commit *state,
+			     struct drm_connector *connector,
 			     struct drm_connector_state *old_state,
 			     struct drm_connector_state *new_state);
 int intel_hdcp_init(struct intel_connector *connector,

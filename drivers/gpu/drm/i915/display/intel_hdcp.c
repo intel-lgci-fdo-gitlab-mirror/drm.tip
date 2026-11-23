@@ -2684,7 +2684,8 @@ void intel_hdcp_cleanup(struct intel_connector *connector)
 	mutex_unlock(&hdcp->mutex);
 }
 
-void intel_hdcp_atomic_check(struct drm_connector *connector,
+void intel_hdcp_atomic_check(struct drm_atomic_commit *state,
+			     struct drm_connector *connector,
 			     struct drm_connector_state *old_state,
 			     struct drm_connector_state *new_state)
 {
@@ -2703,8 +2704,7 @@ void intel_hdcp_atomic_check(struct drm_connector *connector,
 		return;
 	}
 
-	crtc_state = drm_atomic_get_new_crtc_state(new_state->state,
-						   new_state->crtc);
+	crtc_state = drm_atomic_get_new_crtc_state(state, new_state->crtc);
 	/*
 	 * Fix the HDCP uapi content protection state in case of modeset.
 	 * FIXME: As per HDCP content protection property uapi doc, an uevent()
