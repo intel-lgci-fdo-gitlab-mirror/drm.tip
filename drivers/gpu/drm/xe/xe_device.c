@@ -50,6 +50,7 @@
 #include "xe_irq.h"
 #include "xe_late_bind_fw.h"
 #include "xe_log.h"
+#include "xe_lrc.h"
 #include "xe_mmio.h"
 #include "xe_mmio_gem.h"
 #include "xe_module.h"
@@ -920,6 +921,10 @@ int xe_device_probe(struct xe_device *xe)
 	xe->info.mem_region_mask = 1;
 
 	err = xe_set_dma_info(xe);
+	if (err)
+		return err;
+
+	err = xe_lrc_snapshot_configfs_post_bb(xe);
 	if (err)
 		return err;
 

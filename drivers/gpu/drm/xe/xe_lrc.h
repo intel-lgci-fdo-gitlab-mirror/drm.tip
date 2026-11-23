@@ -108,6 +108,7 @@ static inline bool xe_lrc_is_multi_queue(struct xe_lrc *lrc)
 }
 
 size_t xe_gt_lrc_hang_replay_size(struct xe_gt *gt, enum xe_engine_class class);
+int xe_lrc_snapshot_configfs_post_bb(struct xe_device *xe);
 size_t xe_gt_lrc_size(struct xe_gt *gt, enum xe_engine_class class);
 u32 xe_lrc_pphwsp_offset(struct xe_lrc *lrc);
 u32 xe_lrc_regs_offset(struct xe_lrc *lrc);
