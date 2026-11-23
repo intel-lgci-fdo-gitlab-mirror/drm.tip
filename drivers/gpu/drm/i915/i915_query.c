@@ -132,12 +132,11 @@ query_engine_info(struct drm_i915_private *i915,
 {
 	struct drm_i915_query_engine_info __user *query_ptr =
 				u64_to_user_ptr(query_item->data_ptr);
-	struct drm_i915_engine_info __user *info_ptr;
-	struct drm_i915_query_engine_info query;
-	struct drm_i915_engine_info info = { };
+	struct drm_i915_query_engine_info *query;
+	struct drm_i915_query_engine_info hdr;
 	unsigned int num_uabi_engines = 0;
 	struct intel_engine_cs *engine;
-	int len, ret;
+	int len, ret, n = 0;
 
 	if (query_item->flags)
 		return -EINVAL;
@@ -145,35 +144,37 @@ query_engine_info(struct drm_i915_private *i915,
 	for_each_uabi_engine(engine, i915)
 		num_uabi_engines++;
 
-	len = struct_size(query_ptr, engines, num_uabi_engines);
+	len = struct_size(query, engines, num_uabi_engines);
 
-	ret = copy_query_item(&query, sizeof(query), len, query_item);
+	ret = copy_query_item(&hdr, sizeof(hdr), len, query_item);
 	if (ret != 0)
 		return ret;
 
-	if (query.num_engines || query.rsvd[0] || query.rsvd[1] ||
-	    query.rsvd[2])
+	if (hdr.num_engines || hdr.rsvd[0] || hdr.rsvd[1] || hdr.rsvd[2])
 		return -EINVAL;
 
-	info_ptr = &query_ptr->engines[0];
+	query = kzalloc_flex(*query, engines, num_uabi_engines);
+	if (!query)
+		return -ENOMEM;
+
+	query->num_engines = num_uabi_engines;
 
 	for_each_uabi_engine(engine, i915) {
-		info.engine.engine_class = engine->uabi_class;
-		info.engine.engine_instance = engine->uabi_instance;
-		info.flags = I915_ENGINE_INFO_HAS_LOGICAL_INSTANCE;
-		info.capabilities = engine->uabi_capabilities;
-		info.logical_instance = ilog2(engine->logical_mask);
+		struct drm_i915_engine_info *info = &query->engines[n++];
 
-		if (copy_to_user(info_ptr, &info, sizeof(info)))
-			return -EFAULT;
-
-		query.num_engines++;
-		info_ptr++;
+		info->engine.engine_class = engine->uabi_class;
+		info->engine.engine_instance = engine->uabi_instance;
+		info->flags = I915_ENGINE_INFO_HAS_LOGICAL_INSTANCE;
+		info->capabilities = engine->uabi_capabilities;
+		info->logical_instance = ilog2(engine->logical_mask);
 	}
 
-	if (copy_to_user(query_ptr, &query, sizeof(query)))
+	if (copy_to_user(query_ptr, query, len)) {
+		kfree(query);
 		return -EFAULT;
+	}
 
+	kfree(query);
 	return len;
 }
 
@@ -466,70 +467,75 @@ static int query_memregion_info(struct drm_i915_private *i915,
 {
 	struct drm_i915_query_memory_regions __user *query_ptr =
 		u64_to_user_ptr(query_item->data_ptr);
-	struct drm_i915_memory_region_info __user *info_ptr =
-		&query_ptr->regions[0];
-	struct drm_i915_memory_region_info info = { };
-	struct drm_i915_query_memory_regions query;
+	struct drm_i915_query_memory_regions *query;
+	struct drm_i915_query_memory_regions hdr;
 	struct intel_memory_region *mr;
+	unsigned int num_regions = 0;
+	int ret, id, i, n = 0;
 	u32 total_length;
-	int ret, id, i;
 
 	if (query_item->flags != 0)
 		return -EINVAL;
 
-	total_length = sizeof(query);
 	for_each_memory_region(mr, i915, id) {
 		if (mr->private)
 			continue;
 
-		total_length += sizeof(info);
+		num_regions++;
 	}
+	total_length = struct_size(query, regions, num_regions);
 
-	ret = copy_query_item(&query, sizeof(query), total_length, query_item);
+	ret = copy_query_item(&hdr, sizeof(hdr), total_length, query_item);
 	if (ret != 0)
 		return ret;
 
-	if (query.num_regions)
+	if (hdr.num_regions)
 		return -EINVAL;
 
-	for (i = 0; i < ARRAY_SIZE(query.rsvd); i++) {
-		if (query.rsvd[i])
+	for (i = 0; i < ARRAY_SIZE(hdr.rsvd); i++) {
+		if (hdr.rsvd[i])
 			return -EINVAL;
 	}
 
+	query = kzalloc_flex(*query, regions, num_regions);
+	if (!query)
+		return -ENOMEM;
+
+	query->num_regions = num_regions;
+
 	for_each_memory_region(mr, i915, id) {
+		struct drm_i915_memory_region_info *info;
+
 		if (mr->private)
 			continue;
 
-		info.region.memory_class = mr->type;
-		info.region.memory_instance = mr->instance;
-		info.probed_size = mr->total;
+		info = &query->regions[n++];
+		info->region.memory_class = mr->type;
+		info->region.memory_instance = mr->instance;
+		info->probed_size = mr->total;
 
 		if (mr->type == INTEL_MEMORY_LOCAL)
-			info.probed_cpu_visible_size = resource_size(&mr->io);
+			info->probed_cpu_visible_size = resource_size(&mr->io);
 		else
-			info.probed_cpu_visible_size = mr->total;
+			info->probed_cpu_visible_size = mr->total;
 
 		if (perfmon_capable()) {
 			intel_memory_region_avail(mr,
-						  &info.unallocated_size,
-						  &info.unallocated_cpu_visible_size);
+						  &info->unallocated_size,
+						  &info->unallocated_cpu_visible_size);
 		} else {
-			info.unallocated_size = info.probed_size;
-			info.unallocated_cpu_visible_size =
-				info.probed_cpu_visible_size;
+			info->unallocated_size = info->probed_size;
+			info->unallocated_cpu_visible_size =
+				info->probed_cpu_visible_size;
 		}
-
-		if (__copy_to_user(info_ptr, &info, sizeof(info)))
-			return -EFAULT;
-
-		query.num_regions++;
-		info_ptr++;
 	}
 
-	if (__copy_to_user(query_ptr, &query, sizeof(query)))
+	if (copy_to_user(query_ptr, query, total_length)) {
+		kfree(query);
 		return -EFAULT;
+	}
 
+	kfree(query);
 	return total_length;
 }
 
