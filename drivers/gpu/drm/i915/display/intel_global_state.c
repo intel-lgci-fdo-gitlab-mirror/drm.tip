@@ -214,7 +214,6 @@ intel_atomic_get_global_obj_state(struct intel_atomic_state *state,
 		intel_atomic_global_state_get(obj->state);
 	state->global_objs[index].new_state = obj_state;
 	state->global_objs[index].ptr = obj;
-	obj_state->state = state;
 
 	state->num_global_objs = num_objs;
 
@@ -269,9 +268,6 @@ void intel_atomic_swap_global_state(struct intel_atomic_state *state)
 			continue;
 
 		assert_global_state_write_locked(display);
-
-		old_obj_state->state = state;
-		new_obj_state->state = NULL;
 
 		state->global_objs[i].state = old_obj_state;
 
