@@ -1316,6 +1316,9 @@ static ssize_t gpu_health_show(struct device *dev, struct device_attribute *attr
 	size_t rlen;
 	int ret;
 
+	if (xe_wedged(xe) && xe->wedged.mode != XE_WEDGED_MODE_UPON_ANY_HANG_NO_RESET)
+		return -ECANCELED;
+
 	xe_sysctrl_create_command(&command, XE_SYSCTRL_GROUP_GFSP, XE_SYSCTRL_CMD_GET_HEALTH,
 				  &request, sizeof(request), &response, sizeof(response));
 	guard(xe_pm_runtime)(xe);
@@ -1358,6 +1361,9 @@ static ssize_t gpu_health_store(struct device *dev, struct device_attribute *att
 	state = sysfs_match_string(gpu_health_states, buf);
 	if (state < 0)
 		return -EINVAL;
+
+	if (xe_wedged(xe) && xe->wedged.mode != XE_WEDGED_MODE_UPON_ANY_HANG_NO_RESET)
+		return -ECANCELED;
 
 	request.health = state;
 
