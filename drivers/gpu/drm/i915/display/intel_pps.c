@@ -570,6 +570,30 @@ static bool edp_have_panel_vdd(struct intel_dp *intel_dp)
 	return intel_de_read(display, _pp_ctrl_reg(intel_dp)) & EDP_FORCE_VDD;
 }
 
+static bool pps_vdd_owned_by_other_port(struct intel_dp *intel_dp)
+{
+	struct intel_display *display = to_intel_display(intel_dp);
+	struct intel_encoder *encoder;
+
+	lockdep_assert_held(&display->pps.mutex);
+
+	if (display->platform.valleyview || display->platform.cherryview)
+		return false;
+
+	for_each_intel_dp(display->drm, encoder) {
+		struct intel_dp *dp = enc_to_intel_dp(encoder);
+
+		if (dp == intel_dp || encoder->type != INTEL_OUTPUT_EDP)
+			continue;
+
+		if (dp->pps.pps_idx == intel_dp->pps.pps_idx &&
+		    dp->pps.vdd_wakeref)
+			return true;
+	}
+
+	return false;
+}
+
 void intel_pps_check_power_unlocked(struct intel_dp *intel_dp)
 {
 	struct intel_display *display = to_intel_display(intel_dp);
@@ -837,6 +861,9 @@ static void intel_pps_vdd_off_sync_unlocked(struct intel_dp *intel_dp)
 	drm_WARN_ON(display->drm, intel_dp->pps.want_panel_vdd);
 
 	if (!edp_have_panel_vdd(intel_dp))
+		return;
+
+	if (!intel_dp->pps.vdd_wakeref && pps_vdd_owned_by_other_port(intel_dp))
 		return;
 
 	drm_dbg_kms(display->drm, "[ENCODER:%d:%s] %s turning VDD off\n",
@@ -1333,6 +1360,14 @@ static void pps_vdd_init(struct intel_dp *intel_dp)
 
 	if (!edp_have_panel_vdd(intel_dp))
 		return;
+
+	if (pps_vdd_owned_by_other_port(intel_dp)) {
+		drm_dbg_kms(display->drm,
+			    "[ENCODER:%d:%s] %s VDD owned by another eDP port, not adopting it\n",
+			    dig_port->base.base.base.id, dig_port->base.base.name,
+			    pps_name(intel_dp));
+		return;
+	}
 
 	/*
 	 * The VDD bit needs a power domain reference, so if the bit is
