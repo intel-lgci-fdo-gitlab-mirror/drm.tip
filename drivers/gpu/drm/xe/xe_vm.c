@@ -2109,6 +2109,9 @@ static void vm_destroy_work_func(struct work_struct *w)
 		xe_file_put(vm->xef);
 
 	kfree(vm);
+
+	/* Pairs with xe_vm_free(), may run device teardown. */
+	drm_dev_put(&xe->drm);
 }
 
 static void xe_vm_free(struct drm_gpuvm *gpuvm)
@@ -2116,11 +2119,12 @@ static void xe_vm_free(struct drm_gpuvm *gpuvm)
 	struct xe_vm *vm = container_of(gpuvm, struct xe_vm, gpuvm);
 
 	/*
-	 * To destroy the VM we need to be able to sleep.
-	 * drm_gpuvm keeps at least one device reference at this
-	 * point so xe->destroy_wq must still be alive.
+	 * Destroy needs to sleep. Hold a device ref until it is done so a VM
+	 * put can't drop the last one, and use xe_destroy_wq since
+	 * xe->destroy_wq goes away with the device.
 	 */
-	queue_work(vm->xe->destroy_wq, &vm->destroy_work);
+	drm_dev_get(&vm->xe->drm);
+	xe_destroy_wq_queue(&vm->destroy_work);
 }
 
 struct xe_vm *xe_vm_lookup(struct xe_file *xef, u32 id)
