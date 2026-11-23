@@ -246,13 +246,13 @@ static void mst_stream_update_slots(const struct intel_crtc_state *crtc_state,
 	drm_dp_mst_update_slots(topology_state, link_coding_cap);
 }
 
-int intel_dp_mtp_tu_compute_config(struct intel_dp *intel_dp,
+int intel_dp_mtp_tu_compute_config(struct intel_atomic_state *state,
+				   struct intel_dp *intel_dp,
 				   struct intel_crtc_state *crtc_state,
 				   struct drm_connector_state *conn_state,
 				   int min_bpp_x16, int max_bpp_x16, int bpp_step_x16, bool dsc)
 {
 	struct intel_display *display = to_intel_display(intel_dp);
-	struct drm_atomic_commit *state = crtc_state->uapi.state;
 	struct drm_dp_mst_topology_state *mst_state = NULL;
 	struct intel_connector *connector =
 		to_intel_connector(conn_state->connector);
@@ -275,7 +275,8 @@ int intel_dp_mtp_tu_compute_config(struct intel_dp *intel_dp,
 	}
 
 	if (is_mst) {
-		mst_state = drm_atomic_get_mst_topology_state(state, &intel_dp->mst.mgr);
+		mst_state = drm_atomic_get_mst_topology_state(&state->base,
+							      &intel_dp->mst.mgr);
 		if (IS_ERR(mst_state))
 			return PTR_ERR(mst_state);
 
@@ -395,7 +396,8 @@ int intel_dp_mtp_tu_compute_config(struct intel_dp *intel_dp,
 			drm_WARN_ON(display->drm, remote_tu < crtc_state->dp_m_n.tu);
 			crtc_state->dp_m_n.tu = remote_tu;
 
-			slots = drm_dp_atomic_find_time_slots(state, &intel_dp->mst.mgr,
+			slots = drm_dp_atomic_find_time_slots(&state->base,
+							      &intel_dp->mst.mgr,
 							      connector->mst.port,
 							      dfixed_trunc(pbn));
 
@@ -442,7 +444,8 @@ int intel_dp_mtp_tu_compute_config(struct intel_dp *intel_dp,
 	return 0;
 }
 
-static int mst_stream_compute_link_config(struct intel_dp *intel_dp,
+static int mst_stream_compute_link_config(struct intel_atomic_state *state,
+					  struct intel_dp *intel_dp,
 					  struct intel_crtc_state *crtc_state,
 					  struct drm_connector_state *conn_state,
 					  const struct link_config_limits *limits)
@@ -466,13 +469,15 @@ static int mst_stream_compute_link_config(struct intel_dp *intel_dp,
 	 * FIXME: allocate the BW according to link_bpp, which in the case of
 	 * YUV420 is only half of the pipe bpp value.
 	 */
-	return intel_dp_mtp_tu_compute_config(intel_dp, crtc_state, conn_state,
+	return intel_dp_mtp_tu_compute_config(state, intel_dp,
+					      crtc_state, conn_state,
 					      limits->link.min_bpp_x16,
 					      limits->link.max_bpp_x16,
 					      fxp_q4_from_int(2 * 3), false);
 }
 
-static int mst_stream_dsc_compute_link_config(struct intel_dp *intel_dp,
+static int mst_stream_dsc_compute_link_config(struct intel_atomic_state *state,
+					      struct intel_dp *intel_dp,
 					      struct intel_crtc_state *crtc_state,
 					      struct drm_connector_state *conn_state,
 					      const struct link_config_limits *limits)
@@ -499,7 +504,8 @@ static int mst_stream_dsc_compute_link_config(struct intel_dp *intel_dp,
 	crtc_state->port_clock = max_link_config.rate;
 	crtc_state->lane_count = max_link_config.lane_count;
 
-	return intel_dp_mtp_tu_compute_config(intel_dp, crtc_state, conn_state,
+	return intel_dp_mtp_tu_compute_config(state, intel_dp,
+					      crtc_state, conn_state,
 					      limits->link.min_bpp_x16,
 					      limits->link.max_bpp_x16,
 					      intel_dp_dsc_bpp_step_x16(connector),
@@ -637,7 +643,8 @@ mst_stream_compute_config_limits(struct intel_dp *intel_dp,
 							    dsc);
 }
 
-static int mst_stream_compute_link_for_joined_pipes(struct intel_encoder *encoder,
+static int mst_stream_compute_link_for_joined_pipes(struct intel_atomic_state *state,
+						    struct intel_encoder *encoder,
 						    struct intel_crtc_state *pipe_config,
 						    struct drm_connector_state *conn_state,
 						    int num_joined_pipes)
@@ -661,8 +668,9 @@ static int mst_stream_compute_link_for_joined_pipes(struct intel_encoder *encode
 						  pipe_config, false, &limits);
 
 	if (!dsc_needed) {
-		ret = mst_stream_compute_link_config(intel_dp, pipe_config,
-						     conn_state, &limits);
+		ret = mst_stream_compute_link_config(state, intel_dp,
+						     pipe_config, conn_state,
+						     &limits);
 
 		if (ret == -EDEADLK)
 			return ret;
@@ -707,14 +715,15 @@ static int mst_stream_compute_link_for_joined_pipes(struct intel_encoder *encode
 		 */
 		drm_dbg_kms(display->drm, "Trying to find VCPI slots in DSC mode\n");
 
-		ret = mst_stream_dsc_compute_link_config(intel_dp, pipe_config,
-							 conn_state, &limits);
+		ret = mst_stream_dsc_compute_link_config(state, intel_dp,
+							 pipe_config, conn_state,
+							 &limits);
 		if (ret < 0)
 			return ret;
 
-		ret = intel_dp_dsc_compute_config(intel_dp, pipe_config,
-						  conn_state, &limits,
-						  pipe_config->dp_m_n.tu);
+		ret = intel_dp_dsc_compute_config(state, intel_dp,
+						  pipe_config, conn_state,
+						  &limits, pipe_config->dp_m_n.tu);
 		if (ret)
 			return ret;
 
@@ -773,7 +782,7 @@ static int mst_stream_compute_config(struct intel_atomic_state *state,
 			pipe_config->joiner_pipes = GENMASK(crtc->pipe + num_joined_pipes - 1,
 							    crtc->pipe);
 
-		ret = mst_stream_compute_link_for_joined_pipes(encoder,
+		ret = mst_stream_compute_link_for_joined_pipes(state, encoder,
 							       pipe_config,
 							       conn_state,
 							       num_joined_pipes);
