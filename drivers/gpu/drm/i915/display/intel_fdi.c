@@ -182,13 +182,16 @@ static int pipe_required_fdi_lanes(struct intel_crtc_state *crtc_state)
 	return 0;
 }
 
-static int ilk_check_fdi_lanes(struct intel_display *display, enum pipe pipe,
-			       struct intel_crtc_state *pipe_config,
+static int ilk_check_fdi_lanes(struct intel_atomic_state *state,
+			       struct intel_crtc *crtc,
 			       enum pipe *pipe_to_reduce)
 {
-	struct drm_atomic_commit *state = pipe_config->uapi.state;
-	struct intel_crtc *other_crtc;
+	struct intel_display *display = to_intel_display(state);
+	const struct intel_crtc_state *pipe_config =
+		intel_atomic_get_new_crtc_state(state, crtc);
 	struct intel_crtc_state *other_crtc_state;
+	struct intel_crtc *other_crtc;
+	enum pipe pipe = crtc->pipe;
 
 	*pipe_to_reduce = pipe;
 
@@ -226,7 +229,7 @@ static int ilk_check_fdi_lanes(struct intel_display *display, enum pipe pipe,
 
 		other_crtc = intel_crtc_for_pipe(display, PIPE_C);
 		other_crtc_state =
-			intel_atomic_get_crtc_state(state, other_crtc);
+			intel_atomic_get_crtc_state(&state->base, other_crtc);
 		if (IS_ERR(other_crtc_state))
 			return PTR_ERR(other_crtc_state);
 
@@ -247,7 +250,7 @@ static int ilk_check_fdi_lanes(struct intel_display *display, enum pipe pipe,
 
 		other_crtc = intel_crtc_for_pipe(display, PIPE_B);
 		other_crtc_state =
-			intel_atomic_get_crtc_state(state, other_crtc);
+			intel_atomic_get_crtc_state(&state->base, other_crtc);
 		if (IS_ERR(other_crtc_state))
 			return PTR_ERR(other_crtc_state);
 
@@ -326,15 +329,12 @@ int ilk_fdi_compute_config(struct intel_crtc *crtc,
 
 static int intel_fdi_atomic_check_bw(struct intel_atomic_state *state,
 				     struct intel_crtc *crtc,
-				     struct intel_crtc_state *pipe_config,
 				     struct intel_link_bw_limits *limits)
 {
-	struct intel_display *display = to_intel_display(crtc);
 	enum pipe pipe_to_reduce;
 	int ret;
 
-	ret = ilk_check_fdi_lanes(display, crtc->pipe, pipe_config,
-				  &pipe_to_reduce);
+	ret = ilk_check_fdi_lanes(state, crtc, &pipe_to_reduce);
 	if (ret != -EINVAL)
 		return ret;
 
@@ -377,7 +377,7 @@ int intel_fdi_atomic_check_link(struct intel_atomic_state *state,
 		    !crtc_state->hw.enable)
 			continue;
 
-		ret = intel_fdi_atomic_check_bw(state, crtc, crtc_state, limits);
+		ret = intel_fdi_atomic_check_bw(state, crtc, limits);
 		if (ret)
 			return ret;
 	}
