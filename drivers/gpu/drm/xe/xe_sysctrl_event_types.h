@@ -14,9 +14,11 @@
  * enum xe_sysctrl_event - Events reported by System Controller
  *
  * @XE_SYSCTRL_EVENT_THRESHOLD_CROSSED: Error counter threshold crossed
+ * @XE_SYSCTRL_EVENT_PAGE_OFFLINE_QUEUE_FULL: Page offline queue full
  */
 enum xe_sysctrl_event {
-	XE_SYSCTRL_EVENT_THRESHOLD_CROSSED	= 0x01,
+	XE_SYSCTRL_EVENT_THRESHOLD_CROSSED		= 0x01,
+	XE_SYSCTRL_EVENT_PAGE_OFFLINE_QUEUE_FULL	= 0x02,
 };
 
 /**
