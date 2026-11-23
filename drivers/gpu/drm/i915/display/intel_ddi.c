@@ -4550,7 +4550,7 @@ static int intel_ddi_compute_config(struct intel_atomic_state *state,
 		pipe_config->has_hdmi_sink =
 			intel_hdmi_compute_has_hdmi_sink(encoder, pipe_config, conn_state);
 
-		ret = intel_hdmi_compute_config(encoder, pipe_config, conn_state);
+		ret = intel_hdmi_compute_config(state, encoder, pipe_config, conn_state);
 	} else {
 		ret = intel_dp_compute_config(state, encoder, pipe_config, conn_state);
 	}

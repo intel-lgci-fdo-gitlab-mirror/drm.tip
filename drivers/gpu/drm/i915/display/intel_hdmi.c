@@ -2130,10 +2130,10 @@ intel_hdmi_mode_valid(struct drm_connector *_connector,
 	return intel_mode_valid_max_plane_size(display, mode, 1);
 }
 
-bool intel_hdmi_bpc_possible(const struct intel_crtc_state *crtc_state,
+bool intel_hdmi_bpc_possible(struct intel_atomic_state *state,
+			     const struct intel_crtc_state *crtc_state,
 			     int bpc, bool has_hdmi_sink)
 {
-	struct intel_atomic_state *state = to_intel_atomic_state(crtc_state->uapi.state);
 	struct intel_digital_connector_state *connector_state;
 	struct intel_connector *connector;
 	int i;
@@ -2150,7 +2150,8 @@ bool intel_hdmi_bpc_possible(const struct intel_crtc_state *crtc_state,
 	return true;
 }
 
-static bool hdmi_bpc_possible(const struct intel_crtc_state *crtc_state, int bpc)
+static bool hdmi_bpc_possible(struct intel_atomic_state *state,
+			      const struct intel_crtc_state *crtc_state, int bpc)
 {
 	struct intel_display *display = to_intel_display(crtc_state);
 	const struct drm_display_mode *adjusted_mode =
@@ -2166,10 +2167,12 @@ static bool hdmi_bpc_possible(const struct intel_crtc_state *crtc_state, int bpc
 	     adjusted_mode->crtc_hblank_start) % 8 == 2)
 		return false;
 
-	return intel_hdmi_bpc_possible(crtc_state, bpc, crtc_state->has_hdmi_sink);
+	return intel_hdmi_bpc_possible(state, crtc_state, bpc,
+				       crtc_state->has_hdmi_sink);
 }
 
-static int intel_hdmi_compute_bpc(struct intel_encoder *encoder,
+static int intel_hdmi_compute_bpc(struct intel_atomic_state *state,
+				  struct intel_encoder *encoder,
 				  struct intel_crtc_state *crtc_state,
 				  int clock, bool respect_downstream_limits)
 {
@@ -2194,7 +2197,7 @@ static int intel_hdmi_compute_bpc(struct intel_encoder *encoder,
 		int tmds_clock = intel_hdmi_tmds_clock(clock, bpc,
 						       crtc_state->sink_format);
 
-		if (hdmi_bpc_possible(crtc_state, bpc) &&
+		if (hdmi_bpc_possible(state, crtc_state, bpc) &&
 		    hdmi_port_clock_valid(intel_hdmi, tmds_clock,
 					  respect_downstream_limits,
 					  crtc_state->has_hdmi_sink) == MODE_OK)
@@ -2204,7 +2207,8 @@ static int intel_hdmi_compute_bpc(struct intel_encoder *encoder,
 	return -EINVAL;
 }
 
-static int intel_hdmi_compute_clock(struct intel_encoder *encoder,
+static int intel_hdmi_compute_clock(struct intel_atomic_state *state,
+				    struct intel_encoder *encoder,
 				    struct intel_crtc_state *crtc_state,
 				    bool respect_downstream_limits)
 {
@@ -2216,8 +2220,8 @@ static int intel_hdmi_compute_clock(struct intel_encoder *encoder,
 	if (adjusted_mode->flags & DRM_MODE_FLAG_DBLCLK)
 		clock *= 2;
 
-	bpc = intel_hdmi_compute_bpc(encoder, crtc_state, clock,
-				     respect_downstream_limits);
+	bpc = intel_hdmi_compute_bpc(state, encoder, crtc_state,
+				     clock, respect_downstream_limits);
 	if (bpc < 0)
 		return bpc;
 
@@ -2289,7 +2293,8 @@ intel_hdmi_output_format(const struct intel_crtc_state *crtc_state)
 	return crtc_state->sink_format;
 }
 
-static int intel_hdmi_compute_output_format(struct intel_encoder *encoder,
+static int intel_hdmi_compute_output_format(struct intel_atomic_state *state,
+					    struct intel_encoder *encoder,
 					    struct intel_crtc_state *crtc_state,
 					    struct intel_connector *connector,
 					    bool respect_downstream_limits,
@@ -2304,10 +2309,12 @@ static int intel_hdmi_compute_output_format(struct intel_encoder *encoder,
 	crtc_state->sink_format = sink_format;
 	crtc_state->output_format = intel_hdmi_output_format(crtc_state);
 
-	return intel_hdmi_compute_clock(encoder, crtc_state, respect_downstream_limits);
+	return intel_hdmi_compute_clock(state, encoder, crtc_state,
+					respect_downstream_limits);
 }
 
-static int intel_hdmi_compute_formats(struct intel_encoder *encoder,
+static int intel_hdmi_compute_formats(struct intel_atomic_state *state,
+				      struct intel_encoder *encoder,
 				      struct intel_crtc_state *crtc_state,
 				      const struct drm_connector_state *conn_state,
 				      bool respect_downstream_limits)
@@ -2319,26 +2326,26 @@ static int intel_hdmi_compute_formats(struct intel_encoder *encoder,
 	int ret;
 
 	if (drm_mode_is_420_only(info, adjusted_mode)) {
-		ret = intel_hdmi_compute_output_format(encoder, crtc_state, connector,
-						       respect_downstream_limits,
+		ret = intel_hdmi_compute_output_format(state, encoder, crtc_state,
+						       connector, respect_downstream_limits,
 						       INTEL_OUTPUT_FORMAT_YCBCR420);
 
 		if (ret && !respect_downstream_limits) {
 			drm_dbg_kms(display->drm,
 				    "YCbCr 4:2:0 mode but YCbCr 4:2:0 output not possible. Falling back to RGB.\n");
 
-			ret = intel_hdmi_compute_output_format(encoder, crtc_state, connector,
-							       respect_downstream_limits,
+			ret = intel_hdmi_compute_output_format(state, encoder, crtc_state,
+							       connector, respect_downstream_limits,
 							       INTEL_OUTPUT_FORMAT_RGB);
 		}
 	} else {
-		ret = intel_hdmi_compute_output_format(encoder, crtc_state, connector,
-						       respect_downstream_limits,
+		ret = intel_hdmi_compute_output_format(state, encoder, crtc_state,
+						       connector, respect_downstream_limits,
 						       INTEL_OUTPUT_FORMAT_RGB);
 
 		if (ret && drm_mode_is_420_also(info, adjusted_mode))
-			ret = intel_hdmi_compute_output_format(encoder, crtc_state, connector,
-							       respect_downstream_limits,
+			ret = intel_hdmi_compute_output_format(state, encoder, crtc_state,
+							       connector, respect_downstream_limits,
 							       INTEL_OUTPUT_FORMAT_YCBCR420);
 	}
 
@@ -2380,7 +2387,8 @@ bool intel_hdmi_compute_has_hdmi_sink(struct intel_encoder *encoder,
 		!intel_hdmi_is_cloned(crtc_state);
 }
 
-int intel_hdmi_compute_config(struct intel_encoder *encoder,
+int intel_hdmi_compute_config(struct intel_atomic_state *state,
+			      struct intel_encoder *encoder,
 			      struct intel_crtc_state *pipe_config,
 			      struct drm_connector_state *conn_state)
 {
@@ -2412,9 +2420,11 @@ int intel_hdmi_compute_config(struct intel_encoder *encoder,
 	 * Try to respect downstream TMDS clock limits first, if
 	 * that fails assume the user might know something we don't.
 	 */
-	ret = intel_hdmi_compute_formats(encoder, pipe_config, conn_state, true);
+	ret = intel_hdmi_compute_formats(state, encoder,
+					 pipe_config, conn_state, true);
 	if (ret)
-		ret = intel_hdmi_compute_formats(encoder, pipe_config, conn_state, false);
+		ret = intel_hdmi_compute_formats(state, encoder,
+						 pipe_config, conn_state, false);
 	if (ret) {
 		drm_dbg_kms(display->drm,
 			    "unsupported HDMI clock (%d kHz), rejecting mode\n",

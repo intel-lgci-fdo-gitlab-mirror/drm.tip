@@ -197,7 +197,8 @@ void intel_dp_wait_source_oui(struct intel_dp *intel_dp);
 int intel_dp_output_format_link_bpp_x16(enum intel_output_format output_format,
 					int pipe_bpp);
 
-bool intel_dp_compute_config_limits(struct intel_dp *intel_dp,
+bool intel_dp_compute_config_limits(struct intel_atomic_state *state,
+				    struct intel_dp *intel_dp,
 				    struct drm_connector_state *conn_state,
 				    struct intel_crtc_state *crtc_state,
 				    bool respect_downstream_limits,
