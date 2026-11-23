@@ -53,8 +53,10 @@ intel_atomic_get_new_global_obj_state(struct intel_atomic_state *state,
 
 void intel_atomic_swap_global_state(struct intel_atomic_state *state);
 void intel_atomic_clear_global_state(struct intel_atomic_state *state);
-int intel_atomic_lock_global_state(struct intel_global_state *obj_state);
-int intel_atomic_serialize_global_state(struct intel_global_state *obj_state);
+int intel_atomic_lock_global_state(struct intel_atomic_state *state,
+				   struct intel_global_state *obj_state);
+int intel_atomic_serialize_global_state(struct intel_atomic_state *state,
+					struct intel_global_state *obj_state);
 
 int intel_atomic_global_state_setup_commit(struct intel_atomic_state *state);
 void intel_atomic_global_state_commit_done(struct intel_atomic_state *state);

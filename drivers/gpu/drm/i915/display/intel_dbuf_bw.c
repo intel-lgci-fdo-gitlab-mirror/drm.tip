@@ -211,7 +211,7 @@ int intel_dbuf_bw_calc_min_cdclk(struct intel_atomic_state *state,
 		return 0;
 
 	if (intel_dbuf_bw_state_changed(display, old_dbuf_bw_state, new_dbuf_bw_state)) {
-		ret = intel_atomic_lock_global_state(&new_dbuf_bw_state->base);
+		ret = intel_atomic_lock_global_state(state, &new_dbuf_bw_state->base);
 		if (ret)
 			return ret;
 	}

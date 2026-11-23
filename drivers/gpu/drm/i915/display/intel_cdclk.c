@@ -3014,7 +3014,7 @@ static int intel_cdclk_update_crtc_min_cdclk(struct intel_atomic_state *state,
 
 	cdclk_state->min_cdclk[crtc->pipe] = new_min_cdclk;
 
-	ret = intel_atomic_lock_global_state(&cdclk_state->base);
+	ret = intel_atomic_lock_global_state(state, &cdclk_state->base);
 	if (ret)
 		return ret;
 
@@ -3061,7 +3061,7 @@ static int intel_cdclk_update_crtc_min_voltage_level(struct intel_atomic_state *
 
 	cdclk_state->min_voltage_level[crtc->pipe] = new_min_voltage_level;
 
-	ret = intel_atomic_lock_global_state(&cdclk_state->base);
+	ret = intel_atomic_lock_global_state(state, &cdclk_state->base);
 	if (ret)
 		return ret;
 
@@ -3104,7 +3104,7 @@ int intel_cdclk_update_dbuf_bw_min_cdclk(struct intel_atomic_state *state,
 
 	cdclk_state->dbuf_bw_min_cdclk = new_min_cdclk;
 
-	ret = intel_atomic_lock_global_state(&cdclk_state->base);
+	ret = intel_atomic_lock_global_state(state, &cdclk_state->base);
 	if (ret)
 		return ret;
 
@@ -3195,7 +3195,7 @@ static int bxt_compute_min_voltage_level(struct intel_atomic_state *state)
 
 		cdclk_state->min_voltage_level[crtc->pipe] = min_voltage_level;
 
-		ret = intel_atomic_lock_global_state(&cdclk_state->base);
+		ret = intel_atomic_lock_global_state(state, &cdclk_state->base);
 		if (ret)
 			return ret;
 	}
@@ -3455,7 +3455,7 @@ static int intel_cdclk_modeset_checks(struct intel_atomic_state *state,
 	new_cdclk_state->active_pipes =
 		intel_calc_active_pipes(state, old_cdclk_state->active_pipes);
 
-	ret = intel_atomic_lock_global_state(&new_cdclk_state->base);
+	ret = intel_atomic_lock_global_state(state, &new_cdclk_state->base);
 	if (ret)
 		return ret;
 
@@ -3511,7 +3511,7 @@ int intel_cdclk_state_set_joined_mbus(struct intel_atomic_state *state, bool joi
 	cdclk_state->actual.joined_mbus = joined_mbus;
 	cdclk_state->logical.joined_mbus = joined_mbus;
 
-	return intel_atomic_lock_global_state(&cdclk_state->base);
+	return intel_atomic_lock_global_state(state, &cdclk_state->base);
 }
 
 int intel_cdclk_init(struct intel_display *display)
@@ -3565,12 +3565,12 @@ static int intel_modeset_calc_cdclk(struct intel_atomic_state *state)
 		 * Also serialize commits across all crtcs
 		 * if the actual hw needs to be poked.
 		 */
-		ret = intel_atomic_serialize_global_state(&new_cdclk_state->base);
+		ret = intel_atomic_serialize_global_state(state, &new_cdclk_state->base);
 		if (ret)
 			return ret;
 	} else if (intel_cdclk_changed(&old_cdclk_state->logical,
 				       &new_cdclk_state->logical)) {
-		ret = intel_atomic_lock_global_state(&new_cdclk_state->base);
+		ret = intel_atomic_lock_global_state(state, &new_cdclk_state->base);
 		if (ret)
 			return ret;
 	} else {
@@ -3674,7 +3674,7 @@ int intel_cdclk_atomic_check(struct intel_atomic_state *state)
 
 	if (new_cdclk_state &&
 	    old_cdclk_state->force_min_cdclk != new_cdclk_state->force_min_cdclk) {
-		ret = intel_atomic_lock_global_state(&new_cdclk_state->base);
+		ret = intel_atomic_lock_global_state(state, &new_cdclk_state->base);
 		if (ret)
 			return ret;
 
