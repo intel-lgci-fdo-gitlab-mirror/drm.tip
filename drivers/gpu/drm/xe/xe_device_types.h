@@ -104,6 +104,21 @@ struct xe_device {
 	/** @devcoredump: device coredump */
 	struct xe_devcoredump devcoredump;
 
+	/**
+	 * @ctx_restore_post_bb: per engine class snapshot of the configfs
+	 * ctx_restore_post_bb setting, taken at probe so that LRC setup does
+	 * not need to take configfs locks.
+	 */
+	struct {
+		/**
+		 * @ctx_restore_post_bb.cs: batch commands, owned by the drm
+		 * managed memory
+		 */
+		const u32 *cs;
+		/** @ctx_restore_post_bb.len: batch length in dwords */
+		u32 len;
+	} ctx_restore_post_bb[XE_ENGINE_CLASS_MAX];
+
 	/** @desc: device descriptor */
 	const struct xe_device_desc *desc;
 
