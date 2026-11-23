@@ -383,9 +383,9 @@ int intel_pmdemand_atomic_check(struct intel_atomic_state *state)
 	new_pmdemand_state->params.scalers = 7;
 
 	if (state->base.allow_modeset)
-		return intel_atomic_serialize_global_state(&new_pmdemand_state->base);
+		return intel_atomic_serialize_global_state(state, &new_pmdemand_state->base);
 	else
-		return intel_atomic_lock_global_state(&new_pmdemand_state->base);
+		return intel_atomic_lock_global_state(state, &new_pmdemand_state->base);
 }
 
 static bool intel_pmdemand_check_prev_transaction(struct intel_display *display)

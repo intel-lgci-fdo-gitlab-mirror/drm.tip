@@ -569,7 +569,7 @@ out:
 				&new_dbuf_state->ddb[pipe]))
 		return 0;
 
-	ret = intel_atomic_lock_global_state(&new_dbuf_state->base);
+	ret = intel_atomic_lock_global_state(state, &new_dbuf_state->base);
 	if (ret)
 		return ret;
 
@@ -2519,7 +2519,7 @@ skl_compute_ddb(struct intel_atomic_state *state)
 		intel_calc_active_pipes(state, old_dbuf_state->active_pipes);
 
 	if (old_dbuf_state->active_pipes != new_dbuf_state->active_pipes) {
-		ret = intel_atomic_lock_global_state(&new_dbuf_state->base);
+		ret = intel_atomic_lock_global_state(state, &new_dbuf_state->base);
 		if (ret)
 			return ret;
 	}
@@ -2545,7 +2545,7 @@ skl_compute_ddb(struct intel_atomic_state *state)
 		if (old_dbuf_state->slices[pipe] == new_dbuf_state->slices[pipe])
 			continue;
 
-		ret = intel_atomic_lock_global_state(&new_dbuf_state->base);
+		ret = intel_atomic_lock_global_state(state, &new_dbuf_state->base);
 		if (ret)
 			return ret;
 	}
@@ -2554,7 +2554,7 @@ skl_compute_ddb(struct intel_atomic_state *state)
 
 	if (old_dbuf_state->enabled_slices != new_dbuf_state->enabled_slices ||
 	    old_dbuf_state->joined_mbus != new_dbuf_state->joined_mbus) {
-		ret = intel_atomic_serialize_global_state(&new_dbuf_state->base);
+		ret = intel_atomic_serialize_global_state(state, &new_dbuf_state->base);
 		if (ret)
 			return ret;
 
@@ -2575,7 +2575,7 @@ skl_compute_ddb(struct intel_atomic_state *state)
 		if (old_dbuf_state->weight[pipe] == new_dbuf_state->weight[pipe])
 			continue;
 
-		ret = intel_atomic_lock_global_state(&new_dbuf_state->base);
+		ret = intel_atomic_lock_global_state(state, &new_dbuf_state->base);
 		if (ret)
 			return ret;
 	}
@@ -3484,7 +3484,7 @@ int intel_dbuf_state_set_mdclk_cdclk_ratio(struct intel_atomic_state *state,
 
 	dbuf_state->mdclk_cdclk_ratio = ratio;
 
-	return intel_atomic_lock_global_state(&dbuf_state->base);
+	return intel_atomic_lock_global_state(state, &dbuf_state->base);
 }
 
 void intel_dbuf_mdclk_cdclk_ratio_update(struct intel_display *display,

@@ -1123,18 +1123,19 @@ void icl_sagv_post_plane_update(struct intel_atomic_state *state)
 	icl_pcode_restrict_qgv_points(display, new_mask);
 }
 
-static int mtl_find_qgv_points(struct intel_display *display,
+static int mtl_find_qgv_points(struct intel_atomic_state *state,
 			       unsigned int data_rate,
 			       unsigned int num_active_planes,
 			       struct intel_bw_state *new_bw_state)
 {
+	struct intel_display *display = to_intel_display(state);
 	unsigned int best_rate = UINT_MAX;
 	unsigned int num_qgv_points = display->bw.num_qgv_points;
 	unsigned int qgv_peak_bw  = 0;
 	int i;
 	int ret;
 
-	ret = intel_atomic_lock_global_state(&new_bw_state->base);
+	ret = intel_atomic_lock_global_state(state, &new_bw_state->base);
 	if (ret)
 		return ret;
 
@@ -1188,12 +1189,13 @@ static int mtl_find_qgv_points(struct intel_display *display,
 	return 0;
 }
 
-static int icl_find_qgv_points(struct intel_display *display,
+static int icl_find_qgv_points(struct intel_atomic_state *state,
 			       unsigned int data_rate,
 			       unsigned int num_active_planes,
 			       const struct intel_bw_state *old_bw_state,
 			       struct intel_bw_state *new_bw_state)
 {
+	struct intel_display *display = to_intel_display(state);
 	unsigned int num_psf_gv_points = display->bw.num_psf_gv_points;
 	unsigned int num_qgv_points = display->bw.num_qgv_points;
 	u16 psf_points = 0;
@@ -1201,7 +1203,7 @@ static int icl_find_qgv_points(struct intel_display *display,
 	int i;
 	int ret;
 
-	ret = intel_atomic_lock_global_state(&new_bw_state->base);
+	ret = intel_atomic_lock_global_state(state, &new_bw_state->base);
 	if (ret)
 		return ret;
 
@@ -1268,7 +1270,7 @@ static int icl_find_qgv_points(struct intel_display *display,
 	 * the commits are serialized(in case this is a nomodeset, nonblocking)
 	 */
 	if (new_bw_state->qgv_points_mask != old_bw_state->qgv_points_mask) {
-		ret = intel_atomic_serialize_global_state(&new_bw_state->base);
+		ret = intel_atomic_serialize_global_state(state, &new_bw_state->base);
 		if (ret)
 			return ret;
 	}
@@ -1276,10 +1278,11 @@ static int icl_find_qgv_points(struct intel_display *display,
 	return 0;
 }
 
-static int intel_bw_check_qgv_points(struct intel_display *display,
+static int intel_bw_check_qgv_points(struct intel_atomic_state *state,
 				     const struct intel_bw_state *old_bw_state,
 				     struct intel_bw_state *new_bw_state)
 {
+	struct intel_display *display = to_intel_display(state);
 	unsigned int data_rate = intel_bw_data_rate(display, new_bw_state);
 	unsigned int num_active_planes =
 			intel_bw_num_active_planes(display, new_bw_state);
@@ -1287,10 +1290,10 @@ static int intel_bw_check_qgv_points(struct intel_display *display,
 	data_rate = DIV_ROUND_UP(data_rate, 1000);
 
 	if (HAS_PMDEMAND(display))
-		return mtl_find_qgv_points(display, data_rate, num_active_planes,
+		return mtl_find_qgv_points(state, data_rate, num_active_planes,
 					   new_bw_state);
 	else
-		return icl_find_qgv_points(display, data_rate, num_active_planes,
+		return icl_find_qgv_points(state, data_rate, num_active_planes,
 					   old_bw_state, new_bw_state);
 }
 
@@ -1370,11 +1373,11 @@ static int intel_bw_check_sagv_mask(struct intel_atomic_state *state)
 
 	if (intel_bw_can_enable_sagv(display, new_bw_state) !=
 	    intel_bw_can_enable_sagv(display, old_bw_state)) {
-		ret = intel_atomic_serialize_global_state(&new_bw_state->base);
+		ret = intel_atomic_serialize_global_state(state, &new_bw_state->base);
 		if (ret)
 			return ret;
 	} else if (new_bw_state->pipe_sagv_reject != old_bw_state->pipe_sagv_reject) {
-		ret = intel_atomic_lock_global_state(&new_bw_state->base);
+		ret = intel_atomic_lock_global_state(state, &new_bw_state->base);
 		if (ret)
 			return ret;
 	}
@@ -1420,7 +1423,7 @@ int intel_bw_atomic_check(struct intel_atomic_state *state)
 	if (!changed)
 		return 0;
 
-	ret = intel_bw_check_qgv_points(display, old_bw_state, new_bw_state);
+	ret = intel_bw_check_qgv_points(state, old_bw_state, new_bw_state);
 	if (ret)
 		return ret;
 

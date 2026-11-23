@@ -295,9 +295,9 @@ void intel_atomic_clear_global_state(struct intel_atomic_state *state)
 	state->num_global_objs = 0;
 }
 
-int intel_atomic_lock_global_state(struct intel_global_state *obj_state)
+int intel_atomic_lock_global_state(struct intel_atomic_state *state,
+				   struct intel_global_state *obj_state)
 {
-	struct intel_atomic_state *state = obj_state->state;
 	struct intel_display *display = to_intel_display(state);
 	struct intel_crtc *crtc;
 
@@ -315,11 +315,12 @@ int intel_atomic_lock_global_state(struct intel_global_state *obj_state)
 	return 0;
 }
 
-int intel_atomic_serialize_global_state(struct intel_global_state *obj_state)
+int intel_atomic_serialize_global_state(struct intel_atomic_state *state,
+					struct intel_global_state *obj_state)
 {
 	int ret;
 
-	ret = intel_atomic_lock_global_state(obj_state);
+	ret = intel_atomic_lock_global_state(state, obj_state);
 	if (ret)
 		return ret;
 
