@@ -51,7 +51,7 @@ struct i915_gem_engines {
 	unsigned int num_engines;
 
 	/** @engines: Array of engines */
-	struct intel_context *engines[];
+	struct intel_context *engines[] __counted_by(num_engines);
 };
 
 /**
