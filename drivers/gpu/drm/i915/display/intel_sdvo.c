@@ -2447,6 +2447,10 @@ intel_sdvo_connector_atomic_set_property(struct drm_connector *connector,
 		state->tv.legacy_mode = intel_sdvo_connector->tv_format_supported[val];
 
 		if (state->crtc) {
+			/*
+			 * FIXME pass in the full atomic state to .atomic_set_property()
+			 * and stop using the state->state pointer to get at it.
+			 */
 			struct drm_crtc_state *crtc_state =
 				drm_atomic_get_new_crtc_state(state->state, state->crtc);
 
