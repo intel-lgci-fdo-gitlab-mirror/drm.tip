@@ -3073,7 +3073,7 @@ static void xe_pt_job_ops_destroy(struct kref *ref)
 			 * put.
 			 */
 			if (llist_add(&bo->freed, &bo_device->async_list))
-				schedule_work(&bo_device->async_free);
+				xe_destroy_wq_queue(&bo_device->async_free);
 		}
 	}
 
