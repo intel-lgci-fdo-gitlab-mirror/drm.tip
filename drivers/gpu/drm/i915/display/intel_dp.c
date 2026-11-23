@@ -1723,7 +1723,8 @@ bool intel_dp_supports_dsc(struct intel_dp *intel_dp,
 	return intel_dsc_source_support(crtc_state);
 }
 
-static int intel_dp_hdmi_compute_bpc(struct intel_dp *intel_dp,
+static int intel_dp_hdmi_compute_bpc(struct intel_atomic_state *state,
+				     struct intel_dp *intel_dp,
 				     const struct intel_crtc_state *crtc_state,
 				     int bpc, bool respect_downstream_limits)
 {
@@ -1745,7 +1746,7 @@ static int intel_dp_hdmi_compute_bpc(struct intel_dp *intel_dp,
 		bpc = 8;
 
 	for (; bpc >= 8; bpc -= 2) {
-		if (intel_hdmi_bpc_possible(crtc_state, bpc,
+		if (intel_hdmi_bpc_possible(state, crtc_state, bpc,
 					    intel_dp_has_hdmi_sink(intel_dp)) &&
 		    intel_dp_tmds_clock_valid(intel_dp, clock, bpc, crtc_state->sink_format,
 					      respect_downstream_limits) == MODE_OK)
@@ -1755,7 +1756,8 @@ static int intel_dp_hdmi_compute_bpc(struct intel_dp *intel_dp,
 	return -EINVAL;
 }
 
-static int intel_dp_max_bpp(struct intel_dp *intel_dp,
+static int intel_dp_max_bpp(struct intel_atomic_state *state,
+			    struct intel_dp *intel_dp,
 			    const struct intel_crtc_state *crtc_state,
 			    bool respect_downstream_limits)
 {
@@ -1771,8 +1773,8 @@ static int intel_dp_max_bpp(struct intel_dp *intel_dp,
 	if (intel_dp->dfp.min_tmds_clock) {
 		int max_hdmi_bpc;
 
-		max_hdmi_bpc = intel_dp_hdmi_compute_bpc(intel_dp, crtc_state, bpc,
-							 respect_downstream_limits);
+		max_hdmi_bpc = intel_dp_hdmi_compute_bpc(state, intel_dp, crtc_state,
+							 bpc, respect_downstream_limits);
 		if (max_hdmi_bpc < 0)
 			return 0;
 
@@ -2830,7 +2832,8 @@ intel_dp_compute_m_n_ratio_limits(struct intel_dp *intel_dp,
 }
 
 bool
-intel_dp_compute_config_limits(struct intel_dp *intel_dp,
+intel_dp_compute_config_limits(struct intel_atomic_state *state,
+			       struct intel_dp *intel_dp,
 			       struct drm_connector_state *conn_state,
 			       struct intel_crtc_state *crtc_state,
 			       bool respect_downstream_limits,
@@ -2857,7 +2860,8 @@ intel_dp_compute_config_limits(struct intel_dp *intel_dp,
 		 */
 		limits->pipe.max_bpp = min(crtc_state->max_pipe_bpp, 24);
 	} else {
-		limits->pipe.max_bpp = intel_dp_max_bpp(intel_dp, crtc_state,
+		limits->pipe.max_bpp = intel_dp_max_bpp(state, intel_dp,
+							crtc_state,
 							respect_downstream_limits);
 	}
 
@@ -3006,10 +3010,10 @@ intel_dp_compute_link_for_joined_pipes(struct intel_atomic_state *state,
 	joiner_needs_dsc = intel_dp_joiner_needs_dsc(display, num_joined_pipes);
 
 	dsc_needed = joiner_needs_dsc || intel_dp->force_dsc_en ||
-		     !intel_dp_compute_config_limits(intel_dp, conn_state, pipe_config,
-						     respect_downstream_limits,
-						     false,
-						     &limits);
+		!intel_dp_compute_config_limits(state, intel_dp,
+						conn_state, pipe_config,
+						respect_downstream_limits,
+						false, &limits);
 
 	if (!dsc_needed) {
 		/*
@@ -3047,10 +3051,10 @@ intel_dp_compute_link_for_joined_pipes(struct intel_atomic_state *state,
 			    str_yes_no(ret), str_yes_no(joiner_needs_dsc),
 			    str_yes_no(intel_dp->force_dsc_en));
 
-		if (!intel_dp_compute_config_limits(intel_dp, conn_state, pipe_config,
+		if (!intel_dp_compute_config_limits(state, intel_dp,
+						    conn_state, pipe_config,
 						    respect_downstream_limits,
-						    true,
-						    &limits))
+						    true, &limits))
 			return -EINVAL;
 
 		ret = intel_dp_dsc_compute_config(state, intel_dp,

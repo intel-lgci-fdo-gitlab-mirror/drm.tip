@@ -622,7 +622,8 @@ adjust_limits_for_dsc_hblank_expansion_quirk(struct intel_dp *intel_dp,
 }
 
 static bool
-mst_stream_compute_config_limits(struct intel_dp *intel_dp,
+mst_stream_compute_config_limits(struct intel_atomic_state *state,
+				 struct intel_dp *intel_dp,
 				 struct drm_connector_state *conn_state,
 				 struct intel_crtc_state *crtc_state,
 				 bool dsc,
@@ -631,9 +632,9 @@ mst_stream_compute_config_limits(struct intel_dp *intel_dp,
 	struct intel_connector *connector =
 		to_intel_connector(conn_state->connector);
 
-	if (!intel_dp_compute_config_limits(intel_dp, conn_state,
-					    crtc_state, false, dsc,
-					    limits))
+	if (!intel_dp_compute_config_limits(state, intel_dp,
+					    conn_state, crtc_state,
+					    false, dsc, limits))
 		return false;
 
 	return adjust_limits_for_dsc_hblank_expansion_quirk(intel_dp,
@@ -664,8 +665,9 @@ static int mst_stream_compute_link_for_joined_pipes(struct intel_atomic_state *s
 	joiner_needs_dsc = intel_dp_joiner_needs_dsc(display, num_joined_pipes);
 
 	dsc_needed = joiner_needs_dsc || intel_dp->force_dsc_en ||
-		!mst_stream_compute_config_limits(intel_dp, conn_state,
-						  pipe_config, false, &limits);
+		!mst_stream_compute_config_limits(state, intel_dp,
+						  conn_state, pipe_config,
+						  false, &limits);
 
 	if (!dsc_needed) {
 		ret = mst_stream_compute_link_config(state, intel_dp,
@@ -698,9 +700,9 @@ static int mst_stream_compute_link_for_joined_pipes(struct intel_atomic_state *s
 			    str_yes_no(intel_dp->force_dsc_en));
 
 
-		if (!mst_stream_compute_config_limits(intel_dp, conn_state,
-						      pipe_config, true,
-						      &limits))
+		if (!mst_stream_compute_config_limits(state, intel_dp,
+						      conn_state, pipe_config,
+						      true, &limits))
 			return -EINVAL;
 
 		/*
