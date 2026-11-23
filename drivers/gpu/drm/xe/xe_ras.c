@@ -782,7 +782,9 @@ int xe_ras_get_counter_response(struct xe_device *xe, const struct xe_ras_error_
 {
 	struct xe_ras_get_counter_request request = {0};
 	struct xe_sysctrl_mailbox_command command = {0};
+	const struct xe_ras_error_product product = {0};
 	struct xe_ras_error_common *common;
+	bool detailed;
 	size_t rlen;
 	int ret;
 
@@ -807,9 +809,11 @@ int xe_ras_get_counter_response(struct xe_device *xe, const struct xe_ras_error_
 		return -EBADMSG;
 
 	common = &response->counter.common;
+	detailed = memcmp(&response->counter.product, &product, sizeof(product));
 
-	xe_dbg(xe, "[RAS]: get counter %u for %s %s\n", response->value,
-	       comp_to_str(common->component), sev_to_str(common->severity));
+	xe_dbg(xe, "[RAS]: get %s counter %u for %s %s %s info queue\n",
+	       detailed ? "detailed" : "aggregate", response->value, comp_to_str(common->component),
+	       sev_to_str(common->severity), response->has_info_queue ? "with" : "without");
 
 	return 0;
 }
