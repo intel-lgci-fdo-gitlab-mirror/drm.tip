@@ -30,7 +30,6 @@ struct intel_global_obj {
 
 struct intel_global_state {
 	struct intel_global_obj *obj;
-	struct intel_atomic_state *state;
 	struct intel_global_commit *commit;
 	struct kref ref;
 	bool changed, serialized;
