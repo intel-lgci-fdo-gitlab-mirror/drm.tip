@@ -23,6 +23,7 @@ struct intel_global_state_funcs {
 
 struct intel_global_obj {
 	struct list_head head;
+	struct intel_display *display;
 	struct intel_global_state *state;
 	const struct intel_global_state_funcs *funcs;
 };

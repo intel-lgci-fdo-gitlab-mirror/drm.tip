@@ -119,6 +119,7 @@ void intel_atomic_global_obj_init(struct intel_display *display,
 
 	kref_init(&state->ref);
 
+	obj->display = display;
 	obj->state = state;
 	obj->funcs = funcs;
 	list_add_tail(&obj->head, &display->global.obj_list);
