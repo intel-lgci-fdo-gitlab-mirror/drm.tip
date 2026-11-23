@@ -3,6 +3,7 @@
  * Copyright © 2026 Intel Corporation
  */
 
+#include <linux/cleanup.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/netdevice.h>
@@ -107,6 +108,31 @@ struct drm_ras_ctx {
 	unsigned long restart;
 };
 
+static void drm_ras_node_release(struct kref *ref)
+{
+	complete(&container_of(ref, struct drm_ras_node, ref)->released);
+}
+
+static void drm_ras_node_put(struct drm_ras_node *node)
+{
+	kref_put(&node->ref, drm_ras_node_release);
+}
+
+DEFINE_FREE(drm_ras_node_put, struct drm_ras_node *, if (_T) drm_ras_node_put(_T))
+
+static struct drm_ras_node *drm_ras_node_get(u32 id)
+{
+	struct drm_ras_node *node;
+
+	xa_lock(&drm_ras_xa);
+	node = xa_load(&drm_ras_xa, id);
+	if (node)
+		kref_get(&node->ref);
+	xa_unlock(&drm_ras_xa);
+
+	return node;
+}
+
 /**
  * drm_ras_nl_list_nodes_dumpit() - Dump all registered RAS nodes
  * @skb: Netlink message buffer
@@ -131,6 +157,8 @@ int drm_ras_nl_list_nodes_dumpit(struct sk_buff *skb,
 	struct nlattr *hdr;
 	unsigned long id;
 	int ret = 0;
+
+	xa_lock(&drm_ras_xa);
 
 	xa_for_each_start(&drm_ras_xa, id, node, ctx->restart) {
 		hdr = genlmsg_iput(skb, info);
@@ -169,6 +197,8 @@ int drm_ras_nl_list_nodes_dumpit(struct sk_buff *skb,
 		genlmsg_end(skb, hdr);
 	}
 
+	xa_unlock(&drm_ras_xa);
+
 	if (ret == -EMSGSIZE)
 		ctx->restart = id;
 
@@ -178,9 +208,9 @@ int drm_ras_nl_list_nodes_dumpit(struct sk_buff *skb,
 static int get_node_error_counter(u32 node_id, u32 error_id,
 				  const char **name, u32 *value)
 {
-	struct drm_ras_node *node;
+	struct drm_ras_node *node __free(drm_ras_node_put) = NULL;
 
-	node = xa_load(&drm_ras_xa, node_id);
+	node = drm_ras_node_get(node_id);
 	if (!node || !node->query_error_counter)
 		return -ENOENT;
 
@@ -193,9 +223,9 @@ static int get_node_error_counter(u32 node_id, u32 error_id,
 
 static int get_node_error_threshold(u32 node_id, u32 error_id, const char **name, u32 *threshold)
 {
-	struct drm_ras_node *node;
+	struct drm_ras_node *node __free(drm_ras_node_put) = NULL;
 
-	node = xa_load(&drm_ras_xa, node_id);
+	node = drm_ras_node_get(node_id);
 	if (!node)
 		return -ENOENT;
 
@@ -210,9 +240,9 @@ static int get_node_error_threshold(u32 node_id, u32 error_id, const char **name
 
 static int set_node_error_threshold(u32 node_id, u32 error_id, u32 threshold)
 {
-	struct drm_ras_node *node;
+	struct drm_ras_node *node __free(drm_ras_node_put) = NULL;
 
-	node = xa_load(&drm_ras_xa, node_id);
+	node = drm_ras_node_get(node_id);
 	if (!node)
 		return -ENOENT;
 
@@ -374,7 +404,8 @@ free_msg:
  *
  * Context: Process context only. Uses %GFP_KERNEL and multicasts to all
  *          netns, which is unbounded work; callers in interrupt handlers
- *          or other atomic context must defer event.
+ *          or other atomic context must defer event. Must not race
+ *          with drm_ras_node_unregister() for @node.
  *
  * Return: 0 on success, or negative errno on failure.
  */
@@ -451,7 +482,7 @@ int drm_ras_nl_get_error_counter_dumpit(struct sk_buff *skb,
 {
 	const struct genl_info *info = genl_info_dump(cb);
 	struct drm_ras_ctx *ctx = (void *)cb->ctx;
-	struct drm_ras_node *node;
+	struct drm_ras_node *node __free(drm_ras_node_put) = NULL;
 	struct nlattr *hdr;
 	const char *error_name;
 	u32 node_id, error_id, value;
@@ -462,7 +493,7 @@ int drm_ras_nl_get_error_counter_dumpit(struct sk_buff *skb,
 
 	node_id = nla_get_u32(info->attrs[DRM_RAS_A_ERROR_COUNTER_ATTRS_NODE_ID]);
 
-	node = xa_load(&drm_ras_xa, node_id);
+	node = drm_ras_node_get(node_id);
 	if (!node)
 		return -ENOENT;
 
@@ -544,7 +575,7 @@ int drm_ras_nl_get_error_counter_doit(struct sk_buff *skb,
 int drm_ras_nl_clear_error_counter_doit(struct sk_buff *skb,
 					struct genl_info *info)
 {
-	struct drm_ras_node *node;
+	struct drm_ras_node *node __free(drm_ras_node_put) = NULL;
 	u32 node_id, error_id;
 
 	if (!info->attrs ||
@@ -555,7 +586,7 @@ int drm_ras_nl_clear_error_counter_doit(struct sk_buff *skb,
 	node_id = nla_get_u32(info->attrs[DRM_RAS_A_ERROR_COUNTER_ATTRS_NODE_ID]);
 	error_id = nla_get_u32(info->attrs[DRM_RAS_A_ERROR_COUNTER_ATTRS_ERROR_ID]);
 
-	node = xa_load(&drm_ras_xa, node_id);
+	node = drm_ras_node_get(node_id);
 	if (!node || !node->clear_error_counter)
 		return -ENOENT;
 
@@ -642,6 +673,9 @@ int drm_ras_node_register(struct drm_ras_node *node)
 	    (!node->error_counter_range.last || !node->query_error_counter))
 		return -EINVAL;
 
+	kref_init(&node->ref);
+	init_completion(&node->released);
+
 	return xa_alloc(&drm_ras_xa, &node->id, node, xa_limit_32b, GFP_KERNEL);
 }
 EXPORT_SYMBOL(drm_ras_node_register);
@@ -650,10 +684,14 @@ EXPORT_SYMBOL(drm_ras_node_register);
  * drm_ras_node_unregister() - Unregister a previously registered node
  * @node: Node structure to unregister
  *
- * Removes the given node from the global node xarray using its ID.
+ * Removes the given node from the global node xarray using its ID, and waits
+ * for the netlink operations still using it. The caller must have stopped
+ * calling drm_ras_nl_error_event() for @node.
  */
 void drm_ras_node_unregister(struct drm_ras_node *node)
 {
 	xa_erase(&drm_ras_xa, node->id);
+	drm_ras_node_put(node);
+	wait_for_completion(&node->released);
 }
 EXPORT_SYMBOL(drm_ras_node_unregister);
