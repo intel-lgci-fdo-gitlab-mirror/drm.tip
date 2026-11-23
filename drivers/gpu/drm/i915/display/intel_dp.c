@@ -2062,7 +2062,8 @@ static bool is_bw_sufficient_for_dsc_config(struct intel_dp *intel_dp,
 	return available_bw >= required_bw;
 }
 
-static int dsc_compute_link_config(struct intel_dp *intel_dp,
+static int dsc_compute_link_config(struct intel_atomic_state *state,
+				   struct intel_dp *intel_dp,
 				   struct intel_crtc_state *pipe_config,
 				   struct drm_connector_state *conn_state,
 				   const struct link_config_limits *limits,
@@ -2093,7 +2094,8 @@ static int dsc_compute_link_config(struct intel_dp *intel_dp,
 		if (drm_dp_is_uhbr_rate(link_config.rate)) {
 			int ret;
 
-			ret = intel_dp_mtp_tu_compute_config(intel_dp,
+			ret = intel_dp_mtp_tu_compute_config(state,
+							     intel_dp,
 							     pipe_config,
 							     conn_state,
 							     dsc_bpp_x16,
@@ -2325,7 +2327,8 @@ static int align_max_compressed_bpp_x16(const struct intel_connector *connector,
  * Find the max compressed BPP we can find a link configuration for. The BPPs to
  * try depend on the source (platform) and sink.
  */
-static int dsc_compute_compressed_bpp(struct intel_dp *intel_dp,
+static int dsc_compute_compressed_bpp(struct intel_atomic_state *state,
+				      struct intel_dp *intel_dp,
 				      struct intel_crtc_state *pipe_config,
 				      struct drm_connector_state *conn_state,
 				      const struct link_config_limits *limits,
@@ -2367,11 +2370,9 @@ static int dsc_compute_compressed_bpp(struct intel_dp *intel_dp,
 		if (!intel_dp_dsc_valid_compressed_bpp(intel_dp, bpp_x16))
 			continue;
 
-		ret = dsc_compute_link_config(intel_dp,
-					      pipe_config,
-					      conn_state,
-					      limits,
-					      bpp_x16);
+		ret = dsc_compute_link_config(state, intel_dp,
+					      pipe_config, conn_state,
+					      limits, bpp_x16);
 		if (ret == 0) {
 			pipe_config->dsc.compressed_bpp_x16 = bpp_x16;
 			if (intel_dp->force_dsc_fractional_bpp_en &&
@@ -2425,7 +2426,8 @@ int intel_dp_force_dsc_pipe_bpp(struct intel_dp *intel_dp,
 	return 0;
 }
 
-static int intel_dp_dsc_compute_pipe_bpp(struct intel_dp *intel_dp,
+static int intel_dp_dsc_compute_pipe_bpp(struct intel_atomic_state *state,
+					 struct intel_dp *intel_dp,
 					 struct intel_crtc_state *pipe_config,
 					 struct drm_connector_state *conn_state,
 					 const struct link_config_limits *limits)
@@ -2439,7 +2441,8 @@ static int intel_dp_dsc_compute_pipe_bpp(struct intel_dp *intel_dp,
 	else
 		pipe_bpp = limits->pipe.max_bpp;
 
-	ret = dsc_compute_compressed_bpp(intel_dp, pipe_config, conn_state,
+	ret = dsc_compute_compressed_bpp(state, intel_dp,
+					 pipe_config, conn_state,
 					 limits, pipe_bpp);
 	if (ret)
 		return -EINVAL;
@@ -2482,7 +2485,8 @@ void intel_dp_dsc_reset_config(struct intel_crtc_state *crtc_state)
 	memset(&crtc_state->dsc.config, 0, sizeof(crtc_state->dsc.config));
 }
 
-int intel_dp_dsc_compute_config(struct intel_dp *intel_dp,
+int intel_dp_dsc_compute_config(struct intel_atomic_state *state,
+				struct intel_dp *intel_dp,
 				struct intel_crtc_state *pipe_config,
 				struct drm_connector_state *conn_state,
 				const struct link_config_limits *limits,
@@ -2511,8 +2515,9 @@ int intel_dp_dsc_compute_config(struct intel_dp *intel_dp,
 	 * figured out for DP MST DSC.
 	 */
 	if (!is_mst) {
-		ret = intel_dp_dsc_compute_pipe_bpp(intel_dp, pipe_config,
-						    conn_state, limits);
+		ret = intel_dp_dsc_compute_pipe_bpp(state, intel_dp,
+						    pipe_config, conn_state,
+						    limits);
 		if (ret) {
 			drm_dbg_kms(display->drm,
 				    "No Valid pipe bpp for given mode ret = %d\n", ret);
@@ -2979,7 +2984,8 @@ bool intel_dp_joiner_needs_dsc(struct intel_display *display,
 }
 
 static int
-intel_dp_compute_link_for_joined_pipes(struct intel_encoder *encoder,
+intel_dp_compute_link_for_joined_pipes(struct intel_atomic_state *state,
+				       struct intel_encoder *encoder,
 				       struct intel_crtc_state *pipe_config,
 				       struct drm_connector_state *conn_state,
 				       bool respect_downstream_limits)
@@ -3013,9 +3019,8 @@ intel_dp_compute_link_for_joined_pipes(struct intel_encoder *encoder,
 		ret = intel_dp_compute_link_config_wide(intel_dp, pipe_config,
 							conn_state, &limits);
 		if (!ret && intel_dp_is_uhbr(pipe_config))
-			ret = intel_dp_mtp_tu_compute_config(intel_dp,
-							     pipe_config,
-							     conn_state,
+			ret = intel_dp_mtp_tu_compute_config(state, intel_dp,
+							     pipe_config, conn_state,
 							     fxp_q4_from_int(pipe_config->pipe_bpp),
 							     fxp_q4_from_int(pipe_config->pipe_bpp),
 							     0, false);
@@ -3048,8 +3053,9 @@ intel_dp_compute_link_for_joined_pipes(struct intel_encoder *encoder,
 						    &limits))
 			return -EINVAL;
 
-		ret = intel_dp_dsc_compute_config(intel_dp, pipe_config,
-						  conn_state, &limits, 64);
+		ret = intel_dp_dsc_compute_config(state, intel_dp,
+						  pipe_config, conn_state,
+						  &limits, 64);
 		if (ret < 0)
 			return ret;
 
@@ -3078,7 +3084,8 @@ intel_dp_compute_link_for_joined_pipes(struct intel_encoder *encoder,
 }
 
 static int
-intel_dp_compute_link_config(struct intel_encoder *encoder,
+intel_dp_compute_link_config(struct intel_atomic_state *state,
+			     struct intel_encoder *encoder,
 			     struct intel_crtc_state *crtc_state,
 			     struct drm_connector_state *conn_state,
 			     bool respect_downstream_limits)
@@ -3119,7 +3126,8 @@ intel_dp_compute_link_config(struct intel_encoder *encoder,
 			crtc_state->joiner_pipes = GENMASK(crtc->pipe + num_joined_pipes - 1,
 							   crtc->pipe);
 
-		ret = intel_dp_compute_link_for_joined_pipes(encoder, crtc_state, conn_state,
+		ret = intel_dp_compute_link_for_joined_pipes(state, encoder,
+							     crtc_state, conn_state,
 							     respect_downstream_limits);
 		if (ret == 0 || ret == -EDEADLK)
 			break;
@@ -3520,7 +3528,8 @@ static bool intel_dp_has_audio(struct intel_encoder *encoder,
 }
 
 static int
-intel_dp_compute_output_format(struct intel_encoder *encoder,
+intel_dp_compute_output_format(struct intel_atomic_state *state,
+			       struct intel_encoder *encoder,
 			       struct intel_crtc_state *crtc_state,
 			       struct drm_connector_state *conn_state,
 			       bool respect_downstream_limits,
@@ -3537,12 +3546,14 @@ intel_dp_compute_output_format(struct intel_encoder *encoder,
 	crtc_state->sink_format = sink_format;
 	crtc_state->output_format = intel_dp_output_format(connector, crtc_state->sink_format);
 
-	return intel_dp_compute_link_config(encoder, crtc_state, conn_state,
+	return intel_dp_compute_link_config(state, encoder,
+					    crtc_state, conn_state,
 					    respect_downstream_limits);
 }
 
 static int
-intel_dp_compute_formats(struct intel_encoder *encoder,
+intel_dp_compute_formats(struct intel_atomic_state *state,
+			 struct intel_encoder *encoder,
 			 struct intel_crtc_state *crtc_state,
 			 struct drm_connector_state *conn_state,
 			 bool respect_downstream_limits)
@@ -3555,7 +3566,8 @@ intel_dp_compute_formats(struct intel_encoder *encoder,
 	int ret;
 
 	if (drm_mode_is_420_only(info, adjusted_mode)) {
-		ret = intel_dp_compute_output_format(encoder, crtc_state, conn_state,
+		ret = intel_dp_compute_output_format(state, encoder,
+						     crtc_state, conn_state,
 						     respect_downstream_limits,
 						     INTEL_OUTPUT_FORMAT_YCBCR420);
 
@@ -3563,17 +3575,20 @@ intel_dp_compute_formats(struct intel_encoder *encoder,
 			drm_dbg_kms(display->drm,
 				    "YCbCr 4:2:0 mode but YCbCr 4:2:0 output not possible. Falling back to RGB.\n");
 
-			ret = intel_dp_compute_output_format(encoder, crtc_state, conn_state,
+			ret = intel_dp_compute_output_format(state, encoder,
+							     crtc_state, conn_state,
 							     respect_downstream_limits,
 							     INTEL_OUTPUT_FORMAT_RGB);
 		}
 	} else {
-		ret = intel_dp_compute_output_format(encoder, crtc_state, conn_state,
+		ret = intel_dp_compute_output_format(state, encoder,
+						     crtc_state, conn_state,
 						     respect_downstream_limits,
 						     INTEL_OUTPUT_FORMAT_RGB);
 
 		if (ret && drm_mode_is_420_also(info, adjusted_mode))
-			ret = intel_dp_compute_output_format(encoder, crtc_state, conn_state,
+			ret = intel_dp_compute_output_format(state, encoder,
+							     crtc_state, conn_state,
 							     respect_downstream_limits,
 							     INTEL_OUTPUT_FORMAT_YCBCR420);
 	}
@@ -3758,9 +3773,11 @@ intel_dp_compute_config(struct intel_atomic_state *state,
 	 * Try to respect downstream TMDS clock limits first, if
 	 * that fails assume the user might know something we don't.
 	 */
-	ret = intel_dp_compute_formats(encoder, pipe_config, conn_state, true);
+	ret = intel_dp_compute_formats(state, encoder,
+				       pipe_config, conn_state, true);
 	if (ret)
-		ret = intel_dp_compute_formats(encoder, pipe_config, conn_state, false);
+		ret = intel_dp_compute_formats(state, encoder,
+					       pipe_config, conn_state, false);
 	if (ret)
 		return ret;
 

@@ -33,7 +33,8 @@ bool intel_dp_mst_stream_disconnected(struct intel_atomic_state *state,
 void intel_dp_mst_prepare_probe(struct intel_dp *intel_dp);
 bool intel_dp_mst_verify_dpcd_state(struct intel_dp *intel_dp);
 
-int intel_dp_mtp_tu_compute_config(struct intel_dp *intel_dp,
+int intel_dp_mtp_tu_compute_config(struct intel_atomic_state *state,
+				   struct intel_dp *intel_dp,
 				   struct intel_crtc_state *crtc_state,
 				   struct drm_connector_state *conn_state,
 				   int min_bpp_x16, int max_bpp_x16, int bpp_step_x16, bool dsc);
