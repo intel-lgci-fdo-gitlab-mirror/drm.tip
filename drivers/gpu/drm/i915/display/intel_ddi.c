@@ -4612,14 +4612,13 @@ static bool crtcs_port_sync_compatible(const struct intel_crtc_state *crtc_state
 }
 
 static u16
-intel_ddi_port_sync_transcoders(const struct intel_crtc_state *ref_crtc_state,
+intel_ddi_port_sync_transcoders(struct intel_atomic_state *state,
+				const struct intel_crtc_state *ref_crtc_state,
 				int tile_group_id)
 {
 	struct intel_display *display = to_intel_display(ref_crtc_state);
 	struct drm_connector *connector;
 	const struct drm_connector_state *conn_state;
-	struct intel_atomic_state *state =
-		to_intel_atomic_state(ref_crtc_state->uapi.state);
 	u16 transcoders = 0;
 	int i;
 
@@ -4678,7 +4677,7 @@ static int intel_ddi_compute_config_late(struct intel_atomic_state *state,
 		    crtc_state->uapi.crtc->base.id, crtc_state->uapi.crtc->name);
 
 	if (connector->has_tile)
-		port_sync_transcoders = intel_ddi_port_sync_transcoders(crtc_state,
+		port_sync_transcoders = intel_ddi_port_sync_transcoders(state, crtc_state,
 									connector->tile_group->id);
 
 	/*
