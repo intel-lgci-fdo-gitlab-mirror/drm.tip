@@ -788,6 +788,28 @@ static int query_eu_stall(struct xe_device *xe,
 	return ret ? -EFAULT : 0;
 }
 
+static int query_mempolicy(struct xe_device *xe,
+			   struct drm_xe_device_query *query)
+{
+	struct drm_xe_query_mempolicy __user *query_ptr = u64_to_user_ptr(query->data);
+	size_t size = sizeof(struct drm_xe_query_mempolicy);
+	struct drm_xe_query_mempolicy resp = {};
+
+	if (query->size == 0) {
+		query->size = size;
+		return 0;
+	} else if (XE_IOCTL_DBG(xe, query->size != size)) {
+		return -EINVAL;
+	}
+
+	resp.supported_modes = xe_bo_mempolicy_modes(xe);
+
+	if (copy_to_user(query_ptr, &resp, size))
+		return -EFAULT;
+
+	return 0;
+}
+
 static int (* const xe_query_funcs[])(struct xe_device *xe,
 				      struct drm_xe_device_query *query) = {
 	query_engines,
@@ -801,6 +823,7 @@ static int (* const xe_query_funcs[])(struct xe_device *xe,
 	query_oa_units,
 	query_pxp_status,
 	query_eu_stall,
+	query_mempolicy,
 };
 
 int xe_query_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
