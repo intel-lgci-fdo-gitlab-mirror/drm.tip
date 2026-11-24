@@ -13,6 +13,7 @@
 #include <drm/drm_print.h>
 
 #include "xe_device.h"
+#include "xe_hwmon.h"
 #include "xe_late_bind_fw.h"
 #include "xe_pcode.h"
 #include "xe_pcode_api.h"
@@ -289,6 +290,8 @@ static void xe_late_bind_work(struct work_struct *work)
 	if (!ret) {
 		drm_dbg(&xe->drm, "Load %s firmware successful\n",
 			fw_id_to_name[lbfw->id]);
+		if (lbfw->id == XE_LB_FW_FAN_CONTROL)
+			xe_hwmon_fan_update_post_lb(xe);
 		goto out;
 	}
 

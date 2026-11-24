@@ -1223,14 +1223,14 @@ static int xe_hwmon_pcode_read_fan_control(const struct xe_hwmon *hwmon, u32 sub
 				     uval, NULL);
 }
 
-static void xe_hwmon_get_fan_enable_mask(struct xe_hwmon *hwmon)
+static int xe_hwmon_get_fan_enable_mask(struct xe_hwmon *hwmon)
 {
 	int ret;
 
 	/* Platforms that don't return correct value */
 	if (hwmon->xe->info.platform == XE_DG2) {
 		hwmon->fan_enable_mask = GENMASK(1, 0);
-		return;
+		return 0;
 	}
 
 	ret = xe_hwmon_pcode_read_fan_control(hwmon, FSC_READ_NUM_FANS, 0,
@@ -1238,7 +1238,7 @@ static void xe_hwmon_get_fan_enable_mask(struct xe_hwmon *hwmon)
 	if (ret) {
 		hwmon->fan_enable_mask = 0;
 		xe_warn(hwmon->xe, "failed to read number of fans, ret=%d\n", ret);
-		return;
+		return ret;
 	}
 
 	/* Check if fan mask exceeds FAN_MAX and log a warning if it does */
@@ -1249,6 +1249,8 @@ static void xe_hwmon_get_fan_enable_mask(struct xe_hwmon *hwmon)
 	}
 
 	xe_info(hwmon->xe, "Number of fans detected: %u\n", hweight32(hwmon->fan_enable_mask));
+
+	return 0;
 }
 
 static int xe_hwmon_get_fan_point_count(struct xe_hwmon *hwmon, u8 fan, u32 *point_count,
@@ -1825,7 +1827,7 @@ static void xe_hwmon_init_curve_attrs(struct xe_hwmon *hwmon)
 	hwmon->curve_group.is_visible = xe_hwmon_curve_attributes_visible;
 }
 
-static int xe_hwmon_read_fan_control_info(struct xe_hwmon *hwmon)
+static int xe_hwmon_read_fan_control_info(struct xe_hwmon *hwmon, u32 new_fan_mask)
 {
 	int point;
 	int fan;
@@ -1897,8 +1899,9 @@ static int xe_hwmon_read_fan_control_info(struct xe_hwmon *hwmon)
 		if (!fi->fan_table[STOCK_FAN_TABLE].point_count)
 			continue;
 
-		/* Set PWM enable mode to automatic i.e stock table in use. */
-		fi->pwm_enable_mode = XE_FAN_PWM_AUTO_STOCK_TABLE;
+		/* Start new fans in automatic mode; keep the user's mode for known fans. */
+		if (new_fan_mask & BIT(fan))
+			fi->pwm_enable_mode = XE_FAN_PWM_AUTO_STOCK_TABLE;
 
 		/* Read minimum fan PWM */
 		ret = xe_hwmon_pcode_read_fan_control(hwmon, FSC_READ_FAN_MIN_PWM, fan,
@@ -2824,7 +2827,7 @@ xe_hwmon_get_preregistration_info(struct xe_hwmon *hwmon)
 				xe_hwmon_fan_input_read(hwmon, channel, &fan_speed);
 
 		/* Fan control tables initialization */
-		if (xe_hwmon_read_fan_control_info(hwmon))
+		if (xe_hwmon_read_fan_control_info(hwmon, hwmon->fan_enable_mask))
 			xe_warn(hwmon->xe, "Fan control tables are not available\n");
 	}
 	return xe_hwmon_init_temp_info(hwmon);
@@ -3030,6 +3033,36 @@ void xe_hwmon_resume(struct xe_device *xe, bool runtime)
 		fi->restore_user_table = false;
 	}
 
+	mutex_unlock(&hwmon->hwmon_lock);
+}
+
+/**
+ * xe_hwmon_fan_update_post_lb - Update fan info after late binding
+ * @xe: xe device instance
+ *
+ * This function reads the number of fans and their stock table after late binding.
+ */
+void xe_hwmon_fan_update_post_lb(struct xe_device *xe)
+{
+	struct xe_hwmon *hwmon = xe->hwmon;
+	u32 old_mask;
+
+	if (!hwmon || !xe->info.has_fan_control)
+		return;
+
+	mutex_lock(&hwmon->hwmon_lock);
+
+	old_mask = hwmon->fan_enable_mask;
+	if (xe_hwmon_get_fan_enable_mask(hwmon)) {
+		xe_warn(hwmon->xe, "keeping fan enable mask %#x after late binding\n", old_mask);
+		hwmon->fan_enable_mask = old_mask;
+		goto unlock;
+	}
+
+	if (xe_hwmon_read_fan_control_info(hwmon, hwmon->fan_enable_mask & ~old_mask))
+		xe_warn(hwmon->xe, "failed to read stock fan tables after late binding\n");
+
+unlock:
 	mutex_unlock(&hwmon->hwmon_lock);
 }
 
