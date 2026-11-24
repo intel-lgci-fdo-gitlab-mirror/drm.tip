@@ -413,6 +413,18 @@ static void guc_waklv_init(struct xe_guc_ads *ads)
 				 GUC_FEATURE_KLV_DISABLE_MULTI_QUEUE);
 	}
 
+	/* Wa_14028597154: implemented by the GuC, only needed if multi-queue can be used */
+	if (XE_GT_WA(gt, 14028597154) && xe_gt_has_multi_queue(gt)) {
+		if (GUC_FIRMWARE_VER_AT_LEAST(&gt->uc.guc, 70, 81)) {
+			u32 data = 1;
+
+			guc_waklv_enable(ads, &data, 1, &offset, &remain,
+					 GUC_WA_KLV_DISABLE_PPHWSP_ACCESS_FOR_MULTIQ_SEM_TOKEN_64);
+		} else {
+			xe_gt_info(gt, "Wa_14028597154 needs GuC 70.81 or greater\n");
+		}
+	}
+
 	size = guc_ads_waklv_size(ads) - remain;
 	if (!size)
 		return;
