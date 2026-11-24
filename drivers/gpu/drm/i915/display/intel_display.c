@@ -7524,7 +7524,7 @@ intel_atomic_commit_type(struct intel_atomic_state *state,
 	/* TODO handle VRR with flip queue */
 	if (intel_flipq_supported(display) &&
 	    !new_crtc_state->vrr.enable &&
-	    !new_crtc_state->has_psr &&
+	    intel_flipq_psr_supported(new_crtc_state) &&
 	    !intel_crtc_needs_color_update(new_crtc_state))
 		return INTEL_COMMIT_FLIPQ;
 
