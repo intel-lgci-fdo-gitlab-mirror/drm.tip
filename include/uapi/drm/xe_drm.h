@@ -778,6 +778,53 @@ struct drm_xe_device_query {
 };
 
 /**
+ * struct drm_xe_gem_create_mempolicy - Host NUMA memory policy for GEM_CREATE
+ *
+ * Used with %DRM_XE_GEM_CREATE_EXTENSION_SET_MEMPOLICY. The policy applies to
+ * the system-memory backing pages of the object. It is captured at creation
+ * time and applied whenever those pages are allocated, including when the
+ * object is populated later or restored after its backing store was shrunk.
+ *
+ * @mode supports the following values:
+ *  - %DRM_XE_GEM_CREATE_MEMPOLICY_MODE_PREFERRED - Prefer a single node.
+ *    @nodemask must contain exactly one node. This is a preference, and the
+ *    allocation may fall back to other nodes under memory pressure.
+ *  - %DRM_XE_GEM_CREATE_MEMPOLICY_MODE_BIND - Allocate only from the nodes
+ *    in @nodemask. The kernel never falls back to a node outside the mask,
+ *    so allocation fails with -ENOMEM when those nodes are exhausted.
+ *  - %DRM_XE_GEM_CREATE_MEMPOLICY_MODE_INTERLEAVE - Spread the backing pages
+ *    round-robin across the nodes in @nodemask.
+ *
+ * @nodemask is a user pointer to an array of unsigned longs. Bit n set means
+ * host NUMA node n is in the set. @maxnode is the number of valid bits in the
+ * array, and bits at or above @maxnode must be zero. The set must be non-empty
+ * and contain only nodes that have memory. Requesting this extension on an
+ * object without a system-memory placement is rejected with -EINVAL.
+ */
+struct drm_xe_gem_create_mempolicy {
+	/** @base: Base user extension */
+	struct drm_xe_user_extension base;
+
+#define DRM_XE_GEM_CREATE_MEMPOLICY_MODE_PREFERRED	0
+#define DRM_XE_GEM_CREATE_MEMPOLICY_MODE_BIND		1
+#define DRM_XE_GEM_CREATE_MEMPOLICY_MODE_INTERLEAVE	2
+	/** @mode: One of %DRM_XE_GEM_CREATE_MEMPOLICY_MODE_* */
+	__u16 mode;
+
+	/** @flags: MBZ */
+	__u16 flags;
+
+	/** @pad: MBZ */
+	__u32 pad;
+
+	/** @nodemask: User pointer to the host NUMA node bitmask */
+	__u64 nodemask;
+
+	/** @maxnode: Number of valid bits in @nodemask, at most MAX_NUMNODES */
+	__u64 maxnode;
+};
+
+/**
  * struct drm_xe_gem_create - Input of &DRM_IOCTL_XE_GEM_CREATE - A structure for
  * gem creation
  *
@@ -839,8 +886,14 @@ struct drm_xe_device_query {
  *    event occurs after their creation. Attempting to flip an invalid object
  *    will cause a black frame to be displayed instead. Submissions with invalid
  *    objects mapped in the VM will be rejected.
+ *
+ * This ioctl also accepts the %DRM_XE_GEM_CREATE_EXTENSION_SET_MEMPOLICY
+ * extension, which uses &struct drm_xe_gem_create_mempolicy to request a
+ * host NUMA memory policy (preferred, bind or interleave) for the backing
+ * pages.
  */
 struct drm_xe_gem_create {
+#define DRM_XE_GEM_CREATE_EXTENSION_SET_MEMPOLICY	1
 #define DRM_XE_GEM_CREATE_EXTENSION_SET_PROPERTY	0
 #define   DRM_XE_GEM_CREATE_SET_PROPERTY_PXP_TYPE	0
 	/** @extensions: Pointer to the first extension struct, if any */
