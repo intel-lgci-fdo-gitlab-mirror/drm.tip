@@ -13,9 +13,13 @@ struct xe_device;
 #if IS_REACHABLE(CONFIG_HWMON)
 int xe_hwmon_register(struct xe_device *xe);
 void xe_hwmon_unregister(struct xe_device *xe);
+void xe_hwmon_suspend(struct xe_device *xe, bool runtime);
+void xe_hwmon_resume(struct xe_device *xe, bool runtime);
 #else
 static inline int xe_hwmon_register(struct xe_device *xe) { return 0; };
 static inline void xe_hwmon_unregister(struct xe_device *xe) { }
+static inline void xe_hwmon_suspend(struct xe_device *xe, bool runtime) {}
+static inline void xe_hwmon_resume(struct xe_device *xe, bool runtime) {}
 #endif
 
 #endif /* _XE_HWMON_H_ */

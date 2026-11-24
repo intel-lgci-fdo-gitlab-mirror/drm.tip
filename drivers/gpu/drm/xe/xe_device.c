@@ -1418,6 +1418,8 @@ int xe_device_suspend(struct xe_device *xe, bool hibernate, bool flr)
 	for_each_gt(gt, xe, id)
 		xe_gt_suspend_prepare(gt);
 
+	xe_hwmon_suspend(xe, false);
+
 	if (flr) {
 		for_each_gt(gt, xe, id)
 			xe_gt_flr_prepare(gt);
@@ -1545,6 +1547,8 @@ int xe_device_resume(struct xe_device *xe, bool flr)
 	xe_pxp_pm_resume(xe->pxp);
 
 	xe_late_bind_pm_resume(&xe->late_bind);
+
+	xe_hwmon_resume(xe, false);
 
 	return 0;
 }
