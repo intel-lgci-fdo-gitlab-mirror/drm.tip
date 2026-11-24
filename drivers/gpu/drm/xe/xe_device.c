@@ -1510,6 +1510,9 @@ int xe_device_resume(struct xe_device *xe, bool flr)
 			return err;
 	}
 
+	for_each_tile(tile, xe, id)
+		xe_ggtt_resume(tile->mem.ggtt);
+
 	xe_i2c_pm_resume(xe, true);
 
 	xe_sysctrl_pm_resume(xe);

@@ -650,6 +650,9 @@ int xe_pm_runtime_resume(struct xe_device *xe)
 		err = xe_bo_restore_early(xe);
 		if (err)
 			goto out;
+
+		for_each_tile(tile, xe, id)
+			xe_ggtt_resume(tile->mem.ggtt);
 	}
 
 	xe_i2c_pm_resume(xe, xe->d3cold.allowed);

@@ -130,6 +130,8 @@ struct xe_ggtt {
 	unsigned int flags;
 	/** @scratch: Internal object allocation used as a scratch page */
 	struct xe_bo *scratch;
+	/** @low_4m_pte: PTE backing GGTT [4K, 4M), 0 if unused */
+	u64 low_4m_pte;
 	/** @lock: Mutex lock to protect GGTT data */
 	struct mutex lock;
 	/**
@@ -250,13 +252,27 @@ u64 xe_ggtt_size(struct xe_ggtt *ggtt)
 	return ggtt->size;
 }
 
-static void xe_ggtt_set_pte(struct xe_ggtt *ggtt, u64 addr, u64 pte)
+static void __xe_ggtt_set_pte(struct xe_ggtt *ggtt, u64 addr, u64 pte)
 {
 	xe_tile_assert(ggtt->tile, !(addr & XE_PTE_MASK));
+
+	writeq(pte, &ggtt->gsm[addr >> XE_PTE_SHIFT]);
+}
+
+static void xe_ggtt_set_pte(struct xe_ggtt *ggtt, u64 addr, u64 pte)
+{
 	xe_tile_assert(ggtt->tile, addr >= ggtt->start);
 	xe_tile_assert(ggtt->tile, addr < ggtt->start + ggtt->full_size);
 
-	writeq(pte, &ggtt->gsm[addr >> XE_PTE_SHIFT]);
+	__xe_ggtt_set_pte(ggtt, addr, pte);
+}
+
+static void ggtt_set_low_4m_pte(struct xe_ggtt *ggtt, u64 addr, u64 pte)
+{
+	xe_tile_assert(ggtt->tile, addr >= XE_PAGE_SIZE && addr < SZ_4M);
+	xe_tile_assert(ggtt->tile, addr < ggtt->start);
+
+	__xe_ggtt_set_pte(ggtt, addr, pte);
 }
 
 static void xe_ggtt_set_pte_and_flush(struct xe_ggtt *ggtt, u64 addr, u64 pte)
@@ -552,6 +568,71 @@ ALLOW_ERROR_INJECTION(xe_ggtt_init_early, ERRNO); /* See xe_pci_probe() */
 static void xe_ggtt_invalidate(struct xe_ggtt *ggtt);
 static void xe_ggtt_invalidate_engine(struct xe_ggtt *ggtt);
 
+static void ggtt_restore_low_4m_locked(struct xe_ggtt *ggtt)
+{
+	u64 low_start = max_t(u64, ALIGN_DOWN(ggtt->start, SZ_4M) >> 10,
+			      XE_PAGE_SIZE);
+	u64 low_end = min_t(u64, (ALIGN(ggtt->start + ggtt->size, SZ_4M) >> 10) +
+			    XE_PAGE_SIZE, SZ_4M);
+	u64 addr;
+
+	lockdep_assert_held(&ggtt->lock);
+
+	if (!ggtt->low_4m_pte)
+		return;
+
+	for (addr = low_start; addr < low_end; addr += XE_PAGE_SIZE)
+		ggtt_set_low_4m_pte(ggtt, addr, ggtt->low_4m_pte);
+}
+
+/*
+ * Wa_14028597154: multi-queue CS may write semaphore tokens to (addr >> 10),
+ * i.e. into the low 4MB of GGTT, below the range we allocate from.
+ */
+static int ggtt_map_low_4m_wa(struct xe_ggtt *ggtt)
+{
+	struct xe_tile *tile = ggtt->tile;
+	struct xe_device *xe = tile_to_xe(tile);
+	u16 pat_index = xe_cache_pat_idx(xe, XE_CACHE_WB);
+	struct xe_bo *bo;
+	u64 pte;
+
+	/*
+	 * TODO: SR-IOV VF support for Wa_14028597154 requires PF/VF ABI
+	 * negotiation so PF can assign the VF's low-4MB PTEs and VF can map
+	 * its own dummy page.
+	 */
+	if (IS_SRIOV_VF(xe))
+		return 0;
+
+	if (!tile->primary_gt || !XE_GT_WA(tile->primary_gt, 14028597154) ||
+	    !xe_gt_has_multi_queue(tile->primary_gt))
+		return 0;
+
+	bo = xe_managed_bo_create_pin_map(xe, tile, XE_PAGE_SIZE, XE_BO_FLAG_SYSTEM);
+	if (IS_ERR(bo))
+		return PTR_ERR(bo);
+
+	pte = xe_bo_addr(bo, 0, XE_PAGE_SIZE) |
+	      ggtt->pt_ops->pte_encode_flags(bo, pat_index);
+
+	guard(mutex)(&ggtt->lock);
+	ggtt->low_4m_pte = pte;
+	ggtt_restore_low_4m_locked(ggtt);
+
+	return 0;
+}
+
+/**
+ * xe_ggtt_resume - Restore GGTT entries not covered by pinned BO restore
+ * @ggtt: the &xe_ggtt to restore
+ */
+void xe_ggtt_resume(struct xe_ggtt *ggtt)
+{
+	guard(mutex)(&ggtt->lock);
+	ggtt_restore_low_4m_locked(ggtt);
+}
+
 static void xe_ggtt_initial_clear(struct xe_ggtt *ggtt)
 {
 	struct drm_mm_node *hole;
@@ -668,6 +749,11 @@ int xe_ggtt_init(struct xe_ggtt *ggtt)
 			      xe_bo_size(ggtt->scratch));
 	}
 
+	err = ggtt_map_low_4m_wa(ggtt);
+	if (err)
+		goto err;
+
+	/* Also invalidates GGTT TLBs for the low 4MB entries above */
 	xe_ggtt_initial_clear(ggtt);
 
 	return devm_add_action_or_reset(xe->drm.dev, ggtt_fini, ggtt);
