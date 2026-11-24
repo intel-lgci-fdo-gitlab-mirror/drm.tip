@@ -1159,13 +1159,20 @@ int ttm_pool_restore_and_alloc(struct ttm_pool *pool, struct ttm_tt *tt,
  */
 void ttm_pool_free(struct ttm_pool *pool, struct ttm_tt *tt)
 {
-	int nid = ttm_pool_nid(pool);
+	int nid;
 
 	ttm_pool_free_range(pool, tt, tt->caching, 0, tt->num_pages);
 
-	while (atomic_long_read(&allocated_pages[nid]) > pool_node_limit[nid]) {
-		unsigned long diff = atomic_long_read(&allocated_pages[nid]) - pool_node_limit[nid];
-		ttm_pool_shrink(nid, diff);
+	/*
+	 * ttm_operation_ctx can place pages on a caller-requested node, so
+	 * freed pages may land on any node's cache; enforce every node's limit.
+	 */
+	for_each_node(nid) {
+		unsigned long cached;
+
+		while ((cached = atomic_long_read(&allocated_pages[nid])) >
+		       pool_node_limit[nid])
+			ttm_pool_shrink(nid, cached - pool_node_limit[nid]);
 	}
 }
 EXPORT_SYMBOL(ttm_pool_free);
