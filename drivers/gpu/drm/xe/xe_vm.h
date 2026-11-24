@@ -38,6 +38,22 @@ struct xe_vm *xe_vm_create(struct xe_device *xe, u32 flags, struct xe_file *xef)
 struct xe_vm *xe_vm_lookup(struct xe_file *xef, u32 id);
 int xe_vma_cmp_vma_cb(const void *key, const struct rb_node *node);
 
+/**
+ * xe_gpusvm_get_pages_err() - Translate an error from drm_gpusvm_get_pages()
+ * @err: error code returned by drm_gpusvm_get_pages()
+ *
+ * drm_gpusvm_get_pages() returns -EBUSY when its HMM retry budget ran out,
+ * because the range was repeatedly invalidated or faulting was slow. That is
+ * transient, so report -EAGAIN to let the callers retry. -EBUSY would be
+ * treated as fatal, and has other meanings in the VM code.
+ *
+ * Return: @err, with -EBUSY replaced by -EAGAIN
+ */
+static inline int xe_gpusvm_get_pages_err(int err)
+{
+	return err == -EBUSY ? -EAGAIN : err;
+}
+
 static inline struct xe_vm *xe_vm_get(struct xe_vm *vm)
 {
 	drm_gpuvm_get(&vm->gpuvm);

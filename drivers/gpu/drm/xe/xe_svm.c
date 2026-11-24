@@ -1624,7 +1624,7 @@ int xe_svm_range_get_pages(struct xe_vm *vm, struct xe_svm_range *range,
 		drm_gpusvm_range_evict(&vm->svm.gpusvm, &range->base);
 	}
 
-	return err;
+	return xe_gpusvm_get_pages_err(err);
 }
 
 /**

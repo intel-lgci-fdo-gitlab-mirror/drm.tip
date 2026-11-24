@@ -10,6 +10,7 @@
 
 #include "xe_tlb_inval.h"
 #include "xe_trace_bo.h"
+#include "xe_vm.h"
 
 static void xe_userptr_assert_in_notifier(struct xe_vm *vm)
 {
@@ -84,6 +85,7 @@ int xe_vma_userptr_pin_pages(struct xe_userptr_vma *uvma)
 		.device_private_page_owner = xe_svm_private_page_owner(vm, false),
 		.allow_mixed = true,
 	};
+	int err;
 
 	xe_vma_userptr_lockdep(uvma);
 	xe_assert(xe, xe_vma_is_userptr(vma));
@@ -91,12 +93,14 @@ int xe_vma_userptr_pin_pages(struct xe_userptr_vma *uvma)
 	if (vma->gpuva.flags & XE_VMA_DESTROYED)
 		return 0;
 
-	return drm_gpusvm_get_pages(&vm->svm.gpusvm, &uvma->userptr.pages, 1,
-				    uvma->userptr.notifier.mm,
-				    &uvma->userptr.notifier,
-				    xe_vma_userptr(vma),
-				    xe_vma_userptr(vma) + xe_vma_size(vma),
-				    &ctx);
+	err = drm_gpusvm_get_pages(&vm->svm.gpusvm, &uvma->userptr.pages, 1,
+				   uvma->userptr.notifier.mm,
+				   &uvma->userptr.notifier,
+				   xe_vma_userptr(vma),
+				   xe_vma_userptr(vma) + xe_vma_size(vma),
+				   &ctx);
+
+	return xe_gpusvm_get_pages_err(err);
 }
 
 static struct mmu_interval_notifier_finish *

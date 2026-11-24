@@ -2746,11 +2746,11 @@ static struct xe_vma *new_vma(struct xe_vm *vm, struct drm_gpuva_op_map *op,
 			err = xe_vma_userptr_pin_pages(to_userptr_vma(vma));
 			/*
 			 * -EBUSY has dedicated meaning that a user fence
-			 * attached to the VMA is busy, in practice
-			 * xe_vma_userptr_pin_pages can only fail with -EBUSY if
-			 * we are low on memory so convert this to -ENOMEM.
+			 * attached to the VMA is busy. xe_vma_userptr_pin_pages
+			 * reports exhausted HMM retries as -EAGAIN, which makes
+			 * no sense for the bind ioctl, so convert it to -ENOMEM.
 			 */
-			if (err == -EBUSY)
+			if (err == -EAGAIN)
 				err = -ENOMEM;
 		}
 	}
