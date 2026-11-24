@@ -84,7 +84,6 @@ struct amdgpu_vram_resv {
 
 struct amdgpu_mman {
 	struct ttm_device		bdev;
-	struct ttm_pool			*ttm_pools;
 	bool				initialized;
 	void __iomem			*aper_base_kaddr;
 
