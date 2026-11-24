@@ -18,6 +18,16 @@ struct xe_pcode_version {
 	u32 engg;
 };
 
+/**
+ * struct xe_pcode_write - single pcode mailbox write
+ * @mbox: mailbox command
+ * @data: value written to PCODE_DATA0
+ */
+struct xe_pcode_write {
+	u32 mbox;
+	u32 data;
+};
+
 #define PCODE_DEFAULT_TIMEOUT_MS	10
 
 int xe_pcode_init_early(struct xe_tile *tile);
@@ -28,6 +38,8 @@ int xe_pcode_init_min_freq_table(struct xe_tile *tile, u32 min_gt_freq,
 int xe_pcode_read(struct xe_tile *tile, u32 mbox, u32 *val0, u32 *val1);
 int xe_pcode_write_timeout(struct xe_tile *tile, u32 mbox, u32 val,
 			   int timeout_ms);
+int xe_pcode_write_batch(struct xe_tile *tile, const struct xe_pcode_write *writes,
+			 unsigned int count);
 int xe_pcode_write64_timeout(struct xe_tile *tile, u32 mbox, u32 data0,
 			     u32 data1, int timeout);
 int xe_get_pcode_version(struct xe_device *xe, struct xe_pcode_version *version);

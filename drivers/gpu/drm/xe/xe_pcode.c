@@ -124,6 +124,45 @@ int xe_pcode_write_timeout(struct xe_tile *tile, u32 mbox, u32 data, int timeout
 	return err;
 }
 
+/**
+ * xe_pcode_write_batch - issue pcode writes in order under the mailbox lock
+ * @tile: tile
+ * @writes: mailbox/data pairs to write
+ * @count: number of entries in @writes
+ *
+ * Holds the pcode lock across all writes so no other mailbox command can be
+ * interleaved; the lock may be held for up to @count * PCODE_DEFAULT_TIMEOUT_MS.
+ * Stops at the first failure; earlier writes are not reverted.
+ *
+ * Return: 0 on success, negative error code otherwise.
+ */
+int xe_pcode_write_batch(struct xe_tile *tile, const struct xe_pcode_write *writes,
+			 unsigned int count)
+{
+	unsigned int i;
+	int err = 0;
+
+	if (!count)
+		return -EINVAL;
+
+	mutex_lock(&tile->pcode.lock);
+	for (i = 0; i < count; i++) {
+		u32 data = writes[i].data;
+
+		err = pcode_mailbox_rw(tile, writes[i].mbox, &data, NULL, PCODE_DEFAULT_TIMEOUT_MS,
+				       false, false);
+		if (err) {
+			xe_err(tile_to_xe(tile),
+			       "pcode batch write %u/%u failed: mbox 0x%08x data 0x%08x, ret %pe\n",
+			       i + 1, count, writes[i].mbox, writes[i].data, ERR_PTR(err));
+			break;
+		}
+	}
+	mutex_unlock(&tile->pcode.lock);
+
+	return err;
+}
+
 int xe_pcode_write64_timeout(struct xe_tile *tile, u32 mbox, u32 data0, u32 data1, int timeout)
 {
 	int err;
