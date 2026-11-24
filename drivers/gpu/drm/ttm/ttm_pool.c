@@ -781,6 +781,56 @@ static unsigned int ttm_pool_alloc_find_order(unsigned int highest,
 	return min_t(unsigned int, highest, __fls(alloc->remaining_pages));
 }
 
+/*
+ * Try the nodes in @nodes once each, nearest first from the local node.
+ * __GFP_THISNODE prevents fallback to nodes outside the policy.
+ */
+static struct page *ttm_pool_alloc_bind_pass(struct ttm_pool *pool,
+					     gfp_t gfp_flags, unsigned int order,
+					     const nodemask_t *nodes)
+{
+	int local = ttm_pool_nid(pool);
+	nodemask_t todo = *nodes;
+	struct page *p = NULL;
+
+	while (!nodes_empty(todo)) {
+		int nid = first_node(todo), n;
+
+		for_each_node_mask(n, todo) {
+			if (node_distance(local, n) < node_distance(local, nid))
+				nid = n;
+		}
+		node_clear(nid, todo);
+
+		p = ttm_pool_alloc_page(pool, gfp_flags | __GFP_THISNODE, order,
+					nid);
+		if (p)
+			break;
+	}
+
+	return p;
+}
+
+/*
+ * Allocate pages of size 1 << order for TTM_NUMA_POLICY_BIND. Nodes with free
+ * memory are tried without reclaim first, then with the caller's gfp flags.
+ */
+static struct page *ttm_pool_alloc_bind(struct ttm_pool *pool, gfp_t gfp_flags,
+					unsigned int order,
+					const nodemask_t *nodes)
+{
+	const unsigned int beneficial_order = ttm_pool_beneficial_order(pool);
+	gfp_t nowait = (gfp_flags & ~__GFP_RECLAIM) | __GFP_NOWARN;
+	struct page *p;
+
+	p = ttm_pool_alloc_bind_pass(pool, nowait, order, nodes);
+	/* Orders without reclaim would repeat the first pass */
+	if (!p && (!order || !beneficial_order || order == beneficial_order))
+		p = ttm_pool_alloc_bind_pass(pool, gfp_flags, order, nodes);
+
+	return p;
+}
+
 /* Validate the NUMA request in @ctx against @pool */
 static int ttm_pool_check_numa(struct ttm_pool *pool,
 			       const struct ttm_operation_ctx *ctx)
@@ -859,8 +909,12 @@ static int __ttm_pool_alloc(struct ttm_pool *pool, struct ttm_tt *tt,
 		if (!p) {
 			page_caching = ttm_cached;
 			allow_pools = false;
-			p = ttm_pool_alloc_page(pool, gfp_flags, order,
-						alloc_nid);
+			if (policy == TTM_NUMA_POLICY_BIND)
+				p = ttm_pool_alloc_bind(pool, gfp_flags, order,
+							ctx->numa_info.nodes);
+			else
+				p = ttm_pool_alloc_page(pool, gfp_flags, order,
+							alloc_nid);
 		}
 		/* If that fails, lower the order if possible and retry. */
 		if (!p) {

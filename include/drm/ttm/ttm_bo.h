@@ -58,10 +58,14 @@ struct ttm_tt;
  * @TTM_NUMA_POLICY_NONE: No policy. Use the pool default node.
  * @TTM_NUMA_POLICY_PREFERRED: Prefer the single node in
  *	ttm_operation_ctx.numa_info.nodes. Falls back to other nodes.
+ * @TTM_NUMA_POLICY_BIND: Allocate only from the nodes in
+ *	ttm_operation_ctx.numa_info.nodes, in ascending node order. Never falls
+ *	back to other nodes.
  */
 enum ttm_numa_policy {
 	TTM_NUMA_POLICY_NONE = 0,
 	TTM_NUMA_POLICY_PREFERRED,
+	TTM_NUMA_POLICY_BIND,
 };
 
 /**
