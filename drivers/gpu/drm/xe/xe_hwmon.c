@@ -5,6 +5,7 @@
 
 #include <linux/hwmon-sysfs.h>
 #include <linux/hwmon.h>
+#include <linux/slab.h>
 #include <linux/jiffies.h>
 #include <linux/overflow.h>
 #include <linux/types.h>
@@ -603,9 +604,15 @@ xe_hwmon_energy_get(struct xe_hwmon *hwmon, int channel, long *energy)
 
 	if (hwmon->xe->info.platform == XE_BATTLEMAGE) {
 		u64 pmt_val;
+		u32 guid;
 
-		ret = xe_pmt_telem_read(hwmon->xe->drm.dev,
-					xe_mmio_read32(mmio, PUNIT_TELEMETRY_GUID),
+		ret = xe_vsec_get_guid(hwmon->xe, &guid);
+		if (ret) {
+			drm_warn(&hwmon->xe->drm, "PMT device is not available: %d\n", ret);
+			*energy = 0;
+			return ret;
+		}
+		ret = xe_pmt_telem_read(hwmon->xe->drm.dev, guid,
 					&pmt_val, BMG_ENERGY_STATUS_PMT_OFFSET,	sizeof(pmt_val));
 		if (ret != sizeof(pmt_val)) {
 			drm_warn(&hwmon->xe->drm, "energy read from pmt failed, ret %d\n", ret);
@@ -1867,6 +1874,13 @@ xe_hwmon_get_preregistration_info(struct xe_hwmon *hwmon)
 	return xe_hwmon_init_temp_info(hwmon);
 }
 
+/* CI DEBUG ONLY: show who releases the hwmon devres */
+static void xe_hwmon_devres_dbg(void *data)
+{
+	pr_err("xe_hwmon CI DEBUG: devres releasing hwmon %p\n", data);
+	dump_stack();
+}
+
 int xe_hwmon_register(struct xe_device *xe)
 {
 	struct device *dev = xe->drm.dev;
@@ -1884,6 +1898,9 @@ int xe_hwmon_register(struct xe_device *xe)
 	hwmon = devm_kzalloc_obj(dev, *hwmon);
 	if (!hwmon)
 		return -ENOMEM;
+
+	pr_err("xe_hwmon CI DEBUG: allocated hwmon %p for xe %p\n", hwmon, xe);
+	devm_add_action(dev, xe_hwmon_devres_dbg, hwmon);
 
 	ret = devm_mutex_init(dev, &hwmon->hwmon_lock);
 	if (ret)
@@ -1925,8 +1942,12 @@ err_null_hwmon:
  */
 void xe_hwmon_unregister(struct xe_device *xe)
 {
+	pr_err("xe_hwmon CI DEBUG: unregister xe %p hwmon %p\n", xe, xe->hwmon);
 	if (!xe->hwmon)
 		return;
+
+	/* prints the alloc and free stacks if the object was already freed */
+	kmem_dump_obj(xe->hwmon);
 
 	hwmon_device_unregister(xe->hwmon->hwmon_dev);
 	xe->hwmon = NULL;
