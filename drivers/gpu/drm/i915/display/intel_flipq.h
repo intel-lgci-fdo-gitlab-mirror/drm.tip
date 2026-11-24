@@ -17,6 +17,7 @@ struct intel_display;
 struct intel_dsb;
 
 bool intel_flipq_supported(struct intel_display *display);
+bool intel_flipq_psr_supported(const struct intel_crtc_state *crtc_state);
 void intel_flipq_init(struct intel_display *display);
 void intel_flipq_reset(struct intel_display *display, enum pipe pipe);
 

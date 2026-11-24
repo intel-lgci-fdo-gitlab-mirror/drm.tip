@@ -127,6 +127,33 @@ bool intel_flipq_supported(struct intel_display *display)
 	return DISPLAY_VER(display) >= 30 && intel_vrr_always_use_vrr_tg(display);
 }
 
+/*
+ * The flip queue completion is signalled via the pipe DMC interrupt,
+ * which isn't available with PSR1. PSR2 and Panel Replay can be used
+ * with the flip queue on PTL+, where the selective fetch and SU region
+ * programming go through the DSB and the DMC generates the frame
+ * change event (see PTL_FQ_NEED_PUSH).
+ *
+ * Joined pipes share one transcoder, but each pipe DMC would send
+ * its own push, so keep them on the DSB path.
+ */
+bool intel_flipq_psr_supported(const struct intel_crtc_state *crtc_state)
+{
+	struct intel_display *display = to_intel_display(crtc_state);
+
+	if (!crtc_state->has_psr)
+		return true;
+
+	if (DISPLAY_VER(display) < 30 ||
+	    !HAS_PSR_TRANS_PUSH_FRAME_CHANGE(display))
+		return false;
+
+	if (crtc_state->joiner_pipes)
+		return false;
+
+	return crtc_state->has_sel_update || crtc_state->has_panel_replay;
+}
+
 void intel_flipq_init(struct intel_display *display)
 {
 	struct intel_crtc *crtc;
