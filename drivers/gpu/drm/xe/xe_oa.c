@@ -43,6 +43,7 @@
 #include "xe_sriov.h"
 #include "xe_sync.h"
 #include "xe_wa.h"
+#include "xe_wedge.h"
 
 #define DEFAULT_POLL_FREQUENCY_HZ 200
 #define DEFAULT_POLL_PERIOD_NS (NSEC_PER_SEC / DEFAULT_POLL_FREQUENCY_HZ)
@@ -895,9 +896,10 @@ static void xe_oa_disable_metric_set(struct xe_oa_stream *stream)
 
 	/*
 	 * disable the context save/restore or OAR counters, and wait for that batch like for
-	 * the ones before it
+	 * the ones before it. Not on a wedged device, the context won't run again, and the
+	 * batch might never complete on a long-running exec queue, which no TDR covers.
 	 */
-	if (stream->exec_q) {
+	if (stream->exec_q && !xe_wedged(stream->oa->xe)) {
 		xe_oa_configure_oa_context(stream, false);
 		xe_oa_stream_drain(stream);
 	}
@@ -1082,6 +1084,7 @@ static int xe_oa_emit_oa_config(struct xe_oa_stream *stream, struct xe_oa_config
 	struct xe_oa_fence *ofence;
 	int i, err, num_signal = 0;
 	struct dma_fence *fence;
+	int ret = 0;
 
 	ofence = kzalloc_obj(*ofence);
 	if (!ofence) {
@@ -1125,11 +1128,27 @@ static int xe_oa_emit_oa_config(struct xe_oa_stream *stream, struct xe_oa_config
 	if (err == -ENOENT)
 		xe_oa_config_cb(fence, &ofence->cb);
 
-	/* If nothing needs to be signaled we wait synchronously */
+	/*
+	 * If nothing needs to be signaled we wait synchronously unless the device
+	 * is unplugged/wedged.
+	 */
 	if (!num_signal) {
-		dma_fence_wait(&ofence->base, false);
+		while (!dma_fence_wait_timeout(&ofence->base, false, HZ / 10)) {
+			if (drm_dev_is_unplugged(&gt_to_xe(stream->gt)->drm)) {
+				ret = -ENODEV;
+				break;
+			}
+			if (xe_wedged(gt_to_xe(stream->gt))) {
+				ret = -ECANCELED;
+				break;
+			}
+		}
 		dma_fence_put(&ofence->base);
 	}
+
+	/* The callers clean up the syncs on error */
+	if (ret)
+		return ret;
 
 	/* Done with syncs */
 	for (i = 0; i < stream->num_syncs; i++)
@@ -1722,11 +1741,20 @@ static long xe_oa_ioctl(struct file *file,
 			unsigned long arg)
 {
 	struct xe_oa_stream *stream = file->private_data;
-	long ret;
+	struct xe_device *xe = gt_to_xe(stream->gt);
+	long ret = -ECANCELED;
+	int idx;
 
-	mutex_lock(&stream->stream_lock);
-	ret = xe_oa_ioctl_locked(stream, cmd, arg);
-	mutex_unlock(&stream->stream_lock);
+	if (!drm_dev_enter(&xe->drm, &idx))
+		return -ENODEV;
+
+	if (!xe_wedged(xe)) {
+		mutex_lock(&stream->stream_lock);
+		ret = xe_oa_ioctl_locked(stream, cmd, arg);
+		mutex_unlock(&stream->stream_lock);
+	}
+
+	drm_dev_exit(idx);
 
 	return ret;
 }
@@ -1765,27 +1793,41 @@ static int xe_oa_release(struct inode *inode, struct file *file)
 static int xe_oa_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct xe_oa_stream *stream = file->private_data;
+	struct xe_device *xe = gt_to_xe(stream->gt);
 	int ret = xe_observation_paranoid_check();
-	struct xe_bo *bo = stream->oa_buffer.bo;
+	struct xe_bo *bo;
+	int idx;
 
 	if (ret) {
-		drm_dbg(&stream->oa->xe->drm, "Insufficient privilege to map OA buffer\n");
+		drm_dbg(&xe->drm, "Insufficient privilege to map OA buffer\n");
 		return ret;
 	}
+
+	/*
+	 * drm_dev_unplug() zaps the OA buffer mmaps and waits for this section to finish, so
+	 * no mmap of the OA buffer can be set up after that. Can't use stream_lock here, it is
+	 * held across user copies which fault on mmap_lock, held by the caller.
+	 */
+	if (!drm_dev_enter(&xe->drm, &idx))
+		return -ENODEV;
 
 	/*
 	 * Userspace always maps the OA buffer at offset 0, the mapping is moved to the OA
 	 * buffer's own range in the drm device's address_space below
 	 */
 	if (vma->vm_pgoff) {
-		drm_dbg(&stream->oa->xe->drm, "Wrong mmap offset, must be 0\n");
-		return -EINVAL;
+		drm_dbg(&xe->drm, "Wrong mmap offset, must be 0\n");
+		ret = -EINVAL;
+		goto exit;
 	}
+
+	bo = stream->oa_buffer.bo;
 
 	/* Can mmap the entire OA buffer or nothing (no partial OA buffer mmaps) */
 	if (vma->vm_end - vma->vm_start != xe_bo_size(bo)) {
-		drm_dbg(&stream->oa->xe->drm, "Wrong mmap size, must be OA buffer size\n");
-		return -EINVAL;
+		drm_dbg(&xe->drm, "Wrong mmap size, must be OA buffer size\n");
+		ret = -EINVAL;
+		goto exit;
 	}
 
 	/*
@@ -1793,15 +1835,19 @@ static int xe_oa_mmap(struct file *file, struct vm_area_struct *vma)
 	 * VM_MAYSHARE, don't copy the vma on fork
 	 */
 	if (vma->vm_flags & (VM_WRITE | VM_EXEC | VM_SHARED | VM_MAYSHARE)) {
-		drm_dbg(&stream->oa->xe->drm, "mmap must be read only\n");
-		return -EINVAL;
+		drm_dbg(&xe->drm, "mmap must be read only\n");
+		ret = -EINVAL;
+		goto exit;
 	}
 	vm_flags_mod(vma, VM_PFNMAP | VM_DONTEXPAND | VM_DONTDUMP | VM_DONTCOPY,
 		     VM_MAYWRITE | VM_MAYEXEC);
 
 	vma->vm_pgoff = drm_vma_node_start(&bo->ttm.base.vma_node);
 
-	return drm_gem_mmap_obj(&bo->ttm.base, xe_bo_size(bo), vma);
+	ret = drm_gem_mmap_obj(&bo->ttm.base, xe_bo_size(bo), vma);
+exit:
+	drm_dev_exit(idx);
+	return ret;
 }
 
 static const struct file_operations xe_oa_fops = {
