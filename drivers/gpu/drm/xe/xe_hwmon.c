@@ -185,6 +185,8 @@ struct xe_hwmon_fan_info {
 			u8 speed;
 		} fcp[MAX_FAN_CONTROL_POINTS];
 	} fan_table[FAN_TABLE_MAX];
+	/** @max_rps: maximum fan RPS */
+	u32 max_rps;
 	/** @min_pwm: minimum fan PWM */
 	u32 min_pwm;
 };
@@ -913,7 +915,8 @@ static const struct hwmon_channel_info * const hwmon_info[] = {
 	HWMON_CHANNEL_INFO(curr, HWMON_C_LABEL, HWMON_C_CRIT | HWMON_C_LABEL),
 	HWMON_CHANNEL_INFO(in, HWMON_I_INPUT | HWMON_I_LABEL, HWMON_I_INPUT | HWMON_I_LABEL),
 	HWMON_CHANNEL_INFO(energy, HWMON_E_INPUT | HWMON_E_LABEL, HWMON_E_INPUT | HWMON_E_LABEL),
-	HWMON_CHANNEL_INFO(fan, HWMON_F_INPUT, HWMON_F_INPUT, HWMON_F_INPUT),
+	HWMON_CHANNEL_INFO(fan, HWMON_F_INPUT | HWMON_F_MAX, HWMON_F_INPUT | HWMON_F_MAX,
+			   HWMON_F_INPUT | HWMON_F_MAX),
 	NULL
 };
 
@@ -1163,13 +1166,22 @@ static int xe_hwmon_read_fan_control_info(struct xe_hwmon *hwmon)
 	int ret;
 	int err = 0;
 
-	/* Stock table failures leave fan_input visible; tach readout doesn't need it. */
+	/* Stock table failures leave fan_input and fan_max visible; they don't need it. */
 	for (fan = 0; fan < FAN_MAX; fan++) {
 		struct xe_hwmon_fan_info *fi = &hwmon->fi[fan];
 		u32 stock_fcp_count = 0;
 
 		if (!IS_FAN_ENABLED(hwmon, fan))
 			continue;
+
+		ret = xe_hwmon_pcode_read_fan_control(hwmon, FSC_READ_MAX_FAN_RPS, fan,
+						      &fi->max_rps);
+		if (ret) {
+			fi->max_rps = 0;
+			xe_warn(hwmon->xe, "failed to read fan %d max RPS, ret=%d\n", fan, ret);
+		} else {
+			xe_dbg(hwmon->xe, "fan %d max RPS %u\n", fan, fi->max_rps);
+		}
 
 		ret = xe_hwmon_pcode_read_fan_control(hwmon,
 						      FSC_READ_STOCK_FAN_CONTROL_POINTS,
@@ -1765,6 +1777,8 @@ xe_hwmon_fan_is_visible(struct xe_hwmon *hwmon, u32 attr, int channel)
 	switch (attr) {
 	case hwmon_fan_input:
 		return IS_FAN_ENABLED(hwmon, channel) ? 0444 : 0;
+	case hwmon_fan_max:
+		return IS_FAN_ENABLED(hwmon, channel) && hwmon->fi[channel].max_rps ? 0444 : 0;
 	default:
 		return 0;
 	}
@@ -1815,6 +1829,9 @@ xe_hwmon_fan_read(struct xe_hwmon *hwmon, u32 attr, int channel, long *val)
 	switch (attr) {
 	case hwmon_fan_input:
 		return xe_hwmon_fan_input_read(hwmon, channel, val);
+	case hwmon_fan_max:
+		*val = mul_u32_u32(hwmon->fi[channel].max_rps, 60);
+		return 0;
 	default:
 		return -EOPNOTSUPP;
 	}
