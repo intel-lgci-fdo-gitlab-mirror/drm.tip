@@ -288,6 +288,14 @@ struct drm_edid_product_id {
 	u8 year_of_manufacture;
 } __packed;
 
+struct drm_displayid_product_id {
+	u8 vendor_id[3];
+	__le16 product_code;
+	__le32 serial_number;
+	u8 week_of_manufacture;
+	u8 year_of_manufacture;
+} __packed;
+
 struct edid {
 	u8 header[8];
 	/* Vendor & product info */
@@ -484,6 +492,8 @@ int drm_edid_connector_add_modes(struct drm_connector *connector);
 bool drm_edid_is_digital(const struct drm_edid *drm_edid);
 void drm_edid_get_product_id(const struct drm_edid *drm_edid,
 			     struct drm_edid_product_id *id);
+void drm_displayid_get_product_id(const struct drm_edid *drm_edid,
+				  struct drm_displayid_product_id *id);
 void drm_edid_print_product_id(struct drm_printer *p,
 			       const struct drm_edid_product_id *id, bool raw);
 u32 drm_edid_get_panel_id(const struct drm_edid *drm_edid);

@@ -2791,6 +2791,55 @@ void drm_edid_get_product_id(const struct drm_edid *drm_edid,
 }
 EXPORT_SYMBOL(drm_edid_get_product_id);
 
+static bool displayid_is_product_id_block(const struct displayid_iter *iter,
+					  const struct displayid_block *block)
+{
+	return (displayid_version(iter) < DISPLAY_ID_STRUCTURE_VER_20 &&
+		block->tag == DATA_BLOCK_PRODUCT_ID) ||
+		(displayid_version(iter) == DISPLAY_ID_STRUCTURE_VER_20 &&
+		 block->tag == DATA_BLOCK_2_PRODUCT_ID);
+}
+
+/**
+ * drm_displayid_get_product_id - Get the vendor and product identification from DisplayID
+ * @drm_edid: EDID
+ * @id: Where to place the product id
+ */
+void drm_displayid_get_product_id(const struct drm_edid *drm_edid,
+				  struct drm_displayid_product_id *id)
+{
+	const struct displayid_block *block;
+	struct displayid_iter iter;
+
+	memset(id, 0, sizeof(*id));
+
+	if (!drm_edid)
+		return;
+
+	displayid_iter_edid_begin(drm_edid, &iter);
+	displayid_iter_for_each(block, &iter) {
+		const struct displayid_product_id_block *prod_id =
+			(struct displayid_product_id_block *)block;
+
+		if (!displayid_is_product_id_block(&iter, block))
+			continue;
+
+		if (block->num_bytes < sizeof(*prod_id) - sizeof(prod_id->base))
+			continue;
+
+		id->vendor_id[0] = prod_id->vendor_id[0];
+		id->vendor_id[1] = prod_id->vendor_id[1];
+		id->vendor_id[2] = prod_id->vendor_id[2];
+		id->product_code = prod_id->product_code;
+		id->serial_number = prod_id->serial_number;
+		id->week_of_manufacture = prod_id->week_of_manufacture;
+		id->year_of_manufacture = prod_id->year_of_manufacture;
+		break;
+	}
+	displayid_iter_end(&iter);
+}
+EXPORT_SYMBOL(drm_displayid_get_product_id);
+
 static void decode_date(struct seq_buf *s, const struct drm_edid_product_id *id)
 {
 	int week = id->week_of_manufacture;
