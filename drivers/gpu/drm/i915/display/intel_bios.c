@@ -684,26 +684,21 @@ static int vbt_get_panel_type(struct intel_display *display,
 }
 
 static int pnpid_get_panel_type(struct intel_display *display,
-				const struct intel_bios_encoder_data *devdata,
-				const struct drm_edid *drm_edid, bool use_fallback)
+				const struct drm_edid_product_id *product_id,
+				const char *source)
 {
 	const struct bdb_lfp_data *data;
 	const struct bdb_lfp_data_ptrs *ptrs;
-	struct drm_edid_product_id product_id, product_id_nodate;
+	struct drm_edid_product_id product_id_nodate;
 	struct drm_printer p;
 	int i, best = -1;
 
-	if (!drm_edid)
-		return -1;
+	p = drm_dbg_printer(display->drm, DRM_UT_KMS, source);
+	drm_edid_print_product_id(&p, product_id, true);
 
-	drm_edid_get_product_id(drm_edid, &product_id);
-
-	product_id_nodate = product_id;
+	product_id_nodate = *product_id;
 	product_id_nodate.week_of_manufacture = 0;
 	product_id_nodate.year_of_manufacture = 0;
-
-	p = drm_dbg_printer(display->drm, DRM_UT_KMS, "EDID");
-	drm_edid_print_product_id(&p, &product_id, true);
 
 	ptrs = bdb_find_section(display, BDB_LFP_DATA_PTRS);
 	if (!ptrs)
@@ -718,7 +713,7 @@ static int pnpid_get_panel_type(struct intel_display *display,
 			get_lfp_pnp_id(data, ptrs, i);
 
 		/* full match? */
-		if (!memcmp(vbt_id, &product_id, sizeof(*vbt_id)))
+		if (!memcmp(vbt_id, product_id, sizeof(*vbt_id)))
 			return i;
 
 		/*
@@ -733,6 +728,48 @@ static int pnpid_get_panel_type(struct intel_display *display,
 	return best;
 }
 
+static int pnpid_edid_get_panel_type(struct intel_display *display,
+				     const struct intel_bios_encoder_data *devdata,
+				     const struct drm_edid *drm_edid, bool use_fallback)
+{
+	struct drm_edid_product_id product_id;
+
+	if (!drm_edid)
+		return -1;
+
+	drm_edid_get_product_id(drm_edid, &product_id);
+
+	return pnpid_get_panel_type(display, &product_id, "EDID");
+}
+
+static int pnpid_displayid_get_panel_type(struct intel_display *display,
+					  const struct intel_bios_encoder_data *devdata,
+					  const struct drm_edid *drm_edid, bool use_fallback)
+{
+	struct drm_displayid_product_id displayid_id;
+	struct drm_edid_product_id product_id;
+
+	if (!drm_edid)
+		return -1;
+
+	drm_displayid_get_product_id(drm_edid, &displayid_id);
+
+	/*
+	 * Only the first two bytes of the OUI get
+	 * smashed into the old EISA/PNPID field, and
+	 * that gets matched against what's in the VBT.
+	 */
+	product_id.manufacturer_name =
+		cpu_to_be16((displayid_id.vendor_id[0] << 8) |
+			    displayid_id.vendor_id[1]);
+	product_id.product_code = displayid_id.product_code;
+	product_id.serial_number = displayid_id.serial_number;
+	product_id.week_of_manufacture = displayid_id.week_of_manufacture;
+	product_id.year_of_manufacture = displayid_id.year_of_manufacture;
+
+	return pnpid_get_panel_type(display, &product_id, "DisplayID");
+}
+
 static int fallback_get_panel_type(struct intel_display *display,
 				   const struct intel_bios_encoder_data *devdata,
 				   const struct drm_edid *drm_edid, bool use_fallback)
@@ -743,7 +780,8 @@ static int fallback_get_panel_type(struct intel_display *display,
 enum panel_type {
 	PANEL_TYPE_OPREGION,
 	PANEL_TYPE_VBT,
-	PANEL_TYPE_PNPID,
+	PANEL_TYPE_PNPID_DISPLAYID,
+	PANEL_TYPE_PNPID_EDID,
 	PANEL_TYPE_FALLBACK,
 };
 
@@ -766,9 +804,13 @@ static int get_panel_type(struct intel_display *display,
 			.name = "VBT",
 			.get_panel_type = vbt_get_panel_type,
 		},
-		[PANEL_TYPE_PNPID] = {
-			.name = "PNPID",
-			.get_panel_type = pnpid_get_panel_type,
+		[PANEL_TYPE_PNPID_DISPLAYID] = {
+			.name = "PNPID DisplayID",
+			.get_panel_type = pnpid_displayid_get_panel_type,
+		},
+		[PANEL_TYPE_PNPID_EDID] = {
+			.name = "PNPID EDID",
+			.get_panel_type = pnpid_edid_get_panel_type,
 		},
 		[PANEL_TYPE_FALLBACK] = {
 			.name = "fallback",
@@ -792,8 +834,11 @@ static int get_panel_type(struct intel_display *display,
 	if (is_panel_type_valid(panel_types[PANEL_TYPE_OPREGION].panel_type))
 		i = PANEL_TYPE_OPREGION;
 	else if (is_panel_type_pnp(panel_types[PANEL_TYPE_VBT].panel_type) &&
-		 is_panel_type_valid(panel_types[PANEL_TYPE_PNPID].panel_type))
-		i = PANEL_TYPE_PNPID;
+		 is_panel_type_valid(panel_types[PANEL_TYPE_PNPID_DISPLAYID].panel_type))
+		i = PANEL_TYPE_PNPID_DISPLAYID;
+	else if (is_panel_type_pnp(panel_types[PANEL_TYPE_VBT].panel_type) &&
+		 is_panel_type_valid(panel_types[PANEL_TYPE_PNPID_EDID].panel_type))
+		i = PANEL_TYPE_PNPID_EDID;
 	else if (is_panel_type_valid(panel_types[PANEL_TYPE_VBT].panel_type))
 		i = PANEL_TYPE_VBT;
 	else
