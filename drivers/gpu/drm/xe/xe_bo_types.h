@@ -34,6 +34,23 @@ struct xe_exec_queue;
 #define	XE_BO_PRIORITY_NORMAL	1
 
 /**
+ * struct xe_host_mempolicy - Host NUMA memory policy for system-memory pages
+ *
+ * Captured from the GEM_CREATE NUMA node property at creation time.
+ * Stored by value so that it stays valid when the pages are populated from a
+ * different task, for example during eviction or shrinker restore.
+ */
+struct xe_host_mempolicy {
+	/**
+	 * @mode: %TTM_NUMA_POLICY_PREFERRED, %TTM_NUMA_POLICY_BIND or
+	 * %TTM_NUMA_POLICY_INTERLEAVE
+	 */
+	enum ttm_numa_policy mode;
+	/** @nodes: Host NUMA nodes the policy applies to, non-empty */
+	nodemask_t nodes;
+};
+
+/**
  * struct xe_bo - Xe buffer object
  */
 struct xe_bo {
@@ -111,6 +128,13 @@ struct xe_bo {
 	 * WB.
 	 */
 	u16 cpu_caching;
+
+	/**
+	 * @mempolicy: Host NUMA memory policy for system-memory backing
+	 * pages, or NULL for the device-local default. Owned by the BO and
+	 * freed with it.
+	 */
+	struct xe_host_mempolicy *mempolicy;
 
 	/** @devmem_allocation: SVM device memory allocation */
 	struct drm_pagemap_devmem devmem_allocation;
