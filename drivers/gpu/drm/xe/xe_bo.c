@@ -396,6 +396,11 @@ struct xe_ttm_tt {
 	struct sg_table *sg;
 	/** @purgeable: Whether the content of the pages of @ttm is purgeable. */
 	bool purgeable;
+	/**
+	 * @mempolicy: Host NUMA policy for backing pages, owned by the BO and
+	 * valid for the lifetime of the tt. NULL if no policy was requested.
+	 */
+	const struct xe_host_mempolicy *mempolicy;
 };
 
 static int xe_tt_map_sg(struct xe_device *xe, struct ttm_tt *tt)
@@ -597,6 +602,7 @@ static struct ttm_tt *xe_ttm_tt_create(struct ttm_buffer_object *ttm_bo,
 		return NULL;
 
 	tt = &xe_tt->ttm;
+	xe_tt->mempolicy = bo->mempolicy;
 
 	extra_pages = 0;
 	if (xe_bo_needs_ccs_pages(bo))
@@ -664,6 +670,8 @@ static int xe_ttm_tt_populate(struct ttm_device *ttm_dev, struct ttm_tt *tt,
 			      struct ttm_operation_ctx *ctx)
 {
 	struct xe_ttm_tt *xe_tt = container_of(tt, struct xe_ttm_tt, ttm);
+	/* ctx is shared by every BO of the operation; set the node locally */
+	struct ttm_operation_ctx node_ctx = *ctx;
 	int err;
 
 	/*
@@ -674,11 +682,16 @@ static int xe_ttm_tt_populate(struct ttm_device *ttm_dev, struct ttm_tt *tt,
 	    !(tt->page_flags & TTM_TT_FLAG_EXTERNAL_MAPPABLE))
 		return 0;
 
+	if (xe_tt->mempolicy) {
+		node_ctx.numa_info.policy = xe_tt->mempolicy->mode;
+		node_ctx.numa_info.nodes = &xe_tt->mempolicy->nodes;
+	}
+
 	if (ttm_tt_is_backed_up(tt) && !xe_tt->purgeable) {
-		err = ttm_tt_restore(ttm_dev, tt, ctx);
+		err = ttm_tt_restore(ttm_dev, tt, &node_ctx);
 	} else {
 		ttm_tt_clear_backed_up(tt);
-		err = ttm_pool_alloc(&ttm_dev->pool, tt, ctx);
+		err = ttm_pool_alloc(&ttm_dev->pool, tt, &node_ctx);
 	}
 	if (err)
 		return err;
@@ -1536,7 +1549,7 @@ int xe_bo_notifier_prepare_pinned(struct xe_bo *bo)
 		backup = xe_bo_init_locked(xe, NULL, NULL, bo->ttm.base.resv, NULL, xe_bo_size(bo),
 					   DRM_XE_GEM_CPU_CACHING_WB, ttm_bo_type_kernel,
 					   XE_BO_FLAG_SYSTEM | XE_BO_FLAG_NEEDS_CPU_ACCESS |
-					   XE_BO_FLAG_PINNED, NULL, &exec);
+					   XE_BO_FLAG_PINNED, NULL, NULL, &exec);
 		if (IS_ERR(backup)) {
 			drm_exec_retry_on_contention(&exec);
 			ret = PTR_ERR(backup);
@@ -1678,7 +1691,8 @@ int xe_bo_evict_pinned(struct xe_bo *bo)
 						   xe_bo_size(bo),
 						   DRM_XE_GEM_CPU_CACHING_WB, ttm_bo_type_kernel,
 						   XE_BO_FLAG_SYSTEM | XE_BO_FLAG_NEEDS_CPU_ACCESS |
-						   XE_BO_FLAG_PINNED, NULL, &exec);
+						   XE_BO_FLAG_PINNED, NULL, NULL,
+						   &exec);
 			if (IS_ERR(backup)) {
 				drm_exec_retry_on_contention(&exec);
 				ret = PTR_ERR(backup);
@@ -2040,6 +2054,7 @@ static void xe_ttm_bo_destroy(struct ttm_buffer_object *ttm_bo)
 		list_del(&bo->vram_userfault_link);
 	mutex_unlock(&xe->mem_access.vram_userfault.lock);
 
+	kfree(bo->mempolicy);
 	kfree(bo);
 }
 
@@ -2447,6 +2462,8 @@ struct xe_bo *xe_bo_alloc(void)
  */
 void xe_bo_free(struct xe_bo *bo)
 {
+	if (bo)
+		kfree(bo->mempolicy);
 	kfree(bo);
 }
 
@@ -2466,6 +2483,7 @@ void xe_bo_free(struct xe_bo *bo)
  * @flags: XE_BO_FLAG_ flags.
  * @dma_buf: The dma-buf to reference for the BO lifetime (imported BOs),
  * or NULL.
+ * @mpol: Host NUMA memory policy to copy into the BO, or NULL for none.
  * @exec: The drm_exec transaction to use for exhaustive eviction.
  *
  * Initialize or create an xe buffer object. On failure, any allocated buffer
@@ -2478,6 +2496,7 @@ struct xe_bo *xe_bo_init_locked(struct xe_device *xe, struct xe_bo *bo,
 				struct ttm_lru_bulk_move *bulk, size_t size,
 				u16 cpu_caching, enum ttm_bo_type type,
 				u32 flags, struct dma_buf *dma_buf,
+				const struct xe_host_mempolicy *mpol,
 				struct drm_exec *exec)
 {
 	struct ttm_operation_ctx ctx = {
@@ -2544,6 +2563,13 @@ struct xe_bo *xe_bo_init_locked(struct xe_device *xe, struct xe_bo *bo,
 	bo->tile = tile;
 	bo->flags = flags;
 	bo->cpu_caching = cpu_caching;
+	if (mpol) {
+		bo->mempolicy = kmemdup(mpol, sizeof(*mpol), GFP_KERNEL);
+		if (!bo->mempolicy) {
+			xe_bo_free(bo);
+			return ERR_PTR(-ENOMEM);
+		}
+	}
 	bo->ttm.base.funcs = &xe_gem_object_funcs;
 	bo->ttm.priority = XE_BO_PRIORITY_NORMAL;
 	INIT_LIST_HEAD(&bo->pinned_link);
@@ -2678,7 +2704,9 @@ __xe_bo_create_locked(struct xe_device *xe,
 		      struct xe_tile *tile, struct xe_vm *vm,
 		      size_t size, u64 start, u64 end,
 		      u16 cpu_caching, enum ttm_bo_type type, u32 flags,
-		      u64 alignment, struct drm_exec *exec)
+		      u64 alignment,
+		      const struct xe_host_mempolicy *mpol,
+		      struct drm_exec *exec)
 {
 	struct xe_bo *bo = NULL;
 	int err;
@@ -2703,7 +2731,7 @@ __xe_bo_create_locked(struct xe_device *xe,
 			       vm && !xe_vm_in_fault_mode(vm) &&
 			       flags & XE_BO_FLAG_USER ?
 			       &vm->lru_bulk_move : NULL, size,
-			       cpu_caching, type, flags, NULL, exec);
+			       cpu_caching, type, flags, NULL, mpol, exec);
 	if (IS_ERR(bo))
 		return bo;
 
@@ -2778,13 +2806,14 @@ struct xe_bo *xe_bo_create_locked(struct xe_device *xe, struct xe_tile *tile,
 				  struct drm_exec *exec)
 {
 	return __xe_bo_create_locked(xe, tile, vm, size, 0, ~0ULL, 0, type,
-				     flags, 0, exec);
+				     flags, 0, NULL, exec);
 }
 
 static struct xe_bo *xe_bo_create_novm(struct xe_device *xe, struct xe_tile *tile,
 				       size_t size, u16 cpu_caching,
 				       enum ttm_bo_type type, u32 flags,
-				       u64 alignment, bool intr)
+				       u64 alignment,
+				       const struct xe_host_mempolicy *mpol, bool intr)
 {
 	struct xe_validation_ctx ctx;
 	struct drm_exec exec;
@@ -2794,7 +2823,8 @@ static struct xe_bo *xe_bo_create_novm(struct xe_device *xe, struct xe_tile *til
 	xe_validation_guard(&ctx, &xe->val, &exec, (struct xe_val_flags) {.interruptible = intr},
 			    ret) {
 		bo = __xe_bo_create_locked(xe, tile, NULL, size, 0, ~0ULL,
-					   cpu_caching, type, flags, alignment, &exec);
+					   cpu_caching, type, flags, alignment,
+					   mpol, &exec);
 		drm_exec_retry_on_contention(&exec);
 		if (IS_ERR(bo)) {
 			ret = PTR_ERR(bo);
@@ -2953,17 +2983,21 @@ static void xe_bo_debug_mixed_mode_cur_index_advance(struct xe_device *xe,
  * @size: The storage size to use for the bo.
  * @cpu_caching: The caching mode to be used for system backing store.
  * @flags: XE_BO_FLAG_ flags.
+ * @mpol: The host NUMA memory policy to copy into the bo, or NULL.
  * @exec: The drm_exec transaction to use for exhaustive eviction, or NULL
  * if such a transaction should be initiated by the call.
  *
- * Create a bo on behalf of user-space.
+ * Create a bo on behalf of user-space, with backing pages placed according
+ * to @mpol.
  *
  * Return: The buffer object on success. Negative error pointer on failure.
  */
 struct xe_bo *xe_bo_create_user(struct xe_device *xe,
 				struct xe_vm *vm, size_t size,
 				u16 cpu_caching,
-				u32 flags, struct drm_exec *exec)
+				u32 flags,
+				const struct xe_host_mempolicy *mpol,
+				struct drm_exec *exec)
 {
 	struct xe_bo *bo;
 	int err = 0;
@@ -2980,12 +3014,13 @@ struct xe_bo *xe_bo_create_user(struct xe_device *xe,
 		xe_assert(xe, exec);
 		bo = __xe_bo_create_locked(xe, NULL, vm, size, 0, ~0ULL,
 					   cpu_caching, ttm_bo_type_device,
-					   flags, 0, exec);
+					   flags, 0, mpol, exec);
 		if (!IS_ERR(bo))
 			xe_bo_unlock_vm_held(bo);
 	} else {
 		bo = xe_bo_create_novm(xe, NULL, size, cpu_caching,
-				       ttm_bo_type_device, flags, 0, true);
+				       ttm_bo_type_device, flags, 0,
+				       mpol, true);
 	}
 
 	return bo;
@@ -3019,7 +3054,7 @@ struct xe_bo *xe_bo_create_pin_range_novm(struct xe_device *xe, struct xe_tile *
 
 	xe_validation_guard(&ctx, &xe->val, &exec, (struct xe_val_flags) {}, err) {
 		bo = __xe_bo_create_locked(xe, tile, NULL, size, start, end,
-					   0, type, flags, 0, &exec);
+					   0, type, flags, 0, NULL, &exec);
 		if (IS_ERR(bo)) {
 			drm_exec_retry_on_contention(&exec);
 			err = PTR_ERR(bo);
@@ -3058,7 +3093,7 @@ static struct xe_bo *xe_bo_create_pin_map_at_aligned(struct xe_device *xe,
 
 	bo = __xe_bo_create_locked(xe, tile, vm, size, start, end, 0, type,
 				   flags | XE_BO_FLAG_NEEDS_CPU_ACCESS | XE_BO_FLAG_PINNED,
-				   alignment, exec);
+				   alignment, NULL, exec);
 	if (IS_ERR(bo))
 		return bo;
 
@@ -3757,7 +3792,7 @@ int xe_gem_create_ioctl(struct drm_device *dev, void *data,
 				break;
 		}
 		bo = xe_bo_create_user(xe, vm, args->size, args->cpu_caching,
-				       bo_flags, &exec);
+				       bo_flags, NULL, &exec);
 		drm_exec_retry_on_contention(&exec);
 		if (IS_ERR(bo)) {
 			err = PTR_ERR(bo);
@@ -4228,7 +4263,7 @@ int xe_bo_dumb_create(struct drm_file *file_priv,
 			       DRM_XE_GEM_CPU_CACHING_WC,
 			       XE_BO_FLAG_VRAM_IF_DGFX(xe_device_get_root_tile(xe)) |
 			       XE_BO_FLAG_FORCE_WC |
-			       XE_BO_FLAG_NEEDS_CPU_ACCESS, NULL);
+			       XE_BO_FLAG_NEEDS_CPU_ACCESS, NULL, NULL);
 	if (IS_ERR(bo))
 		return PTR_ERR(bo);
 

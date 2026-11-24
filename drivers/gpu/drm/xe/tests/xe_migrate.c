@@ -649,7 +649,7 @@ static void validate_ccs_test_run_tile(struct xe_device *xe, struct xe_tile *til
 				   DRM_XE_GEM_CPU_CACHING_WC,
 				   XE_BO_FLAG_SYSTEM |
 				   XE_BO_FLAG_NEEDS_CPU_ACCESS |
-				   XE_BO_FLAG_PINNED, NULL);
+				   XE_BO_FLAG_PINNED, NULL, NULL);
 
 	if (IS_ERR(sys_bo)) {
 		KUNIT_FAIL(test, "xe_bo_create() failed with err=%ld\n",
@@ -675,7 +675,7 @@ static void validate_ccs_test_run_tile(struct xe_device *xe, struct xe_tile *til
 	ccs_bo = xe_bo_create_user(xe, NULL, SZ_4M,
 				   DRM_XE_GEM_CPU_CACHING_WC,
 				   bo_flags | XE_BO_FLAG_NEEDS_CPU_ACCESS |
-				   XE_BO_FLAG_PINNED, NULL);
+				   XE_BO_FLAG_PINNED, NULL, NULL);
 
 	if (IS_ERR(ccs_bo)) {
 		KUNIT_FAIL(test, "xe_bo_create() failed with err=%ld\n",
@@ -700,7 +700,7 @@ static void validate_ccs_test_run_tile(struct xe_device *xe, struct xe_tile *til
 	vram_bo = xe_bo_create_user(xe, NULL, SZ_4M,
 				    DRM_XE_GEM_CPU_CACHING_WC,
 				    bo_flags | XE_BO_FLAG_NEEDS_CPU_ACCESS |
-				    XE_BO_FLAG_PINNED, NULL);
+				    XE_BO_FLAG_PINNED, NULL, NULL);
 	if (IS_ERR(vram_bo)) {
 		KUNIT_FAIL(test, "xe_bo_create() failed with err=%ld\n",
 			   PTR_ERR(vram_bo));
@@ -979,7 +979,7 @@ static void access_memory_test_run_tile(struct xe_device *xe,
 
 	bo = xe_bo_create_user(xe, NULL, ACCESS_MEM_BO_SIZE,
 			       DRM_XE_GEM_CPU_CACHING_WC,
-			       bo_flags | XE_BO_FLAG_NEEDS_CPU_ACCESS, NULL);
+			       bo_flags | XE_BO_FLAG_NEEDS_CPU_ACCESS, NULL, NULL);
 	if (IS_ERR(bo)) {
 		KUNIT_FAIL(test, "Failed to create bo: %pe\n", bo);
 		goto free_buf;
