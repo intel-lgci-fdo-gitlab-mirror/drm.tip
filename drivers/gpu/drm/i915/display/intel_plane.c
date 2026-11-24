@@ -955,7 +955,7 @@ static int plane_atomic_check(struct intel_atomic_state *state,
 		intel_atomic_get_new_plane_state(state, plane);
 	const struct intel_plane_state *old_plane_state =
 		intel_atomic_get_old_plane_state(state, plane);
-	const struct intel_plane_state *new_primary_crtc_plane_state;
+	struct intel_plane_state *new_primary_crtc_plane_state;
 	const struct intel_plane_state *old_primary_crtc_plane_state;
 	struct intel_crtc *crtc = intel_crtc_for_pipe(display, plane->pipe);
 	const struct intel_crtc_state *old_crtc_state =
@@ -977,6 +977,14 @@ static int plane_atomic_check(struct intel_atomic_state *state,
 		new_primary_crtc_plane_state = new_plane_state;
 		old_primary_crtc_plane_state = old_plane_state;
 	}
+
+	/*
+	 * Prepare plane-damage state before using it; do this on all
+	 * display versions to keep the underlying DRM plane state in
+	 * good shape.
+	 */
+	drm_atomic_helper_check_plane_damage(&state->base,
+					     &new_primary_crtc_plane_state->uapi);
 
 	intel_plane_copy_uapi_plane_damage(new_plane_state,
 					   old_primary_crtc_plane_state,
