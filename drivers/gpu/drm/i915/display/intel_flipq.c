@@ -392,15 +392,17 @@ static void ptl_flipq_add(struct intel_display *display,
 			  struct intel_flipq *flipq,
 			  unsigned int pts,
 			  enum intel_dsb_id dsb_id,
-			  struct intel_dsb *dsb)
+			  struct intel_dsb *dsb,
+			  bool need_push)
 {
+	u32 push = need_push ? PTL_FQ_NEED_PUSH : 0;
 	int i = 0;
 
 	switch (flipq->flipq_id) {
 	case INTEL_FLIPQ_GENERAL:
 		intel_flipq_write(display, flipq, pts, i++);
 		intel_flipq_write(display, flipq, 0, i++);
-		intel_flipq_write(display, flipq, PTL_FQ_INTERRUPT |
+		intel_flipq_write(display, flipq, PTL_FQ_INTERRUPT | push |
 				  PTL_FQ_DSB_ID(dsb_id) |
 				  PTL_FQ_DSB_SIZE(intel_dsb_size(dsb) / 64), i++);
 		intel_flipq_write(display, flipq, intel_dsb_head(dsb), i++);
@@ -412,7 +414,7 @@ static void ptl_flipq_add(struct intel_display *display,
 	case INTEL_FLIPQ_PLANE_3:
 		intel_flipq_write(display, flipq, pts, i++);
 		intel_flipq_write(display, flipq, 0, i++);
-		intel_flipq_write(display, flipq, PTL_FQ_INTERRUPT |
+		intel_flipq_write(display, flipq, PTL_FQ_INTERRUPT | push |
 				  PTL_FQ_DSB_ID(dsb_id) |
 				  PTL_FQ_DSB_SIZE(intel_dsb_size(dsb) / 64), i++);
 		intel_flipq_write(display, flipq, intel_dsb_head(dsb), i++);
@@ -427,7 +429,8 @@ void intel_flipq_add(struct intel_crtc *crtc,
 		     enum intel_flipq_id flipq_id,
 		     unsigned int pts,
 		     enum intel_dsb_id dsb_id,
-		     struct intel_dsb *dsb)
+		     struct intel_dsb *dsb,
+		     bool need_push)
 {
 	struct intel_display *display = to_intel_display(crtc);
 	struct intel_flipq *flipq = &crtc->flipq[flipq_id];
@@ -441,10 +444,13 @@ void intel_flipq_add(struct intel_crtc *crtc,
 
 	intel_flipq_preempt(crtc, true);
 
-	if (DISPLAY_VER(display) >= 30)
-		ptl_flipq_add(display, flipq,  pts, dsb_id, dsb);
-	else
+	if (DISPLAY_VER(display) >= 30) {
+		ptl_flipq_add(display, flipq,  pts, dsb_id, dsb, need_push);
+	} else {
+		/* no DMC generated push before PTL */
+		drm_WARN_ON(display->drm, need_push);
 		lnl_flipq_add(display, flipq,  pts, dsb_id, dsb);
+	}
 
 	flipq->tail = (flipq->tail + 1) % intel_flipq_size_entries(flipq->flipq_id);
 	intel_flipq_write_tail(crtc);

@@ -7047,7 +7047,8 @@ static void intel_update_crtc(struct intel_atomic_state *state,
 		intel_crtc_prepare_vblank_event(new_crtc_state, &crtc->flipq_event);
 
 		intel_flipq_add(crtc, INTEL_FLIPQ_PLANE_1, 0, INTEL_DSB_0,
-				new_crtc_state->dsb_commit);
+				new_crtc_state->dsb_commit,
+				intel_psr_use_trans_push(new_crtc_state));
 		break;
 
 	case INTEL_COMMIT_DSB:
