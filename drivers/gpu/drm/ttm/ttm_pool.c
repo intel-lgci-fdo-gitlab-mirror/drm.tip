@@ -158,9 +158,9 @@ static int ttm_pool_nid(struct ttm_pool *pool)
 	return nid;
 }
 
-/* Allocate pages of size 1 << order with the given gfp_flags */
+/* Allocate pages of size 1 << order with the given gfp_flags on node @nid */
 static struct page *ttm_pool_alloc_page(struct ttm_pool *pool, gfp_t gfp_flags,
-					unsigned int order)
+					unsigned int order, int nid)
 {
 	const unsigned int beneficial_order = ttm_pool_beneficial_order(pool);
 	unsigned long attr = DMA_ATTR_FORCE_CONTIGUOUS;
@@ -189,7 +189,7 @@ static struct page *ttm_pool_alloc_page(struct ttm_pool *pool, gfp_t gfp_flags,
 	}
 
 	if (!ttm_pool_uses_dma_alloc(pool)) {
-		p = alloc_pages_node(pool->nid, gfp_flags, order);
+		p = alloc_pages_node(nid, gfp_flags, order);
 		if (p) {
 			p->private = order;
 			mod_lruvec_page_state(p, NR_GPU_ACTIVE, 1 << order);
@@ -781,11 +781,34 @@ static unsigned int ttm_pool_alloc_find_order(unsigned int highest,
 	return min_t(unsigned int, highest, __fls(alloc->remaining_pages));
 }
 
+/* Validate the NUMA request in @ctx against @pool */
+static int ttm_pool_check_numa(struct ttm_pool *pool,
+			       const struct ttm_operation_ctx *ctx)
+{
+	if (ctx->numa_info.policy == TTM_NUMA_POLICY_NONE)
+		return 0;
+
+	if (ttm_pool_uses_dma_alloc(pool))
+		return -EOPNOTSUPP;
+
+	if (!ctx->numa_info.nodes || nodes_empty(*ctx->numa_info.nodes))
+		return -EINVAL;
+
+	if (ctx->numa_info.policy == TTM_NUMA_POLICY_PREFERRED &&
+	    nodes_weight(*ctx->numa_info.nodes) != 1)
+		return -EINVAL;
+
+	return 0;
+}
+
 static int __ttm_pool_alloc(struct ttm_pool *pool, struct ttm_tt *tt,
 			    const struct ttm_operation_ctx *ctx,
 			    struct ttm_pool_alloc_state *alloc,
 			    struct ttm_pool_tt_restore *restore)
 {
+	/* pool->nid may be NUMA_NO_NODE, letting alloc_pages_node() pick */
+	int alloc_nid = pool->nid, take_nid = ttm_pool_nid(pool);
+	enum ttm_numa_policy policy = ctx->numa_info.policy;
 	enum ttm_caching page_caching;
 	gfp_t gfp_flags = GFP_USER;
 	pgoff_t caching_divide;
@@ -796,6 +819,12 @@ static int __ttm_pool_alloc(struct ttm_pool *pool, struct ttm_tt *tt,
 
 	WARN_ON(!alloc->remaining_pages || ttm_tt_is_populated(tt));
 	WARN_ON(alloc->dma_addr && !pool->dev);
+
+	if (policy != TTM_NUMA_POLICY_NONE) {
+		/* Start at the single node of the policy */
+		alloc_nid = first_node(*ctx->numa_info.nodes);
+		take_nid = alloc_nid;
+	}
 
 	if (tt->page_flags & TTM_TT_FLAG_ZERO_ALLOC)
 		gfp_flags |= __GFP_ZERO;
@@ -819,7 +848,7 @@ static int __ttm_pool_alloc(struct ttm_pool *pool, struct ttm_tt *tt,
 		p = NULL;
 		pt = ttm_pool_select_type(pool, page_caching, order);
 		if (pt && allow_pools)
-			p = ttm_pool_type_take(pt, ttm_pool_nid(pool));
+			p = ttm_pool_type_take(pt, take_nid);
 
 		/*
 		 * If that fails or previously failed, allocate from system.
@@ -830,7 +859,8 @@ static int __ttm_pool_alloc(struct ttm_pool *pool, struct ttm_tt *tt,
 		if (!p) {
 			page_caching = ttm_cached;
 			allow_pools = false;
-			p = ttm_pool_alloc_page(pool, gfp_flags, order);
+			p = ttm_pool_alloc_page(pool, gfp_flags, order,
+						alloc_nid);
 		}
 		/* If that fails, lower the order if possible and retry. */
 		if (!p) {
@@ -889,15 +919,21 @@ error_free_all:
  * Fill the ttm_tt object with pages and also make sure to DMA map them when
  * necessary.
  *
- * Returns: 0 on successe, negative error code otherwise.
+ * Returns: 0 on successe, -EOPNOTSUPP if @ctx requests a NUMA node on a
+ * dma-alloc pool, negative error code otherwise.
  */
 int ttm_pool_alloc(struct ttm_pool *pool, struct ttm_tt *tt,
 		   struct ttm_operation_ctx *ctx)
 {
 	struct ttm_pool_alloc_state alloc;
+	int ret;
 
 	if (WARN_ON(ttm_tt_is_backed_up(tt)))
 		return -EINVAL;
+
+	ret = ttm_pool_check_numa(pool, ctx);
+	if (ret)
+		return ret;
 
 	ttm_pool_alloc_state_init(tt, &alloc);
 
@@ -916,7 +952,9 @@ EXPORT_SYMBOL(ttm_pool_alloc);
  * Fill the ttm_tt object with pages and also make sure to DMA map them when
  * necessary. Read in backed-up content.
  *
- * Returns: 0 on successe, negative error code otherwise.
+ * Returns: 0 on success, -EOPNOTSUPP if @ctx requests a NUMA placement on a
+ * dma-alloc pool, -EINVAL on an empty NUMA policy, negative error code
+ * otherwise.
  */
 int ttm_pool_restore_and_alloc(struct ttm_pool *pool, struct ttm_tt *tt,
 			       const struct ttm_operation_ctx *ctx)
@@ -927,6 +965,10 @@ int ttm_pool_restore_and_alloc(struct ttm_pool *pool, struct ttm_tt *tt,
 
 	if (WARN_ON(!ttm_tt_is_backed_up(tt)))
 		return -EINVAL;
+
+	ret = ttm_pool_check_numa(pool, ctx);
+	if (ret)
+		return ret;
 
 	if (!restore) {
 		gfp_t gfp = GFP_KERNEL | __GFP_NOWARN;
