@@ -16,6 +16,7 @@
 #include "xe_pm.h"
 #include "xe_printk.h"
 #include "xe_ras.h"
+#include "xe_sriov.h"
 #include "xe_sriov_pf_helpers.h"
 #include "xe_survivability_mode.h"
 #include "xe_wa.h"
@@ -234,7 +235,7 @@ static void xe_pci_error_resume(struct pci_dev *pdev)
 
 static inline bool xe_pci_reset_skip(struct xe_device *xe)
 {
-	return !IS_DGFX(xe) || IS_SRIOV_VF(xe) || xe_sriov_pf_num_vfs(xe) || xe->info.probe_display;
+	return !IS_DGFX(xe) || xe_sriov_pf_num_vfs(xe) || xe->info.probe_display;
 }
 
 static void xe_pci_reset_prepare(struct pci_dev *pdev)
@@ -292,6 +293,12 @@ static void xe_pci_reset_done(struct pci_dev *pdev)
 
 	/* Unprepare early in case we fail */
 	xe->flr_prepared = false;
+
+	err = xe_sriov_post_flr(xe);
+	if (err) {
+		xe_err(xe, "PCI reset: SR-IOV post-FLR actions failed\n");
+		goto out;
+	}
 
 	/*
 	 * We already have the data structures intact, so try to re-initialize the device.

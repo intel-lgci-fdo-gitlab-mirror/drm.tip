@@ -11,6 +11,7 @@
 
 #include "xe_assert.h"
 #include "xe_device.h"
+#include "xe_gt_sriov_vf.h"
 #include "xe_mmio.h"
 #include "xe_sriov.h"
 #include "xe_sriov_pf.h"
@@ -171,6 +172,36 @@ int xe_sriov_init_late(struct xe_device *xe)
 		return xe_sriov_pf_init_late(xe);
 	if (IS_SRIOV_VF(xe))
 		return xe_sriov_vf_init_late(xe);
+
+	return 0;
+}
+
+/**
+ * xe_sriov_post_flr() - Perform SR-IOV specific post-FLR actions.
+ * @xe: the &xe_device
+ *
+ * This function should be called after PCIe FLR, before the device is
+ * re-initialized.
+ *
+ * Return: 0 on success or a negative error code on failure.
+ */
+int xe_sriov_post_flr(struct xe_device *xe)
+{
+	struct xe_gt *gt;
+	int err;
+	u8 id;
+
+	if (IS_SRIOV_VF(xe)) {
+		/*
+		 * Wait for GuC to become responsive. This indicates that PF completed
+		 * VF FLR cleanups and it's safe to start VF re-initialization.
+		 */
+		for_each_gt(gt, xe, id) {
+			err = xe_gt_sriov_vf_reset(gt);
+			if (err)
+				return err;
+		}
+	}
 
 	return 0;
 }
