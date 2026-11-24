@@ -208,7 +208,7 @@ int ttm_device_init(struct ttm_device *bdev, const struct ttm_device_funcs *func
 		    unsigned int alloc_flags)
 {
 	struct ttm_global *glob = &ttm_glob;
-	int ret, nid;
+	int ret;
 
 	if (WARN_ON(vma_manager == NULL))
 		return -EINVAL;
@@ -229,12 +229,7 @@ int ttm_device_init(struct ttm_device *bdev, const struct ttm_device_funcs *func
 
 	ttm_sys_man_init(bdev);
 
-	if (dev)
-		nid = dev_to_node(dev);
-	else
-		nid = NUMA_NO_NODE;
-
-	ttm_pool_init(&bdev->pool, dev, nid, alloc_flags);
+	ttm_pool_init(&bdev->pool, dev, alloc_flags);
 
 	bdev->vma_manager = vma_manager;
 	spin_lock_init(&bdev->lru_lock);
