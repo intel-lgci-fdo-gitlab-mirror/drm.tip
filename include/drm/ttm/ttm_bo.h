@@ -35,6 +35,7 @@
 
 #include <linux/kref.h>
 #include <linux/list.h>
+#include <linux/nodemask.h>
 
 #include "ttm_device.h"
 
@@ -50,6 +51,18 @@ struct ttm_place;
 struct ttm_resource;
 struct ttm_resource_manager;
 struct ttm_tt;
+
+/**
+ * enum ttm_numa_policy - NUMA placement policy for system pages
+ *
+ * @TTM_NUMA_POLICY_NONE: No policy. Use the pool default node.
+ * @TTM_NUMA_POLICY_PREFERRED: Prefer the single node in
+ *	ttm_operation_ctx.numa_info.nodes. Falls back to other nodes.
+ */
+enum ttm_numa_policy {
+	TTM_NUMA_POLICY_NONE = 0,
+	TTM_NUMA_POLICY_PREFERRED,
+};
 
 /**
  * enum ttm_bo_type
@@ -187,6 +200,23 @@ struct ttm_operation_ctx {
 	 * when multiple BOs share the same reservation object @resv.
 	 */
 	bool allow_res_evict;
+	/**
+	 * @numa_info: NUMA placement of system pages. Not supported by
+	 * dma-alloc pools.
+	 */
+	struct {
+		/**
+		 * @numa_info.policy: Policy applied to the allocation, see
+		 * &enum ttm_numa_policy.
+		 */
+		enum ttm_numa_policy policy;
+		/**
+		 * @numa_info.nodes: Nodes the policy applies to. Must be set
+		 * and non-empty when @policy is not TTM_NUMA_POLICY_NONE. Must
+		 * contain exactly one node for TTM_NUMA_POLICY_PREFERRED.
+		 */
+		const nodemask_t *nodes;
+	} numa_info;
 	/**
 	 * @resv: Reservation object to be used together with
 	 * @allow_res_evict.
