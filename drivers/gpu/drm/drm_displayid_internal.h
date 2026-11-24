@@ -103,6 +103,17 @@ struct displayid_block {
 	u8 num_bytes;
 } __packed;
 
+struct displayid_product_id_block {
+	struct displayid_block base;
+	u8 vendor_id[3];
+	__le16 product_code;
+	__le32 serial_number;
+	u8 week_of_manufacture;
+	u8 year_of_manufacture;
+	u8 size_of_product_id_string;
+	u8 product_id_string[];
+} __packed;
+
 struct displayid_tiled_block {
 	struct displayid_block base;
 	u8 tile_cap;
