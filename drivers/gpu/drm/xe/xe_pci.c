@@ -477,6 +477,7 @@ static const struct xe_device_desc cri_desc = {
 	.has_display = false,
 	.has_device_uid = true,
 	.has_drm_ras = true,
+	.has_fan_control = true,
 	.has_flat_ccs = false,
 	.has_gsc_nvm = 1,
 	.has_i2c = true,
@@ -611,6 +612,26 @@ find_subplatform(const struct xe_device_desc *desc, u16 devid)
 				return sp;
 
 	return NULL;
+}
+
+/* Only these CRI device IDs support fan control. */
+static const u16 cri_fan_control_ids[] = { 0x674E, 0x674F, 0x6751 };
+
+static bool xe_has_fan_control(struct xe_device *xe)
+{
+	int i;
+
+	if (!xe->desc->has_fan_control)
+		return false;
+
+	if (xe->info.platform != XE_CRESCENTISLAND)
+		return true;
+
+	for (i = 0; i < ARRAY_SIZE(cri_fan_control_ids); i++)
+		if (xe->info.devid == cri_fan_control_ids[i])
+			return true;
+
+	return false;
 }
 
 enum xe_gmdid_type {
@@ -805,7 +826,7 @@ static int xe_info_init_early(struct xe_device *xe,
 	xe->info.has_cached_pt = desc->has_cached_pt;
 	xe->info.has_device_uid = desc->has_device_uid;
 	xe->info.has_drm_ras = desc->has_drm_ras;
-	xe->info.has_fan_control = desc->has_fan_control;
+	xe->info.has_fan_control = xe_has_fan_control(xe);
 	xe->info.has_fixed_vram_channels = desc->has_fixed_vram_channels;
 	/* runtime fusing may force flat_ccs to disabled later */
 	xe->info.has_flat_ccs = desc->has_flat_ccs;

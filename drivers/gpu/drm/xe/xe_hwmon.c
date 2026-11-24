@@ -533,7 +533,8 @@ static struct xe_reg xe_hwmon_get_reg(struct xe_hwmon *hwmon, enum xe_hwmon_reg 
 		else if (channel == FAN_2)
 			return BMG_FAN_2_SPEED;
 		else if (channel == FAN_3)
-			return BMG_FAN_3_SPEED;
+			return (xe->info.platform == XE_CRESCENTISLAND) ? CRI_FAN_3_SPEED :
+				BMG_FAN_3_SPEED;
 		break;
 	default:
 		drm_warn(&xe->drm, "Unknown xe hwmon reg id: %d\n", hwmon_reg);
