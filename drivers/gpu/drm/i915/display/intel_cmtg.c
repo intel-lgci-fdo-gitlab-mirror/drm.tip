@@ -18,6 +18,7 @@
 #include "intel_display_power.h"
 #include "intel_display_regs.h"
 #include "intel_display_types.h"
+#include "intel_flipq.h"
 #include "intel_vrr.h"
 #include "intel_vrr_regs.h"
 
@@ -397,6 +398,7 @@ static void intel_cmtg_set_hwgb(const struct intel_crtc_state *crtc_state)
 	enum transcoder cpu_transcoder = crtc_state->cpu_transcoder;
 	u32 breakeven_gb;
 	u32 dc5_exit_latency;
+	u32 exit_latency_us = DC3CO_EXIT_LATENCY_US;
 	u32 line_time_us = 75;	/* Max default initialization value */
 	u32 val;
 
@@ -406,8 +408,15 @@ static void intel_cmtg_set_hwgb(const struct intel_crtc_state *crtc_state)
 	/* Break Even Guardband - DC3co Entry Latency / linetime */
 	breakeven_gb = DIV_ROUND_UP(DC3CO_ENTRY_LATENCY_US, line_time_us);
 
-	/* DC5 Exit Latency - DC3co Exit Latency / linetime */
-	dc5_exit_latency = DIV_ROUND_UP(DC3CO_EXIT_LATENCY_US, line_time_us);
+	/*
+	 * The pipe DMC may need to execute a flip queue entry on DC3co exit,
+	 * so include the flip queue execution time in the exit latency.
+	 */
+	if (intel_flipq_supported(display))
+		exit_latency_us += intel_flipq_exec_time_us(display);
+
+	/* DC5 Exit Latency - (DC3co Exit Latency + flip queue exec time) / linetime */
+	dc5_exit_latency = DIV_ROUND_UP(exit_latency_us, line_time_us);
 
 	val = REG_FIELD_PREP(CMTG_HW_GB_BREAKEVEN_MASK, breakeven_gb) |
 	      REG_FIELD_PREP(CMTG_HW_GB_DC5_EXIT_LATENCY_MASK, dc5_exit_latency) |
