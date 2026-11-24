@@ -3662,6 +3662,36 @@ static int gem_create_user_ext_set_property(struct xe_device *xe,
 	return gem_create_set_property_funcs[idx](xe, data, ext.value);
 }
 
+/* Modes left as TTM_NUMA_POLICY_NONE are not supported */
+static const enum ttm_numa_policy xe_mempolicy_to_ttm[] = {
+	[DRM_XE_GEM_CREATE_MEMPOLICY_MODE_PREFERRED] = TTM_NUMA_POLICY_PREFERRED,
+	[DRM_XE_GEM_CREATE_MEMPOLICY_MODE_BIND] = TTM_NUMA_POLICY_BIND,
+	[DRM_XE_GEM_CREATE_MEMPOLICY_MODE_INTERLEAVE] = TTM_NUMA_POLICY_INTERLEAVE,
+};
+
+/**
+ * xe_bo_mempolicy_modes() - Host NUMA mempolicy modes supported by the device
+ * @xe: The xe device.
+ *
+ * Return: Bitmask of BIT(%DRM_XE_GEM_CREATE_MEMPOLICY_MODE_*) values that
+ * %DRM_XE_GEM_CREATE_EXTENSION_SET_MEMPOLICY accepts.
+ */
+u32 xe_bo_mempolicy_modes(struct xe_device *xe)
+{
+	u32 modes = 0;
+	int i;
+
+	/* TTM cannot apply NUMA placement to DMA-allocated pools */
+	if (xe->ttm.pool.alloc_flags & TTM_ALLOCATION_POOL_USE_DMA_ALLOC)
+		return 0;
+
+	for (i = 0; i < ARRAY_SIZE(xe_mempolicy_to_ttm); i++)
+		if (xe_mempolicy_to_ttm[i] != TTM_NUMA_POLICY_NONE)
+			modes |= BIT(i);
+
+	return modes;
+}
+
 static int gem_create_set_mempolicy(struct xe_device *xe,
 				    struct xe_gem_create_ext_data *data,
 				    u64 extension)
@@ -3681,19 +3711,14 @@ static int gem_create_set_mempolicy(struct xe_device *xe,
 	if (XE_IOCTL_DBG(xe, ext.flags) || XE_IOCTL_DBG(xe, ext.pad))
 		return -EINVAL;
 
-	switch (ext.mode) {
-	case DRM_XE_GEM_CREATE_MEMPOLICY_MODE_PREFERRED:
-		mode = TTM_NUMA_POLICY_PREFERRED;
-		break;
-	case DRM_XE_GEM_CREATE_MEMPOLICY_MODE_BIND:
-		mode = TTM_NUMA_POLICY_BIND;
-		break;
-	case DRM_XE_GEM_CREATE_MEMPOLICY_MODE_INTERLEAVE:
-		mode = TTM_NUMA_POLICY_INTERLEAVE;
-		break;
-	default:
+	if (XE_IOCTL_DBG(xe, ext.mode >= ARRAY_SIZE(xe_mempolicy_to_ttm)))
 		return -EINVAL;
-	}
+
+	if (XE_IOCTL_DBG(xe, !(xe_bo_mempolicy_modes(xe) & BIT(ext.mode))))
+		return -EOPNOTSUPP;
+
+	mode = xe_mempolicy_to_ttm[array_index_nospec(ext.mode,
+						      ARRAY_SIZE(xe_mempolicy_to_ttm))];
 
 	if (XE_IOCTL_DBG(xe, !ext.maxnode || ext.maxnode > MAX_NUMNODES))
 		return -EINVAL;
