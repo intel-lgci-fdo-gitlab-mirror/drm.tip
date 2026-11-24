@@ -710,6 +710,7 @@ struct drm_xe_query_pxp_status {
  *  - %DRM_XE_DEVICE_QUERY_OA_UNITS
  *  - %DRM_XE_DEVICE_QUERY_PXP_STATUS
  *  - %DRM_XE_DEVICE_QUERY_EU_STALL
+ *  - %DRM_XE_DEVICE_QUERY_MEMPOLICY
  *
  * If size is set to 0, the driver fills it with the required size for
  * the requested type of data to query. If size is equal to the required
@@ -764,6 +765,7 @@ struct drm_xe_device_query {
 #define DRM_XE_DEVICE_QUERY_OA_UNITS		8
 #define DRM_XE_DEVICE_QUERY_PXP_STATUS		9
 #define DRM_XE_DEVICE_QUERY_EU_STALL		10
+#define DRM_XE_DEVICE_QUERY_MEMPOLICY		11
 	/** @query: The type of data to query */
 	__u32 query;
 
@@ -822,6 +824,30 @@ struct drm_xe_gem_create_mempolicy {
 
 	/** @maxnode: Number of valid bits in @nodemask, at most MAX_NUMNODES */
 	__u64 maxnode;
+};
+
+/**
+ * struct drm_xe_query_mempolicy - Host NUMA mempolicy capabilities
+ *
+ * If the query field of struct drm_xe_device_query is equal to
+ * %DRM_XE_DEVICE_QUERY_MEMPOLICY, then the reply uses this structure. It
+ * reports which modes of %DRM_XE_GEM_CREATE_EXTENSION_SET_MEMPOLICY the
+ * driver supports. Requesting an unsupported mode fails with -EOPNOTSUPP.
+ * A kernel without this query returns -EINVAL for it and does not support
+ * the extension.
+ */
+struct drm_xe_query_mempolicy {
+	/**
+	 * @supported_modes: Bitmask of supported modes, bit n set means
+	 * %DRM_XE_GEM_CREATE_MEMPOLICY_MODE_* value n is supported
+	 */
+	__u32 supported_modes;
+
+	/** @pad: MBZ */
+	__u32 pad;
+
+	/** @reserved: Reserved */
+	__u64 reserved[3];
 };
 
 /**
