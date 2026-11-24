@@ -14,6 +14,7 @@
 #include "i9xx_wm.h"
 #include "intel_atomic.h"
 #include "intel_bw.h"
+#include "intel_cdclk.h"
 #include "intel_cmtg.h"
 #include "intel_color.h"
 #include "intel_crtc.h"
@@ -36,6 +37,22 @@
 #include "intel_vga.h"
 #include "intel_wm.h"
 #include "skl_watermark.h"
+
+/**
+ * intel_display_update_hw_state - synchronize global display accounting
+ * @display: display instance
+ *
+ * Update the global state from the current CRTC and plane state during
+ * hardware state setup, with atomic commits excluded. Call this again
+ * after non-atomic sanitization has changed the local state.
+ */
+void intel_display_update_hw_state(struct intel_display *display)
+{
+	intel_bw_update_hw_state(display);
+	/* CDCLK requirements depend on the DBUF bandwidth state. */
+	intel_dbuf_bw_update_hw_state(display);
+	intel_cdclk_update_hw_state(display);
+}
 
 static void intel_crtc_disable_noatomic_begin(struct intel_crtc *crtc,
 					      struct drm_modeset_acquire_ctx *ctx)
@@ -877,9 +894,7 @@ static void intel_modeset_readout_hw_state(struct intel_display *display)
 	if (DISPLAY_VER(display) >= 9)
 		intel_wm_get_hw_state(display);
 
-	intel_bw_update_hw_state(display);
-	intel_dbuf_bw_update_hw_state(display);
-	intel_cdclk_update_hw_state(display);
+	intel_display_update_hw_state(display);
 
 	intel_pmdemand_init_pmdemand_params(display, pmdemand_state);
 }
@@ -994,6 +1009,9 @@ void intel_modeset_setup_hw_state(struct intel_display *display,
 	if (DISPLAY_VER(display) < 9)
 		intel_wm_get_hw_state(display);
 	intel_wm_sanitize(display);
+
+	/* Sanitization may have disabled planes without an atomic commit. */
+	intel_display_update_hw_state(display);
 
 	for_each_intel_crtc(display, crtc) {
 		struct intel_crtc_state *crtc_state =
