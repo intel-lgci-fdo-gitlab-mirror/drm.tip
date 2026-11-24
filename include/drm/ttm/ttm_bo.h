@@ -61,11 +61,14 @@ struct ttm_tt;
  * @TTM_NUMA_POLICY_BIND: Allocate only from the nodes in
  *	ttm_operation_ctx.numa_info.nodes, in ascending node order. Never falls
  *	back to other nodes.
+ * @TTM_NUMA_POLICY_INTERLEAVE: Allocate chunks round-robin across the nodes
+ *	in ttm_operation_ctx.numa_info.nodes.
  */
 enum ttm_numa_policy {
 	TTM_NUMA_POLICY_NONE = 0,
 	TTM_NUMA_POLICY_PREFERRED,
 	TTM_NUMA_POLICY_BIND,
+	TTM_NUMA_POLICY_INTERLEAVE,
 };
 
 /**

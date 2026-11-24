@@ -373,6 +373,38 @@ static struct page *ttm_pool_type_take(struct ttm_pool_type *pt, int nid)
 	return p;
 }
 
+/* Return the node in @nodes nearest to @from, lowest node id on ties */
+static int ttm_pool_nearest_node(int from, const nodemask_t *nodes)
+{
+	int n, nid = first_node(*nodes);
+
+	for_each_node_mask(n, *nodes) {
+		if (node_distance(from, n) < node_distance(from, nid))
+			nid = n;
+	}
+
+	return nid;
+}
+
+/* Take from @nid first, then from the other nodes nearest to @nid first */
+static struct page *ttm_pool_type_take_interleave(struct ttm_pool_type *pt,
+						  int nid, const nodemask_t *nodes)
+{
+	nodemask_t todo = *nodes;
+	struct page *p;
+
+	p = ttm_pool_type_take(pt, nid);
+	node_clear(nid, todo);
+	while (!p && !nodes_empty(todo)) {
+		int n = ttm_pool_nearest_node(nid, &todo);
+
+		node_clear(n, todo);
+		p = ttm_pool_type_take(pt, n);
+	}
+
+	return p;
+}
+
 /* Initialize and add a pool type to the global shrinker list */
 static void ttm_pool_type_init(struct ttm_pool_type *pt, struct ttm_pool *pool,
 			       enum ttm_caching caching, unsigned int order)
@@ -781,6 +813,17 @@ static unsigned int ttm_pool_alloc_find_order(unsigned int highest,
 	return min_t(unsigned int, highest, __fls(alloc->remaining_pages));
 }
 
+/* Return the @n-th node set in @nodes, wrapping around the node weight */
+static int ttm_pool_policy_nth_node(const nodemask_t *nodes, unsigned int n)
+{
+	int nid = first_node(*nodes);
+
+	for (n %= nodes_weight(*nodes); n; n--)
+		nid = next_node(nid, *nodes);
+
+	return nid;
+}
+
 /*
  * Try the nodes in @nodes once each, nearest first from the local node.
  * __GFP_THISNODE prevents fallback to nodes outside the policy.
@@ -831,6 +874,31 @@ static struct page *ttm_pool_alloc_bind(struct ttm_pool *pool, gfp_t gfp_flags,
 	return p;
 }
 
+/*
+ * Allocate pages of size 1 << order for TTM_NUMA_POLICY_INTERLEAVE. Try the
+ * interleaved node @nid first, then the other nodes in @nodes nearest to @nid
+ * first, as the per-node zonelist fallback of core mm does, before the caller
+ * lowers the order.
+ */
+static struct page *ttm_pool_alloc_interleave(struct ttm_pool *pool,
+					      gfp_t gfp_flags, unsigned int order,
+					      int nid, const nodemask_t *nodes)
+{
+	nodemask_t todo = *nodes;
+	struct page *p;
+
+	p = ttm_pool_alloc_page(pool, gfp_flags, order, nid);
+	node_clear(nid, todo);
+	while (!p && !nodes_empty(todo)) {
+		int n = ttm_pool_nearest_node(nid, &todo);
+
+		node_clear(n, todo);
+		p = ttm_pool_alloc_page(pool, gfp_flags, order, n);
+	}
+
+	return p;
+}
+
 /* Validate the NUMA request in @ctx against @pool */
 static int ttm_pool_check_numa(struct ttm_pool *pool,
 			       const struct ttm_operation_ctx *ctx)
@@ -871,7 +939,7 @@ static int __ttm_pool_alloc(struct ttm_pool *pool, struct ttm_tt *tt,
 	WARN_ON(alloc->dma_addr && !pool->dev);
 
 	if (policy != TTM_NUMA_POLICY_NONE) {
-		/* Start at the single node of the policy */
+		/* INTERLEAVE rotates below, others start at the first node */
 		alloc_nid = first_node(*ctx->numa_info.nodes);
 		take_nid = alloc_nid;
 	}
@@ -894,11 +962,24 @@ static int __ttm_pool_alloc(struct ttm_pool *pool, struct ttm_tt *tt,
 	     order = ttm_pool_alloc_find_order(order, alloc)) {
 		struct ttm_pool_type *pt;
 
+		if (policy == TTM_NUMA_POLICY_INTERLEAVE) {
+			unsigned int slot = tt->num_pages - alloc->remaining_pages;
+
+			alloc_nid = ttm_pool_policy_nth_node(ctx->numa_info.nodes,
+							     slot >> order);
+			take_nid = alloc_nid;
+		}
+
 		/* First, try to allocate a page from a pool if one exists. */
 		p = NULL;
 		pt = ttm_pool_select_type(pool, page_caching, order);
-		if (pt && allow_pools)
-			p = ttm_pool_type_take(pt, take_nid);
+		if (pt && allow_pools) {
+			if (policy == TTM_NUMA_POLICY_INTERLEAVE)
+				p = ttm_pool_type_take_interleave(pt, take_nid,
+								  ctx->numa_info.nodes);
+			else
+				p = ttm_pool_type_take(pt, take_nid);
+		}
 
 		/*
 		 * If that fails or previously failed, allocate from system.
@@ -912,6 +993,10 @@ static int __ttm_pool_alloc(struct ttm_pool *pool, struct ttm_tt *tt,
 			if (policy == TTM_NUMA_POLICY_BIND)
 				p = ttm_pool_alloc_bind(pool, gfp_flags, order,
 							ctx->numa_info.nodes);
+			else if (policy == TTM_NUMA_POLICY_INTERLEAVE)
+				p = ttm_pool_alloc_interleave(pool, gfp_flags,
+							      order, alloc_nid,
+							      ctx->numa_info.nodes);
 			else
 				p = ttm_pool_alloc_page(pool, gfp_flags, order,
 							alloc_nid);
