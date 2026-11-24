@@ -1415,20 +1415,21 @@ long ttm_pool_backup(struct ttm_pool *pool, struct ttm_tt *tt,
  *
  * @pool: the pool to initialize
  * @dev: device for DMA allocations and mappings
- * @nid: NUMA node to use for allocations
  * @alloc_flags: TTM_ALLOCATION_POOL_* flags
  *
- * Initialize the pool and its pool types.
+ * Initialize the pool and its pool types. The pool allocates on @dev's NUMA
+ * node unless the caller selects one per allocation through
+ * &ttm_operation_ctx.numa_info.
  */
 void ttm_pool_init(struct ttm_pool *pool, struct device *dev,
-		   int nid, unsigned int alloc_flags)
+		   unsigned int alloc_flags)
 {
 	unsigned int i, j;
 
 	WARN_ON(!dev && ttm_pool_uses_dma_alloc(pool));
 
 	pool->dev = dev;
-	pool->nid = nid;
+	pool->nid = dev ? dev_to_node(dev) : NUMA_NO_NODE;
 	pool->alloc_flags = alloc_flags;
 
 	for (i = 0; i < TTM_NUM_CACHING_TYPES; ++i) {

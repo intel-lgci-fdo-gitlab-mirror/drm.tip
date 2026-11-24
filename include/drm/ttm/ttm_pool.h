@@ -62,7 +62,7 @@ struct ttm_pool_type {
  * struct ttm_pool - Pool for all caching and orders
  *
  * @dev: the device we allocate pages for
- * @nid: which numa node to use
+ * @nid: default NUMA node, derived from @dev
  * @alloc_flags: TTM_ALLOCATION_POOL_* flags
  * @caching: pools for each caching/order
  */
@@ -82,7 +82,7 @@ int ttm_pool_alloc(struct ttm_pool *pool, struct ttm_tt *tt,
 void ttm_pool_free(struct ttm_pool *pool, struct ttm_tt *tt);
 
 void ttm_pool_init(struct ttm_pool *pool, struct device *dev,
-		   int nid, unsigned int alloc_flags);
+		   unsigned int alloc_flags);
 void ttm_pool_fini(struct ttm_pool *pool);
 
 int ttm_pool_debugfs(struct ttm_pool *pool, struct seq_file *m);
