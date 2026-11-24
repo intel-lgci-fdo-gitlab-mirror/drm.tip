@@ -3603,7 +3603,19 @@ void xe_bo_vunmap(struct xe_bo *bo)
 	__xe_bo_vunmap(bo);
 }
 
-static int gem_create_set_pxp_type(struct xe_device *xe, struct xe_bo *bo, u64 value)
+/* GEM_CREATE extension values, parsed before the BO is created */
+struct xe_gem_create_ext_data {
+	bool pxp_hwdrm;
+	/**
+	 * @mempolicy: Host NUMA policy, mode NONE unless the mempolicy
+	 * extension was set
+	 */
+	struct xe_host_mempolicy mempolicy;
+};
+
+static int gem_create_set_pxp_type(struct xe_device *xe,
+				   struct xe_gem_create_ext_data *data,
+				   u64 value)
 {
 	if (value == DRM_XE_PXP_TYPE_NONE)
 		return 0;
@@ -3612,11 +3624,13 @@ static int gem_create_set_pxp_type(struct xe_device *xe, struct xe_bo *bo, u64 v
 	if (XE_IOCTL_DBG(xe, value != DRM_XE_PXP_TYPE_HWDRM))
 		return -EINVAL;
 
-	return xe_pxp_key_assign(xe->pxp, bo);
+	data->pxp_hwdrm = true;
+
+	return 0;
 }
 
 typedef int (*xe_gem_create_set_property_fn)(struct xe_device *xe,
-					     struct xe_bo *bo,
+					     struct xe_gem_create_ext_data *data,
 					     u64 value);
 
 static const xe_gem_create_set_property_fn gem_create_set_property_funcs[] = {
@@ -3624,7 +3638,7 @@ static const xe_gem_create_set_property_fn gem_create_set_property_funcs[] = {
 };
 
 static int gem_create_user_ext_set_property(struct xe_device *xe,
-					    struct xe_bo *bo,
+					    struct xe_gem_create_ext_data *data,
 					    u64 extension)
 {
 	u64 __user *address = u64_to_user_ptr(extension);
@@ -3636,29 +3650,99 @@ static int gem_create_user_ext_set_property(struct xe_device *xe,
 	if (XE_IOCTL_DBG(xe, err))
 		return -EFAULT;
 
-	if (XE_IOCTL_DBG(xe, ext.property >=
-			 ARRAY_SIZE(gem_create_set_property_funcs)) ||
-	    XE_IOCTL_DBG(xe, ext.pad) ||
-	    XE_IOCTL_DBG(xe, ext.property != DRM_XE_GEM_CREATE_EXTENSION_SET_PROPERTY))
+	if (XE_IOCTL_DBG(xe, ext.pad) ||
+	    XE_IOCTL_DBG(xe, ext.property >=
+			 ARRAY_SIZE(gem_create_set_property_funcs)))
 		return -EINVAL;
 
 	idx = array_index_nospec(ext.property, ARRAY_SIZE(gem_create_set_property_funcs));
 	if (!gem_create_set_property_funcs[idx])
 		return -EINVAL;
 
-	return gem_create_set_property_funcs[idx](xe, bo, ext.value);
+	return gem_create_set_property_funcs[idx](xe, data, ext.value);
+}
+
+static int gem_create_set_mempolicy(struct xe_device *xe,
+				    struct xe_gem_create_ext_data *data,
+				    u64 extension)
+{
+	u64 __user *address = u64_to_user_ptr(extension);
+	unsigned long words[BITS_TO_LONGS(MAX_NUMNODES)] = {};
+	struct drm_xe_gem_create_mempolicy ext;
+	enum ttm_numa_policy mode;
+	unsigned long nr_words;
+	nodemask_t nodes, missing;
+	int err;
+
+	err = copy_from_user(&ext, address, sizeof(ext));
+	if (XE_IOCTL_DBG(xe, err))
+		return -EFAULT;
+
+	if (XE_IOCTL_DBG(xe, ext.flags) || XE_IOCTL_DBG(xe, ext.pad))
+		return -EINVAL;
+
+	switch (ext.mode) {
+	case DRM_XE_GEM_CREATE_MEMPOLICY_MODE_PREFERRED:
+		mode = TTM_NUMA_POLICY_PREFERRED;
+		break;
+	case DRM_XE_GEM_CREATE_MEMPOLICY_MODE_BIND:
+		mode = TTM_NUMA_POLICY_BIND;
+		break;
+	case DRM_XE_GEM_CREATE_MEMPOLICY_MODE_INTERLEAVE:
+		mode = TTM_NUMA_POLICY_INTERLEAVE;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (XE_IOCTL_DBG(xe, !ext.maxnode || ext.maxnode > MAX_NUMNODES))
+		return -EINVAL;
+
+	nr_words = BITS_TO_LONGS(ext.maxnode);
+	err = copy_from_user(words, u64_to_user_ptr(ext.nodemask),
+			     nr_words * sizeof(unsigned long));
+	if (XE_IOCTL_DBG(xe, err))
+		return -EFAULT;
+
+	/* Bits at or above maxnode must be clear */
+	if (XE_IOCTL_DBG(xe, find_next_bit(words, nr_words * BITS_PER_LONG,
+					   ext.maxnode) <
+			 nr_words * BITS_PER_LONG))
+		return -EINVAL;
+
+	nodes_clear(nodes);
+	bitmap_copy(nodes.bits, words, ext.maxnode);
+
+	if (XE_IOCTL_DBG(xe, nodes_empty(nodes)))
+		return -EINVAL;
+
+	/* Only nodes with memory can back the pages */
+	nodes_andnot(missing, nodes, node_states[N_MEMORY]);
+	if (XE_IOCTL_DBG(xe, !nodes_empty(missing)))
+		return -EINVAL;
+
+	if (XE_IOCTL_DBG(xe, mode == TTM_NUMA_POLICY_PREFERRED &&
+			 nodes_weight(nodes) != 1))
+		return -EINVAL;
+
+	data->mempolicy.mode = mode;
+	data->mempolicy.nodes = nodes;
+
+	return 0;
 }
 
 typedef int (*xe_gem_create_user_extension_fn)(struct xe_device *xe,
-					       struct xe_bo *bo,
+					       struct xe_gem_create_ext_data *data,
 					       u64 extension);
 
 static const xe_gem_create_user_extension_fn gem_create_user_extension_funcs[] = {
 	[DRM_XE_GEM_CREATE_EXTENSION_SET_PROPERTY] = gem_create_user_ext_set_property,
+	[DRM_XE_GEM_CREATE_EXTENSION_SET_MEMPOLICY] = gem_create_set_mempolicy,
 };
 
 #define MAX_USER_EXTENSIONS	16
-static int gem_create_user_extensions(struct xe_device *xe, struct xe_bo *bo,
+static int gem_create_user_extensions(struct xe_device *xe,
+				      struct xe_gem_create_ext_data *data,
 				      u64 extensions, int ext_number)
 {
 	u64 __user *address = u64_to_user_ptr(extensions);
@@ -3679,12 +3763,12 @@ static int gem_create_user_extensions(struct xe_device *xe, struct xe_bo *bo,
 
 	idx = array_index_nospec(ext.name,
 				 ARRAY_SIZE(gem_create_user_extension_funcs));
-	err = gem_create_user_extension_funcs[idx](xe, bo, extensions);
+	err = gem_create_user_extension_funcs[idx](xe, data, extensions);
 	if (XE_IOCTL_DBG(xe, err))
 		return err;
 
 	if (ext.next_extension)
-		return gem_create_user_extensions(xe, bo, ext.next_extension,
+		return gem_create_user_extensions(xe, data, ext.next_extension,
 						  ++ext_number);
 
 	return 0;
@@ -3696,11 +3780,13 @@ int xe_gem_create_ioctl(struct drm_device *dev, void *data,
 	struct xe_device *xe = to_xe_device(dev);
 	struct xe_file *xef = to_xe_file(file);
 	struct drm_xe_gem_create *args = data;
+	struct xe_gem_create_ext_data ext_data = {};
 	struct xe_validation_ctx ctx;
 	struct drm_exec exec;
 	struct xe_vm *vm = NULL;
 	struct xe_bo *bo;
 	unsigned int bo_flags;
+	const struct xe_host_mempolicy *mpol = NULL;
 	u32 handle;
 	int err;
 
@@ -3776,6 +3862,20 @@ int xe_gem_create_ioctl(struct drm_device *dev, void *data,
 			 args->cpu_caching == DRM_XE_GEM_CPU_CACHING_WB))
 		return -EINVAL;
 
+	if (args->extensions) {
+		err = gem_create_user_extensions(xe, &ext_data,
+						 args->extensions, 0);
+		if (err)
+			return err;
+	}
+
+	if (XE_IOCTL_DBG(xe, ext_data.mempolicy.mode != TTM_NUMA_POLICY_NONE &&
+			 !(bo_flags & XE_BO_FLAG_SYSTEM)))
+		return -EINVAL;
+
+	if (ext_data.mempolicy.mode != TTM_NUMA_POLICY_NONE)
+		mpol = &ext_data.mempolicy;
+
 	if (args->vm_id) {
 		vm = xe_vm_lookup(xef, args->vm_id);
 		if (XE_IOCTL_DBG(xe, !vm))
@@ -3791,8 +3891,9 @@ int xe_gem_create_ioctl(struct drm_device *dev, void *data,
 			if (err)
 				break;
 		}
-		bo = xe_bo_create_user(xe, vm, args->size, args->cpu_caching,
-				       bo_flags, NULL, &exec);
+		bo = xe_bo_create_user(xe, vm, args->size,
+				       args->cpu_caching, bo_flags,
+				       mpol, &exec);
 		drm_exec_retry_on_contention(&exec);
 		if (IS_ERR(bo)) {
 			err = PTR_ERR(bo);
@@ -3803,9 +3904,9 @@ int xe_gem_create_ioctl(struct drm_device *dev, void *data,
 	if (err)
 		goto out_vm;
 
-	if (args->extensions) {
-		err = gem_create_user_extensions(xe, bo, args->extensions, 0);
-		if (err)
+	if (ext_data.pxp_hwdrm) {
+		err = xe_pxp_key_assign(xe->pxp, bo);
+		if (XE_IOCTL_DBG(xe, err))
 			goto out_bulk;
 	}
 
