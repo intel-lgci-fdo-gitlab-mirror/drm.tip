@@ -127,6 +127,8 @@ static int xe_file_open(struct drm_device *dev, struct drm_file *file)
 		put_task_struct(task);
 	}
 
+	xe_debugfs_client_add(file);
+
 	return 0;
 }
 
@@ -934,6 +936,10 @@ int xe_device_probe(struct xe_device *xe)
 	override_has_cached_pt(xe);
 
 	for_each_tile(tile, xe, id) {
+		err = xe_tile_wopcm_init(tile);
+		if (err)
+			return err;
+
 		err = xe_ggtt_init_early(tile->mem.ggtt);
 		if (err)
 			return err;
