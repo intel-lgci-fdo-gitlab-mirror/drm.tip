@@ -9,6 +9,7 @@
 struct drm_modeset_acquire_ctx;
 struct intel_display;
 
+void intel_display_update_hw_state(struct intel_display *display);
 void intel_modeset_setup_hw_state(struct intel_display *display,
 				  struct drm_modeset_acquire_ctx *ctx);
 

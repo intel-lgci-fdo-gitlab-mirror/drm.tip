@@ -15,6 +15,7 @@
 #include "intel_fb.h"
 #include "intel_frontbuffer.h"
 #include "intel_initial_plane.h"
+#include "intel_modeset_setup.h"
 #include "intel_parent.h"
 #include "intel_plane.h"
 
@@ -237,4 +238,7 @@ void intel_initial_plane_config(struct intel_display *display)
 
 		plane_config_fini(display, plane_config);
 	}
+
+	/* Failure to reconstruct the BIOS framebuffer may disable a plane. */
+	intel_display_update_hw_state(display);
 }
