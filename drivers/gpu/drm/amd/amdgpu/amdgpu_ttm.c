@@ -744,7 +744,7 @@ struct amdgpu_ttm_tt {
 	struct task_struct	*usertask;
 	uint32_t		userflags;
 	bool			bound;
-	int32_t			pool_id;
+	int			numa_node;
 };
 
 #define ttm_to_amdgpu_ttm_tt(ptr)	container_of(ptr, struct amdgpu_ttm_tt, ttm)
@@ -1212,10 +1212,13 @@ static struct ttm_tt *amdgpu_ttm_tt_create(struct ttm_buffer_object *bo,
 		return NULL;
 
 	gtt->gobj = &bo->base;
-	if (adev->gmc.mem_partitions && abo->xcp_id >= 0)
-		gtt->pool_id = KFD_XCP_MEM_ID(adev, abo->xcp_id);
-	else
-		gtt->pool_id = abo->xcp_id;
+	gtt->numa_node = NUMA_NO_NODE;
+	if (adev->gmc.is_app_apu && adev->gmc.num_mem_partitions) {
+		int mem_id = KFD_XCP_MEM_ID(adev, abo->xcp_id);
+
+		if (mem_id >= 0)
+			gtt->numa_node = adev->gmc.mem_partitions[mem_id].numa.node;
+	}
 
 	if (abo->flags & AMDGPU_GEM_CREATE_CPU_GTT_USWC)
 		caching = ttm_write_combined;
@@ -1242,7 +1245,9 @@ static int amdgpu_ttm_tt_populate(struct ttm_device *bdev,
 {
 	struct amdgpu_device *adev = amdgpu_ttm_adev(bdev);
 	struct amdgpu_ttm_tt *gtt = ttm_to_amdgpu_ttm_tt(ttm);
-	struct ttm_pool *pool;
+	/* ctx is shared by every BO of the operation; set the node locally */
+	struct ttm_operation_ctx node_ctx = *ctx;
+	nodemask_t preferred;
 	pgoff_t i;
 	int ret;
 
@@ -1257,11 +1262,13 @@ static int amdgpu_ttm_tt_populate(struct ttm_device *bdev,
 	if (ttm->page_flags & TTM_TT_FLAG_EXTERNAL)
 		return 0;
 
-	if (adev->mman.ttm_pools && gtt->pool_id >= 0)
-		pool = &adev->mman.ttm_pools[gtt->pool_id];
-	else
-		pool = &adev->mman.bdev.pool;
-	ret = ttm_pool_alloc(pool, ttm, ctx);
+	if (gtt->numa_node != NUMA_NO_NODE) {
+		nodes_clear(preferred);
+		node_set(gtt->numa_node, preferred);
+		node_ctx.numa_info.policy = TTM_NUMA_POLICY_PREFERRED;
+		node_ctx.numa_info.nodes = &preferred;
+	}
+	ret = ttm_pool_alloc(&adev->mman.bdev.pool, ttm, &node_ctx);
 	if (ret)
 		return ret;
 
@@ -1282,7 +1289,6 @@ static void amdgpu_ttm_tt_unpopulate(struct ttm_device *bdev,
 {
 	struct amdgpu_ttm_tt *gtt = ttm_to_amdgpu_ttm_tt(ttm);
 	struct amdgpu_device *adev;
-	struct ttm_pool *pool;
 	pgoff_t i;
 
 	amdgpu_ttm_backend_unbind(bdev, ttm);
@@ -1302,12 +1308,7 @@ static void amdgpu_ttm_tt_unpopulate(struct ttm_device *bdev,
 
 	adev = amdgpu_ttm_adev(bdev);
 
-	if (adev->mman.ttm_pools && gtt->pool_id >= 0)
-		pool = &adev->mman.ttm_pools[gtt->pool_id];
-	else
-		pool = &adev->mman.bdev.pool;
-
-	return ttm_pool_free(pool, ttm);
+	return ttm_pool_free(&adev->mman.bdev.pool, ttm);
 }
 
 /**
@@ -1936,40 +1937,6 @@ static void amdgpu_ttm_training_data_block_init(struct amdgpu_device *adev)
 			ctx->c2p_train_data_offset);
 }
 
-static int amdgpu_ttm_pools_init(struct amdgpu_device *adev)
-{
-	int i;
-
-	if (!adev->gmc.is_app_apu || !adev->gmc.num_mem_partitions)
-		return 0;
-
-	adev->mman.ttm_pools = kzalloc_objs(*adev->mman.ttm_pools,
-					    adev->gmc.num_mem_partitions);
-	if (!adev->mman.ttm_pools)
-		return -ENOMEM;
-
-	for (i = 0; i < adev->gmc.num_mem_partitions; i++) {
-		ttm_pool_init(&adev->mman.ttm_pools[i], adev->dev,
-			      adev->gmc.mem_partitions[i].numa.node,
-			      TTM_ALLOCATION_POOL_BENEFICIAL_ORDER(get_order(SZ_2M)));
-	}
-	return 0;
-}
-
-static void amdgpu_ttm_pools_fini(struct amdgpu_device *adev)
-{
-	int i;
-
-	if (!adev->gmc.is_app_apu || !adev->mman.ttm_pools)
-		return;
-
-	for (i = 0; i < adev->gmc.num_mem_partitions; i++)
-		ttm_pool_fini(&adev->mman.ttm_pools[i]);
-
-	kfree(adev->mman.ttm_pools);
-	adev->mman.ttm_pools = NULL;
-}
-
 /**
  * amdgpu_ttm_alloc_mmio_remap_bo - Allocate the singleton MMIO_REMAP BO
  * @adev: amdgpu device
@@ -2154,11 +2121,6 @@ int amdgpu_ttm_init(struct amdgpu_device *adev)
 		return r;
 	}
 
-	r = amdgpu_ttm_pools_init(adev);
-	if (r) {
-		dev_err(adev->dev, "failed to init ttm pools(%d).\n", r);
-		return r;
-	}
 	adev->mman.initialized = true;
 
 	if (!adev->gmc.is_app_apu) {
@@ -2327,8 +2289,6 @@ void amdgpu_ttm_fini(struct amdgpu_device *adev)
 {
 	if (!adev->mman.initialized)
 		return;
-
-	amdgpu_ttm_pools_fini(adev);
 
 	amdgpu_ttm_training_reserve_vram_fini(adev);
 	/* return the stolen vga memory back to VRAM */
