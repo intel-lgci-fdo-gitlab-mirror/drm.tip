@@ -4916,18 +4916,17 @@ int drm_dp_max_dprx_data_rate(int max_link_rate, int max_lanes)
 }
 EXPORT_SYMBOL(drm_dp_max_dprx_data_rate);
 
-int drm_dprx_max_rate(const struct drm_dp_tunnel *tunnel,
-		      const u8 dpcd[DP_RECEIVER_CAP_SIZE])
+static int drm_dprx_max_rate(const struct drm_dp_tunnel *tunnel,
+			     const u8 dpcd[DP_RECEIVER_CAP_SIZE])
 {
 	if (tunnel && drm_dp_tunnel_bw_alloc_is_enabled(tunnel))
 		return drm_dp_tunnel_max_dprx_rate(tunnel);
 	else
 		return drm_dp_bw_code_to_link_rate(dpcd[DP_MAX_LINK_RATE]);
 }
-EXPORT_SYMBOL_GPL(drm_dprx_max_rate);
 
-u8 drm_dprx_128b132b_link_rates(const struct drm_dp_tunnel *tunnel,
-				u8 uhbr_rates)
+static u8 drm_dprx_128b132b_link_rates(const struct drm_dp_tunnel *tunnel,
+				       u8 uhbr_rates)
 {
 	if (!drm_dp_tunnel_bw_alloc_is_enabled(tunnel))
 		return uhbr_rates;
@@ -4938,17 +4937,15 @@ u8 drm_dprx_128b132b_link_rates(const struct drm_dp_tunnel *tunnel,
 
 	return drm_dp_tunnel_128b132b_dprx_rates(tunnel);
 }
-EXPORT_SYMBOL_GPL(drm_dprx_128b132b_link_rates);
 
-bool drm_dprx_supports_128b132b(const struct drm_dp_tunnel *tunnel,
-				const u8 dpcd[DP_RECEIVER_CAP_SIZE])
+static bool drm_dprx_supports_128b132b(const struct drm_dp_tunnel *tunnel,
+				       const u8 dpcd[DP_RECEIVER_CAP_SIZE])
 {
 	if (tunnel && drm_dp_tunnel_bw_alloc_is_enabled(tunnel))
 		return drm_dp_tunnel_128b132b_supported(tunnel);
 	else
 		return drm_dp_128b132b_supported(dpcd);
 }
-EXPORT_SYMBOL_GPL(drm_dprx_supports_128b132b);
 
 /**
  * drm_dp_get_128b132b_link_rates() - get the supported 128b/132b link rates
@@ -4965,7 +4962,7 @@ EXPORT_SYMBOL_GPL(drm_dprx_supports_128b132b);
  *
  * Returns: The number of link rates stored in @link_rates.
  */
-int
+static int
 drm_dp_get_128b132b_link_rates(const u8 lttpr_common_caps[DP_LTTPR_COMMON_CAP_SIZE],
 			       const struct drm_dp_tunnel *tunnel,
 			       u8 uhbr_rates,
@@ -5000,7 +4997,6 @@ drm_dp_get_128b132b_link_rates(const u8 lttpr_common_caps[DP_LTTPR_COMMON_CAP_SI
 
 	return i;
 }
-EXPORT_SYMBOL_GPL(drm_dp_get_128b132b_link_rates);
 
 /**
  * drm_dp_read_dpcd_sink_rates() - read the sink rates from the DPCD
