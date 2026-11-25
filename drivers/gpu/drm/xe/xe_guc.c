@@ -1771,7 +1771,7 @@ void xe_guc_sanitize(struct xe_guc *guc)
  */
 void xe_guc_flr_prepare(struct xe_guc *guc)
 {
-	if (!xe_uc_fw_is_loadable(&guc->fw))
+	if (!xe_device_uc_enabled(guc_to_xe(guc)))
 		return;
 
 	xe_guc_submit_stop(guc);
