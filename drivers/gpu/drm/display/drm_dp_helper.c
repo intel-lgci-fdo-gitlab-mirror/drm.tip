@@ -37,6 +37,7 @@
 
 #include <drm/display/drm_dp_helper.h>
 #include <drm/display/drm_dp_mst_helper.h>
+#include <drm/display/drm_dp_tunnel.h>
 #include <drm/drm_edid.h>
 #include <drm/drm_fixed.h>
 #include <drm/drm_print.h>
@@ -4914,3 +4915,13 @@ int drm_dp_max_dprx_data_rate(int max_link_rate, int max_lanes)
 				  1000000 * 8);
 }
 EXPORT_SYMBOL(drm_dp_max_dprx_data_rate);
+
+int drm_dprx_max_rate(const struct drm_dp_tunnel *tunnel,
+		      const u8 dpcd[DP_RECEIVER_CAP_SIZE])
+{
+	if (tunnel && drm_dp_tunnel_bw_alloc_is_enabled(tunnel))
+		return drm_dp_tunnel_max_dprx_rate(tunnel);
+	else
+		return drm_dp_bw_code_to_link_rate(dpcd[DP_MAX_LINK_RATE]);
+}
+EXPORT_SYMBOL_GPL(drm_dprx_max_rate);
