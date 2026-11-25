@@ -5001,3 +5001,92 @@ drm_dp_get_128b132b_link_rates(const u8 lttpr_common_caps[DP_LTTPR_COMMON_CAP_SI
 	return i;
 }
 EXPORT_SYMBOL_GPL(drm_dp_get_128b132b_link_rates);
+
+/**
+ * drm_dp_read_dpcd_sink_rates() - read the sink rates from the DPCD
+ * @aux: DisplayPort AUX channel
+ * @dpcd: DPCD receiver capabilities
+ * @lttpr_common_caps: LTTPR common capabilities
+ * @desc: DisplayPort sink descriptor
+ * @tunnel: Tunnel object (NULL if not supported)
+ * @sink_rates: Array of DP_MAX_SUPPORTED_RATES entries to store the sink rates
+ *
+ * Read the link rates supported by a DisplayPort sink from the DPCD
+ * DP_MAX_LINK_RATE and DP_128B132B_SUPPORTED_LINK_RATES registers, limited by
+ * the capabilities of the LTTPRs or the tunnel if any is present.
+ * The rates are stored in @sink_rates in ascending order.
+ *
+ * The DPCD receiver capabilities, the LTTPR common capabilities, the tunnel
+ * and the sink descriptor are passed by the caller instead of being read
+ * from the DPCD. Drivers which already read them, like i915, can pass them
+ * to avoid duplicate DPCD reads.
+ *
+ * Returns: The number of supported sink rates.
+ */
+int drm_dp_read_dpcd_sink_rates(struct drm_dp_aux *aux,
+				const u8 dpcd[DP_RECEIVER_CAP_SIZE],
+				const u8 lttpr_common_caps[DP_LTTPR_COMMON_CAP_SIZE],
+				const struct drm_dp_desc *desc,
+				const struct drm_dp_tunnel *tunnel,
+				int sink_rates[DP_MAX_SUPPORTED_RATES])
+{
+	static const int dp_rates[] = {
+		162000, 270000, 540000, 810000
+	};
+	int max_rate, max_lttpr_rate = 0, ret, i;
+	u8 uhbr_rates = 0;
+
+	BUILD_BUG_ON(ARRAY_SIZE(dp_rates) + DP_MAX_128B132B_SUPPORTED_RATES >
+		     DP_MAX_SUPPORTED_RATES);
+
+	if (drm_dp_has_quirk(desc, DP_DPCD_QUIRK_CAN_DO_MAX_LINK_RATE_3_24_GBPS)) {
+		/* Needed, e.g., for Apple MBP 2017, 15 inch eDP Retina panel */
+		static const int quirk_rates[] = { 162000, 270000, 324000 };
+
+		memcpy(sink_rates, quirk_rates, sizeof(quirk_rates));
+
+		return ARRAY_SIZE(quirk_rates);
+	}
+
+	/*
+	 * Sink rates for 8b/10b.
+	 */
+	max_rate = drm_dprx_max_rate(tunnel, dpcd);
+	if (lttpr_common_caps && lttpr_common_caps[0] >= DP_LTTPR_REV_SUP_8B10B)
+		max_lttpr_rate = drm_dp_lttpr_max_link_rate(lttpr_common_caps);
+
+	if (max_lttpr_rate)
+		max_rate = min(max_rate, max_lttpr_rate);
+
+	for (i = 0; i < ARRAY_SIZE(dp_rates); i++) {
+		if (dp_rates[i] > max_rate)
+			break;
+		sink_rates[i] = dp_rates[i];
+	}
+
+	/*
+	 * The following register must be read unconditionally for the later
+	 * DP tunnel 128b132b detection to work, see DP Standard v2.1 5.14.3 .
+	 */
+	ret = drm_dp_dpcd_read_byte(aux, DP_128B132B_SUPPORTED_LINK_RATES,
+				    &uhbr_rates);
+	if (ret < 0) {
+		drm_dbg_kms(aux->drm_dev,
+			    "%s: Failed to read DPCD 128B/132B supported link rates (%d)\n",
+			    aux->name, ret);
+		uhbr_rates = 0;
+	}
+
+	/*
+	 * Sink rates for 128b/132b. If set, sink should support all 8b/10b
+	 * rates and 10 Gbps.
+	 */
+	if (drm_dprx_supports_128b132b(tunnel, dpcd))
+		i += drm_dp_get_128b132b_link_rates(lttpr_common_caps,
+						    tunnel,
+						    uhbr_rates,
+						    &sink_rates[i]);
+
+	return i;
+}
+EXPORT_SYMBOL_GPL(drm_dp_read_dpcd_sink_rates);

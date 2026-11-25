@@ -34,6 +34,7 @@ struct drm_dp_aux;
 struct drm_panel;
 struct drm_printer;
 struct drm_dp_tunnel;
+struct drm_dp_desc;
 
 bool drm_dp_channel_eq_ok(const u8 link_status[DP_LINK_STATUS_SIZE],
 			  int lane_count);
@@ -712,6 +713,13 @@ int drm_dp_get_128b132b_link_rates(const u8 lttpr_common_caps[DP_LTTPR_COMMON_CA
 				   const struct drm_dp_tunnel *tunnel,
 				   u8 uhbr_rates,
 				   int link_rates[DP_MAX_128B132B_SUPPORTED_RATES]);
+
+int drm_dp_read_dpcd_sink_rates(struct drm_dp_aux *aux,
+				const u8 dpcd[DP_RECEIVER_CAP_SIZE],
+				const u8 lttpr_common_caps[DP_LTTPR_COMMON_CAP_SIZE],
+				const struct drm_dp_desc *desc,
+				const struct drm_dp_tunnel *tunnel,
+				int sink_rates[DP_MAX_SUPPORTED_RATES]);
 
 int drm_dp_dpcd_read_link_status(struct drm_dp_aux *aux,
 				 u8 status[DP_LINK_STATUS_SIZE]);
