@@ -290,13 +290,13 @@ static int __intel_get_crtc_scanline(struct intel_crtc *crtc)
 static void intel_vblank_section_enter(struct intel_display *display)
 	__acquires(display->mmio.lock)
 {
-	spin_lock(&display->mmio.lock);
+	raw_spin_lock(&display->mmio.lock);
 }
 
 static void intel_vblank_section_exit(struct intel_display *display)
 	__releases(display->mmio.lock)
 {
-	spin_unlock(&display->mmio.lock);
+	raw_spin_unlock(&display->mmio.lock);
 }
 #else
 static void intel_vblank_section_enter(struct intel_display *display)
