@@ -4811,6 +4811,24 @@ intel_edp_set_data_override_rates(struct intel_dp *intel_dp)
 	intel_dp->num_sink_rates = count;
 }
 
+/*
+ * Some platforms cannot reliably drive HBR3 rates due to PHY limitations,
+ * even if the sink advertises support. Reject any sink rates above HBR2 on
+ * the known machines for stable output.
+ */
+static void intel_edp_limit_sink_rates_hbr2(struct intel_dp *intel_dp)
+{
+	struct intel_display *display = to_intel_display(intel_dp);
+
+	if (!intel_dp->num_sink_rates ||
+	    !intel_has_quirk(display, QUIRK_EDP_LIMIT_RATE_HBR2))
+		return;
+
+	intel_dp->num_sink_rates = intel_dp_rate_limit_len(intel_dp->sink_rates,
+							   intel_dp->num_sink_rates,
+							   540000);
+}
+
 static void
 intel_edp_set_sink_rates(struct intel_dp *intel_dp)
 {
@@ -4819,65 +4837,31 @@ intel_edp_set_sink_rates(struct intel_dp *intel_dp)
 	intel_dp->num_sink_rates = 0;
 
 	if (intel_dp->edp_dpcd[0] >= DP_EDP_14) {
-		__le16 sink_rates[DP_MAX_SUPPORTED_RATES];
 		int ret;
-		int i;
 
-		ret = drm_dp_dpcd_read_data(&intel_dp->aux,
-					    DP_SUPPORTED_LINK_RATES,
-					    sink_rates, sizeof(sink_rates));
+		ret = drm_dp_read_dpcd_supported_link_rates(&intel_dp->aux,
+							    intel_dp->sink_rates);
 		if (ret < 0) {
 			drm_dbg_kms(display->drm,
 				    "Unable to read eDP supported link rates, using default rates\n");
-			memset(sink_rates, 0, sizeof(sink_rates));
+			ret = 0;
 		}
 
-		for (i = 0; i < ARRAY_SIZE(sink_rates); i++) {
-			int rate;
-
-			/* Value read multiplied by 200kHz gives the per-lane
-			 * link rate in kHz. The source rates are, however,
-			 * stored in terms of LS_Clk kHz. The full conversion
-			 * back to symbols is
-			 * (val * 200kHz)*(8/10 ch. encoding)*(1/8 bit to Byte)
-			 */
-			rate = le16_to_cpu(sink_rates[i]) * 200 / 10;
-
-			if (rate == 0)
-				break;
-
-			/*
-			 * Some platforms cannot reliably drive HBR3 rates due to PHY limitations,
-			 * even if the sink advertises support. Reject any sink rates above HBR2 on
-			 * the known machines for stable output.
-			 */
-			if (rate > 540000 &&
-			    intel_has_quirk(display, QUIRK_EDP_LIMIT_RATE_HBR2))
-				break;
-
-			intel_dp->sink_rates[i] = rate;
-		}
-		intel_dp->num_sink_rates = i;
+		intel_dp->num_sink_rates = ret;
 	}
+
+	intel_edp_limit_sink_rates_hbr2(intel_dp);
 
 	/*
 	 * Use DP_LINK_RATE_SET if DP_SUPPORTED_LINK_RATES are available,
 	 * default to DP_MAX_LINK_RATE and DP_LINK_BW_SET otherwise.
 	 */
-	if (intel_dp->num_sink_rates)
+	if (intel_dp->num_sink_rates) {
 		intel_dp->use_rate_select = true;
-	else
+	} else {
 		intel_dp_set_sink_rates(intel_dp);
-
-	/*
-	 * Some platforms cannot reliably drive HBR3 rates due to PHY limitations,
-	 * even if the sink advertises support. Reject any sink rates above HBR2 on
-	 * the known machines for stable output.
-	 */
-	if (intel_dp->num_sink_rates && intel_has_quirk(display, QUIRK_EDP_LIMIT_RATE_HBR2))
-		intel_dp->num_sink_rates = intel_dp_rate_limit_len(intel_dp->sink_rates,
-								   intel_dp->num_sink_rates,
-								   540000);
+		intel_edp_limit_sink_rates_hbr2(intel_dp);
+	}
 
 	intel_edp_set_data_override_rates(intel_dp);
 }
