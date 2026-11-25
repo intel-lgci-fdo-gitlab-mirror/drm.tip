@@ -6,6 +6,7 @@
 #ifndef _XE_CPER_TYPES_H_
 #define _XE_CPER_TYPES_H_
 
+#include <linux/atomic.h>
 #include <linux/cper.h>
 #include <linux/types.h>
 #include <linux/uuid.h>
@@ -192,6 +193,8 @@ struct xe_cper_info_entry {
 struct xe_cper {
 	/** @on_query: Emit a CPER record on each RAS counter query */
 	bool on_query;
+	/** @dropped: Number of CPER records dropped due to allocation failure */
+	atomic_t dropped;
 };
 
 #endif
