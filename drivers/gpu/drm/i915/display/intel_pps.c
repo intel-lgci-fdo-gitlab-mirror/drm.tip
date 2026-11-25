@@ -384,12 +384,34 @@ static bool intel_pps_is_valid(struct intel_dp *intel_dp)
 	return true;
 }
 
-static int
-bxt_initial_pps_idx(struct intel_display *display, pps_check check)
+static bool pps_in_use(struct intel_dp *intel_dp, int pps_idx)
 {
+	struct intel_display *display = to_intel_display(intel_dp);
+	struct intel_encoder *encoder;
+
+	for_each_intel_dp(display->drm, encoder) {
+		struct intel_dp *dp = enc_to_intel_dp(encoder);
+
+		if (dp == intel_dp || encoder->type != INTEL_OUTPUT_EDP)
+			continue;
+
+		if (dp->pps.pps_idx == pps_idx)
+			return true;
+	}
+
+	return false;
+}
+
+static int
+bxt_initial_pps_idx(struct intel_dp *intel_dp, pps_check check)
+{
+	struct intel_display *display = to_intel_display(intel_dp);
 	int pps_idx, pps_num = intel_num_pps(display);
 
 	for (pps_idx = 0; pps_idx < pps_num; pps_idx++) {
+		if (pps_in_use(intel_dp, pps_idx))
+			continue;
+
 		if (check(display, pps_idx))
 			return pps_idx;
 	}
@@ -397,7 +419,7 @@ bxt_initial_pps_idx(struct intel_display *display, pps_check check)
 	return -1;
 }
 
-static bool
+static int
 pps_initial_setup(struct intel_dp *intel_dp)
 {
 	struct intel_display *display = to_intel_display(intel_dp);
@@ -408,7 +430,7 @@ pps_initial_setup(struct intel_dp *intel_dp)
 
 	if (display->platform.valleyview || display->platform.cherryview) {
 		vlv_initial_power_sequencer_setup(intel_dp);
-		return true;
+		return 0;
 	}
 
 	/* first ask the VBT */
@@ -422,13 +444,15 @@ pps_initial_setup(struct intel_dp *intel_dp)
 
 	/* VBT wasn't parsed yet? pick one where the panel is on */
 	if (intel_dp->pps.pps_idx < 0)
-		intel_dp->pps.pps_idx = bxt_initial_pps_idx(display, pps_has_pp_on);
+		intel_dp->pps.pps_idx = bxt_initial_pps_idx(intel_dp, pps_has_pp_on);
 	/* didn't find one? pick one where vdd is on */
 	if (intel_dp->pps.pps_idx < 0)
-		intel_dp->pps.pps_idx = bxt_initial_pps_idx(display, pps_has_vdd_on);
+		intel_dp->pps.pps_idx = bxt_initial_pps_idx(intel_dp, pps_has_vdd_on);
 	/* didn't find one? pick any */
 	if (intel_dp->pps.pps_idx < 0) {
-		intel_dp->pps.pps_idx = bxt_initial_pps_idx(display, pps_any);
+		intel_dp->pps.pps_idx = bxt_initial_pps_idx(intel_dp, pps_any);
+		if (intel_dp->pps.pps_idx < 0)
+			return -EBUSY;
 
 		drm_dbg_kms(display->drm,
 			    "[ENCODER:%d:%s] no initial power sequencer, assuming %s\n",
@@ -441,7 +465,13 @@ pps_initial_setup(struct intel_dp *intel_dp)
 			    pps_name(intel_dp));
 	}
 
-	return intel_pps_is_valid(intel_dp);
+	if (pps_in_use(intel_dp, intel_dp->pps.pps_idx))
+		return -EBUSY;
+
+	if (!intel_pps_is_valid(intel_dp))
+		return -ENODEV;
+
+	return 0;
 }
 
 void vlv_pps_reset_all(struct intel_display *display)
@@ -1705,9 +1735,9 @@ void intel_pps_encoder_reset(struct intel_dp *intel_dp)
 	}
 }
 
-bool intel_pps_init(struct intel_dp *intel_dp)
+int intel_pps_init(struct intel_dp *intel_dp)
 {
-	bool ret;
+	int ret;
 
 	intel_dp->pps.initializing = true;
 	INIT_DELAYED_WORK(&intel_dp->pps.panel_vdd_work, edp_panel_vdd_work);
@@ -1716,10 +1746,11 @@ bool intel_pps_init(struct intel_dp *intel_dp)
 
 	with_intel_pps_lock(intel_dp) {
 		ret = pps_initial_setup(intel_dp);
-
-		pps_init_delays(intel_dp);
-		pps_init_registers(intel_dp, false);
-		pps_vdd_init(intel_dp);
+		if (ret != -EBUSY) {
+			pps_init_delays(intel_dp);
+			pps_init_registers(intel_dp, false);
+			pps_vdd_init(intel_dp);
+		}
 	}
 
 	return ret;

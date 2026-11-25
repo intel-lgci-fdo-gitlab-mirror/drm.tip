@@ -7238,6 +7238,7 @@ static bool intel_edp_init_connector(struct intel_dp *intel_dp,
 	struct intel_encoder *encoder = &dp_to_dig_port(intel_dp)->base;
 	bool has_dpcd;
 	const struct drm_edid *drm_edid;
+	int ret;
 
 	if (!intel_dp_is_edp(intel_dp))
 		return true;
@@ -7260,7 +7261,15 @@ static bool intel_edp_init_connector(struct intel_dp *intel_dp,
 	intel_bios_init_panel_early(display, &connector->panel,
 				    encoder->devdata);
 
-	if (!intel_pps_init(intel_dp)) {
+	ret = intel_pps_init(intel_dp);
+	if (ret == -EBUSY) {
+		drm_info(display->drm,
+			 "[ENCODER:%d:%s] PPS already in use, disabling eDP\n",
+			 encoder->base.base.id, encoder->base.name);
+		goto out_fini_panel;
+	}
+
+	if (ret) {
 		drm_info(display->drm,
 			 "[ENCODER:%d:%s] unusable PPS, disabling eDP\n",
 			 encoder->base.base.id, encoder->base.name);
@@ -7391,6 +7400,7 @@ static bool intel_edp_init_connector(struct intel_dp *intel_dp,
 
 out_vdd_off:
 	intel_pps_vdd_off_sync(intel_dp);
+out_fini_panel:
 	intel_bios_fini_panel(&connector->panel);
 
 	return false;
