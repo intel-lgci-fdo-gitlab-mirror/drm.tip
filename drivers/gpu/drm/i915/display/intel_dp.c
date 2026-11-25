@@ -4832,24 +4832,15 @@ static void intel_edp_limit_sink_rates_hbr2(struct intel_dp *intel_dp)
 static void
 intel_edp_set_sink_rates(struct intel_dp *intel_dp)
 {
-	struct intel_display *display = to_intel_display(intel_dp);
+	int num_sink_rates;
 
-	intel_dp->num_sink_rates = 0;
+	num_sink_rates = drm_dp_read_edp_sink_rates(&intel_dp->aux,
+						    intel_dp->edp_dpcd[0],
+						    intel_dp->sink_rates);
+	if (num_sink_rates < 0)
+		num_sink_rates = 0;
 
-	if (intel_dp->edp_dpcd[0] >= DP_EDP_14) {
-		int ret;
-
-		ret = drm_dp_read_dpcd_supported_link_rates(&intel_dp->aux,
-							    intel_dp->sink_rates);
-		if (ret < 0) {
-			drm_dbg_kms(display->drm,
-				    "Unable to read eDP supported link rates, using default rates\n");
-			ret = 0;
-		}
-
-		intel_dp->num_sink_rates = ret;
-	}
-
+	intel_dp->num_sink_rates = num_sink_rates;
 	intel_edp_limit_sink_rates_hbr2(intel_dp);
 
 	/*
