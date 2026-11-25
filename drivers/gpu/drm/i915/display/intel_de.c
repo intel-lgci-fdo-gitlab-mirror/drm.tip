@@ -276,9 +276,9 @@ bool intel_de_unclaimed_mmio_detected(struct intel_display *display)
 		return false;
 
 	if (display->mmio.funcs->check_for_unclaimed_mmio_needs_lock) {
-		spin_lock_irq(&display->mmio.lock);
+		raw_spin_lock_irq(&display->mmio.lock);
 		ret = display->mmio.funcs->check_for_unclaimed_mmio(display);
-		spin_unlock_irq(&display->mmio.lock);
+		raw_spin_unlock_irq(&display->mmio.lock);
 	} else {
 		ret = display->mmio.funcs->check_for_unclaimed_mmio(display);
 	}
@@ -332,7 +332,7 @@ __mmio_lock_pre(struct intel_display *display, unsigned long *irqflags,
 		const unsigned int mmio_flags)
 {
 	if (mmio_flags & __MMIO_LOCK)
-		spin_lock_irqsave(&display->mmio.lock, *irqflags);
+		raw_spin_lock_irqsave(&display->mmio.lock, *irqflags);
 }
 
 static __always_inline void
@@ -340,7 +340,7 @@ __mmio_lock_post(struct intel_display *display, unsigned long irqflags,
 		 const unsigned int mmio_flags)
 {
 	if (mmio_flags & __MMIO_LOCK)
-		spin_unlock_irqrestore(&display->mmio.lock, irqflags);
+		raw_spin_unlock_irqrestore(&display->mmio.lock, irqflags);
 }
 
 static __always_inline bool
@@ -534,7 +534,7 @@ void intel_de_init(struct intel_display *display)
 {
 	display->mmio.uncore = to_intel_uncore(display->drm);
 
-	spin_lock_init(&display->mmio.lock);
+	raw_spin_lock_init(&display->mmio.lock);
 
 	/*
 	 * TODO: enable unclaimed register detection
