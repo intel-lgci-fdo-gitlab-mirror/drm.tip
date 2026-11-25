@@ -4925,8 +4925,8 @@ EXPORT_SYMBOL(drm_dp_max_dprx_data_rate);
  *
  * Returns: The number of supported link rates, negative error code otherwise.
  */
-int drm_dp_read_dpcd_supported_link_rates(struct drm_dp_aux *aux,
-					  int link_rates[DP_MAX_SUPPORTED_RATES])
+static int drm_dp_read_dpcd_supported_link_rates(struct drm_dp_aux *aux,
+						 int link_rates[DP_MAX_SUPPORTED_RATES])
 {
 	__le16 dpcd_link_rates[DP_MAX_SUPPORTED_RATES] = {0};
 	int ret, i;
@@ -4941,7 +4941,6 @@ int drm_dp_read_dpcd_supported_link_rates(struct drm_dp_aux *aux,
 
 	return i;
 }
-EXPORT_SYMBOL_GPL(drm_dp_read_dpcd_supported_link_rates);
 
 static int drm_dprx_max_rate(const struct drm_dp_tunnel *tunnel,
 			     const u8 dpcd[DP_RECEIVER_CAP_SIZE])
