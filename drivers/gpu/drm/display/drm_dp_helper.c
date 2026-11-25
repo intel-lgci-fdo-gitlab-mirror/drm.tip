@@ -4939,3 +4939,13 @@ u8 drm_dprx_128b132b_link_rates(const struct drm_dp_tunnel *tunnel,
 	return drm_dp_tunnel_128b132b_dprx_rates(tunnel);
 }
 EXPORT_SYMBOL_GPL(drm_dprx_128b132b_link_rates);
+
+bool drm_dprx_supports_128b132b(const struct drm_dp_tunnel *tunnel,
+				const u8 dpcd[DP_RECEIVER_CAP_SIZE])
+{
+	if (tunnel && drm_dp_tunnel_bw_alloc_is_enabled(tunnel))
+		return drm_dp_tunnel_128b132b_supported(tunnel);
+	else
+		return drm_dp_128b132b_supported(dpcd);
+}
+EXPORT_SYMBOL_GPL(drm_dprx_supports_128b132b);
