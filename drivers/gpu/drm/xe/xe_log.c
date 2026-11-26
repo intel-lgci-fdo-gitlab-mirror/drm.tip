@@ -25,6 +25,17 @@ static void log_emit_cper(struct pci_dev *pdev, int cper_sev, enum xe_sigid sigi
 		     component, location, data, len, vaf);
 }
 
+static void log_emit_cper_atomic(struct pci_dev *pdev, int cper_sev, enum xe_sigid sigid,
+				 u32 component, u32 location, const void *data, size_t len,
+				 struct va_format *vaf)
+{
+	KUNIT_STATIC_STUB_REDIRECT(log_emit_cper_atomic, pdev, cper_sev, sigid,
+				   component, location, data, len, vaf);
+
+	xe_cper_emit(xe_any_to_xe(pdev), cper_sev, sigid,
+		     component, location, data, len, vaf);
+}
+
 static const char *log_unknown_component_prefix(u32 component)
 {
 	u32 class = FIELD_GET(XE_LOG_COMPONENT_CLASS_MASK, component);
@@ -241,6 +252,23 @@ void __xe_log_emit(struct pci_dev *pdev, int cper_sev, enum xe_sigid sigid,
 
 	log_emit_dmesg(pdev, cper_sev, sigid, component, location, data, len, &vaf);
 	log_emit_cper(pdev, cper_sev, sigid, component, location, data, len, &vaf);
+
+	va_end(args);
+}
+
+void __xe_log_emit_atomic(struct pci_dev *pdev, int cper_sev, enum xe_sigid sigid,
+			  u32 component, u32 location, const void *data, size_t len,
+			  const char *fmt, ...)
+{
+	struct va_format vaf;
+	va_list args;
+
+	va_start(args, fmt);
+	vaf.fmt = fmt;
+	vaf.va = &args;
+
+	log_emit_dmesg(pdev, cper_sev, sigid, component, location, data, len, &vaf);
+	log_emit_cper_atomic(pdev, cper_sev, sigid, component, location, data, len, &vaf);
 
 	va_end(args);
 }

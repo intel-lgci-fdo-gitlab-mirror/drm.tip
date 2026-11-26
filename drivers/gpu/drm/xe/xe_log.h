@@ -20,6 +20,11 @@ void __xe_log_emit(struct pci_dev *pdev, int cper_sev, enum xe_sigid sigid,
 		   u32 component, u32 location, const void *data, size_t len,
 		   const char *fmt, ...);
 
+__printf(8, 9)
+void __xe_log_emit_atomic(struct pci_dev *pdev, int cper_sev, enum xe_sigid sigid,
+			  u32 component, u32 location, const void *data, size_t len,
+			  const char *fmt, ...);
+
 #define __xe_log_const_sev_to_level(sev) \
 	(__builtin_constant_p(sev) ? (sev) == CPER_SEV_INFORMATIONAL ? KERN_INFO : KERN_ERR : NULL)
 
@@ -29,6 +34,11 @@ void __xe_log_emit(struct pci_dev *pdev, int cper_sev, enum xe_sigid sigid,
 #define xe_log_emit(pdev, sev, sig, comp, loc, data, len, fmt, args...) do {		\
 	__xe_log_emit_printk_index(__xe_log_const_sev_to_level(sev), fmt);		\
 	__xe_log_emit((pdev), (sev), (sig), (comp), (loc), (data), (len), fmt, ##args); \
+} while (0)
+
+#define xe_log_emit_atomic(pdev, sev, sig, comp, loc, data, len, fmt, args...) do {	\
+	__xe_log_emit_printk_index(__xe_log_const_sev_to_level(sev), fmt);		\
+	__xe_log_emit_atomic((pdev), (sev), (sig), (comp), (loc), (data), (len), fmt, ##args); \
 } while (0)
 
 #define xe_log_emit_fatal(pdev, sig, comp, loc, data, len, fmt, args...) \
@@ -139,6 +149,57 @@ void __xe_log_emit(struct pci_dev *pdev, int cper_sev, enum xe_sigid sigid,
  */
 #define xe_log_err(any, TAG, err, fmt, args...) \
 	xe_log_comp_recoverable((any), TAG, ERR_PTR(err), 0, fmt, ##args)
+
+/**
+ * xe_log_from_atomic() - Emit a structured SIGID entry from atomic context.
+ * @any: the &xe_device or &xe_tile or &xe_gt pointer this report relates to
+ * @cper_sev: CPER severity
+ * @sigid: signature identifier, see &enum xe_sigid
+ * @component: component identifier
+ * @data: additional details, or ERR_PTR, or NULL if not applicable
+ * @len: length of @data in bytes, or 0 if not applicable
+ * @fmt: printf-style format string
+ * @args: arguments for @fmt
+ */
+#define xe_log_from_atomic(any, cper_sev, sigid, component, data, len, fmt, args...) do { \
+	typeof(any) ___any = (any);								\
+	xe_log_emit_atomic(xe_any_to_pdev(___any), (cper_sev), (sigid), (component),	\
+			   xe_log_location(___any), (data), (len), fmt, ##args);		\
+} while (0)
+
+#define xe_log_from_fatal_atomic(any, sig, comp, data, len, fmt, args...) \
+	xe_log_from_atomic((any), CPER_SEV_FATAL, (sig), (comp), \
+			   (data), (len), fmt, ##args)
+
+#define xe_log_from_recoverable_atomic(any, sig, comp, data, len, fmt, args...) \
+	xe_log_from_atomic((any), CPER_SEV_RECOVERABLE, (sig), (comp), \
+			   (data), (len), fmt, ##args)
+
+/**
+ * xe_log_err_atomic() - Emit a recoverable error entry from atomic context.
+ * @any: the &xe_device or &xe_tile or &xe_gt pointer this report relates to
+ * @TAG: the component tag to use
+ * @err: negative errno for the failing operation, or 0 if not applicable
+ * @fmt: printf-style free text format string (not a stable interface)
+ * @args: arguments for the @fmt format string
+ */
+#define xe_log_err_atomic(any, TAG, err, fmt, args...) \
+	xe_log_from_atomic((any), CPER_SEV_RECOVERABLE, \
+			   (int)XE_LOG_COMPONENT_##TAG##_SIGID, \
+			   XE_LOG_COMPONENT_##TAG, ERR_PTR(err), 0, fmt, ##args)
+
+/**
+ * xe_log_err_fatal_atomic() - Emit a fatal error entry from atomic context.
+ * @any: the &xe_device or &xe_tile or &xe_gt pointer this report relates to
+ * @TAG: the component tag to use
+ * @err: negative errno for the failing operation, or 0 if not applicable
+ * @fmt: printf-style free text format string (not a stable interface)
+ * @args: arguments for the @fmt format string
+ */
+#define xe_log_err_fatal_atomic(any, TAG, err, fmt, args...) \
+	xe_log_from_atomic((any), CPER_SEV_FATAL, \
+			   (int)XE_LOG_COMPONENT_##TAG##_SIGID, \
+			   XE_LOG_COMPONENT_##TAG, ERR_PTR(err), 0, fmt, ##args)
 
 /**
  * xe_log_err_fatal() - Emit a structured SIGID error log entry on the component behalf.
