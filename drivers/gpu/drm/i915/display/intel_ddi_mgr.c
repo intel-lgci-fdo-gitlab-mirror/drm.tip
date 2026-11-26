@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 /* Copyright © 2026 Intel Corporation */
 
+#include <linux/compiler.h>
 #include <linux/iopoll.h>
 #include <linux/seq_buf.h>
 #include <linux/string.h>
@@ -45,6 +46,7 @@ struct intel_ddi_mgr {
 	struct intel_ddi_route route[INTEL_DDI_MGR_NUM_PORTS];
 	u8 ddc_pin[INTEL_DDI_MGR_NUM_PORTS];
 	u8 pool_ddi_mask;
+	u8 disabled_ddi_mask;
 	u8 legacy_phy_mask;
 	u16 ddc_pins;
 	bool has_hdmi;
@@ -99,6 +101,16 @@ bool intel_ddi_mgr_is_pool_ddi(struct intel_display *display, enum port ddi)
 {
 	return display->ddi_mgr && ddi >= PORT_TC1 && ddi <= PORT_TC4 &&
 		display->ddi_mgr->pool_ddi_mask & BIT(ddi - PORT_TC1);
+}
+
+bool intel_ddi_mgr_is_ddi_disabled(struct intel_display *display, enum port ddi)
+{
+	struct intel_ddi_mgr *mgr = display->ddi_mgr;
+
+	if (!mgr || ddi < PORT_TC1 || ddi > PORT_TC4)
+		return false;
+
+	return READ_ONCE(mgr->disabled_ddi_mask) & BIT(ddi - PORT_TC1);
 }
 
 bool intel_ddi_mgr_pool_supports_hdmi(struct intel_display *display)
@@ -165,6 +177,9 @@ bool intel_ddi_mgr_aux_available(struct intel_encoder *encoder)
 {
 	struct intel_display *display = to_intel_display(encoder);
 
+	if (intel_ddi_mgr_is_ddi_disabled(display, encoder->port))
+		return false;
+
 	if (!intel_ddi_mgr_is_pool_ddi(display, encoder->port))
 		return true;
 
@@ -193,6 +208,9 @@ bool intel_ddi_mgr_connector_available(struct intel_connector *connector)
 		return true;
 
 	encoder = &dig_port->base;
+	if (intel_ddi_mgr_is_ddi_disabled(display, encoder->port))
+		return false;
+
 	if (connector->base.connector_type == DRM_MODE_CONNECTOR_HDMIA)
 		return intel_ddi_mgr_is_legacy_pool_encoder(encoder) &&
 			(intel_bios_encoder_supports_hdmi(encoder->devdata) ||
@@ -820,6 +838,111 @@ static void update_hpd_sources(struct intel_display *display)
 
 		intel_hpd_set_pin_sources(display, logical_pin, hw_pin, pch_hw_pin);
 	}
+}
+
+static u8 legacy_ddi_mismatch_mask(const struct intel_ddi_mgr *mgr, u32 resources)
+{
+	u8 ddi_mask = 0;
+	int ddi;
+
+	for (ddi = 0; ddi < INTEL_DDI_MGR_NUM_PORTS; ddi++) {
+		const struct intel_ddi_route *route = &mgr->route[ddi];
+
+		if (!(mgr->pool_ddi_mask & BIT(ddi)) ||
+		    route->mode != INTEL_DDI_ROUTE_LEGACY)
+			continue;
+
+		if (IOM_DDI_CONSUMER_GET(resources, ddi) !=
+		    IOM_DDI_CONSUMER_PHY(route->phy))
+			ddi_mask |= BIT(ddi);
+	}
+
+	return ddi_mask;
+}
+
+static u32 restore_legacy_allocations(struct intel_display *display, u32 resources)
+{
+	struct intel_ddi_mgr *mgr = display->ddi_mgr;
+	u32 new_resources = resources;
+	u32 readback;
+	int ddi, slot;
+
+	for (ddi = 0; ddi < INTEL_DDI_MGR_NUM_PORTS; ddi++) {
+		const struct intel_ddi_route *route = &mgr->route[ddi];
+		u32 consumer = IOM_DDI_CONSUMER_GET(resources, ddi);
+
+		if (!(mgr->pool_ddi_mask & BIT(ddi)) || route->mode != INTEL_DDI_ROUTE_LEGACY)
+			continue;
+
+		if (consumer != IOM_DDI_CONSUMER_FREE)
+			continue;
+
+		for (slot = 0; slot < IOM_DDI_NUM_SLOTS; slot++)
+			if (IOM_DDI_CONSUMER_GET(resources, slot) ==
+			    IOM_DDI_CONSUMER_PHY(route->phy))
+				break;
+
+		if (slot < IOM_DDI_NUM_SLOTS)
+			continue;
+
+		new_resources |= IOM_DDI_CONSUMER(ddi, IOM_DDI_CONSUMER_PHY(route->phy));
+	}
+
+	if (new_resources == resources)
+		return resources;
+
+	intel_de_write(display, IOM_DP_RESOURCE_MNG, new_resources);
+	readback = intel_de_read(display, IOM_DP_RESOURCE_MNG);
+	if (readback != new_resources)
+		drm_err(display->drm,
+			"DDIMGR: DDI restore mismatch: requested 0x%08x, read 0x%08x\n",
+			new_resources, readback);
+
+	return readback;
+}
+
+void intel_ddi_mgr_verify_state(struct intel_display *display)
+{
+	struct intel_ddi_mgr *mgr = display->ddi_mgr;
+	u8 old_disabled_ddi_mask, disabled_ddi_mask;
+	u32 resources;
+	int err;
+
+	if (!intel_ddi_mgr_is_enabled(mgr))
+		return;
+
+	old_disabled_ddi_mask = READ_ONCE(mgr->disabled_ddi_mask);
+
+	err = iom_lock(display);
+	if (err)
+		return;
+
+	resources = intel_de_read(display, IOM_DP_RESOURCE_MNG);
+	verify_ddi_counts(display, resources);
+
+	err = verify_ddi_pool(display, resource_to_pool_ddi_mask(resources));
+	if (err)
+		goto out;
+
+	if (!legacy_ddi_mismatch_mask(mgr, resources))
+		goto out;
+
+	drm_dbg_kms(display->drm,
+		    "DDIMGR: Legacy DDI allocations changed during runtime suspend: 0x%08x\n",
+		    resources);
+
+	resources = restore_legacy_allocations(display, resources);
+
+out:
+	iom_unlock(display);
+
+	disabled_ddi_mask = legacy_ddi_mismatch_mask(mgr, resources);
+	if (disabled_ddi_mask == old_disabled_ddi_mask)
+		return;
+
+	WRITE_ONCE(mgr->disabled_ddi_mask, disabled_ddi_mask);
+	drm_dbg_kms(display->drm, "DDIMGR: Disabled DDIs: 0x%02x -> 0x%02x\n",
+		    old_disabled_ddi_mask, disabled_ddi_mask);
 }
 
 static int init_ddi_resource(struct intel_display *display, int ddi)

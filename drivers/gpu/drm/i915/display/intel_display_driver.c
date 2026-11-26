@@ -30,6 +30,7 @@
 #include "intel_crtc.h"
 #include "intel_cursor.h"
 #include "intel_dbuf_bw.h"
+#include "intel_ddi_mgr.h"
 #include "intel_de.h"
 #include "intel_display_clock_gating.h"
 #include "intel_display_core.h"
@@ -962,6 +963,8 @@ void intel_display_driver_pm_runtime_resume_early(struct intel_display *display)
 /* after irq resume */
 void intel_display_driver_pm_runtime_resume(struct intel_display *display)
 {
+	intel_ddi_mgr_verify_state(display);
+
 	/*
 	 * On VLV/CHV display interrupts are part of the display
 	 * power well, so hpd is reinitialized from there. For

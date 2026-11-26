@@ -13,6 +13,7 @@
 #include <drm/intel/display_member.h>
 #include <drm/intel/display_parent_interface.h>
 
+#include "intel_ddi_mgr.h"
 #include "intel_display.h"
 #include "intel_display_core.h"
 #include "intel_display_device.h"
@@ -339,6 +340,8 @@ static void xe_display_disable_d3cold(struct xe_device *xe)
 		return;
 
 	intel_dmc_resume(display);
+
+	intel_ddi_mgr_verify_state(display);
 
 	if (intel_display_device_present(display))
 		drm_mode_config_reset(&xe->drm);
