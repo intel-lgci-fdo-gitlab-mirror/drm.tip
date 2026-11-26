@@ -889,9 +889,9 @@ static bool h2g_has_room(struct xe_guc_ct *ct, u32 cmd_len)
 
 			desc_write(xe, h2g, status, desc_status | GUC_CTB_STATUS_OVERFLOW);
 
-			xe_log_err(ct_to_gt(ct), GUC, -EPIPE,
-				   "CT: invalid head offset %u >= %u)\n",
-				   h2g->info.head, h2g->info.size);
+			xe_log_err_atomic(ct_to_gt(ct), GUC, -EPIPE,
+					  "CT: invalid head offset %u >= %u)\n",
+					  h2g->info.head, h2g->info.size);
 			CT_DEAD(ct, h2g, H2G_HAS_ROOM);
 			return false;
 		}
@@ -960,13 +960,13 @@ static void __g2h_release_space(struct xe_guc_ct *ct, u32 g2h_len)
 	bad |= !ct->g2h_outstanding;
 
 	if (bad) {
-		xe_log_err(ct_to_gt(ct), GUC, -ETOOMANYREFS,
-			   "CT: Invalid G2H release: %d + %d vs %d - %d -> %d vs %d, outstanding = %d!\n",
-			   ct->ctbs.g2h.info.space, g2h_len,
-			   ct->ctbs.g2h.info.size, ct->ctbs.g2h.info.resv_space,
-			   ct->ctbs.g2h.info.space + g2h_len,
-			   ct->ctbs.g2h.info.size - ct->ctbs.g2h.info.resv_space,
-			   ct->g2h_outstanding);
+		xe_log_err_atomic(ct_to_gt(ct), GUC, -ETOOMANYREFS,
+				  "CT: Invalid G2H release: %d + %d vs %d - %d -> %d vs %d, outstanding = %d!\n",
+				  ct->ctbs.g2h.info.space, g2h_len,
+				  ct->ctbs.g2h.info.size, ct->ctbs.g2h.info.resv_space,
+				  ct->ctbs.g2h.info.space + g2h_len,
+				  ct->ctbs.g2h.info.size - ct->ctbs.g2h.info.resv_space,
+				  ct->g2h_outstanding);
 		CT_DEAD(ct, &ct->ctbs.g2h, G2H_RELEASE);
 		return;
 	}
@@ -1034,7 +1034,7 @@ static int ct_corrupted(struct xe_guc_ct *ct, struct guc_ctb *ctb,
 	va_start(va_args, msg);
 	vaf.fmt = msg;
 	vaf.va  = &va_args;
-	xe_log_err(ct_to_gt(ct), GUC, err, "CT: %pV", &vaf);
+	xe_log_err_atomic(ct_to_gt(ct), GUC, err, "CT: %pV", &vaf);
 	va_end(va_args);
 
 	process_ct_dead(ct, ctb, reason_code);
@@ -2102,7 +2102,7 @@ static void g2h_fast_path(struct xe_guc_ct *ct, u32 *msg, u32 len)
 	}
 
 	if (ret) {
-		xe_log_err(gt, GUC, ret, "CT: G2H action 0x%04x failed\n", action);
+		xe_log_err_atomic(gt, GUC, ret, "CT: G2H action 0x%04x failed\n", action);
 		CT_DEAD(ct, NULL, FAST_G2H);
 	}
 }
