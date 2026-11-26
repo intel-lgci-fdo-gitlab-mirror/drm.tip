@@ -161,6 +161,17 @@ intel_ddi_mgr_get_devdata_for_ddi(struct intel_display *display, enum port ddi)
 	return intel_bios_encoder_data_lookup(display, port);
 }
 
+bool intel_ddi_mgr_aux_available(struct intel_encoder *encoder)
+{
+	struct intel_display *display = to_intel_display(encoder);
+
+	if (!intel_ddi_mgr_is_pool_ddi(display, encoder->port))
+		return true;
+
+	return !intel_ddi_mgr_is_legacy_pool_encoder(encoder) ||
+		intel_bios_encoder_supports_dp(encoder->devdata);
+}
+
 static struct intel_digital_port *connector_dig_port(struct intel_connector *connector)
 {
 	if (intel_attached_encoder(connector))

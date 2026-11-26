@@ -5,6 +5,7 @@
 
 #include <drm/drm_print.h>
 
+#include "intel_ddi_mgr.h"
 #include "intel_de.h"
 #include "intel_display_jiffies.h"
 #include "intel_display_types.h"
@@ -549,6 +550,9 @@ intel_dp_aux_transfer(struct drm_dp_aux *aux, struct drm_dp_aux_msg *msg)
 	u32 flags = intel_dp_aux_xfer_flags(msg);
 	int ret;
 
+	if (!intel_ddi_mgr_aux_available(&dp_to_dig_port(intel_dp)->base))
+		return -ENXIO;
+
 	intel_dp_aux_header(txbuf, msg);
 
 	switch (msg->request & ~DP_AUX_I2C_MOT) {
@@ -933,12 +937,21 @@ get_encoder_by_aux_ch(struct intel_encoder *encoder,
 enum aux_ch intel_dp_aux_ch(struct intel_encoder *encoder)
 {
 	struct intel_display *display = to_intel_display(encoder);
+	const struct intel_bios_encoder_data *devdata = encoder->devdata;
 	struct intel_encoder *other;
 	const char *source;
 	enum aux_ch aux_ch;
 	char buf[AUX_CH_NAME_BUFSIZE];
 
-	aux_ch = intel_bios_dp_aux_ch(encoder->devdata);
+	/*
+	 * VBT parameters come from the PHY-specific encoder->devdata, except
+	 * for the AUX channel, which is tied to the fixed DDI. Use the VBT
+	 * entry for encoder->port to select the AUX channel.
+	 */
+	if (intel_ddi_mgr_is_pool_ddi(display, encoder->port))
+		devdata = intel_bios_encoder_data_lookup(display, encoder->port);
+
+	aux_ch = intel_bios_dp_aux_ch(devdata);
 	source = "VBT";
 
 	if (aux_ch == AUX_CH_NONE) {
