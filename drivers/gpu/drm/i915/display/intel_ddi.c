@@ -3981,7 +3981,16 @@ static enum transcoder bdw_transcoder_master_readout(struct intel_display *displ
 {
 	u32 master_select;
 
-	if (DISPLAY_VER(display) >= 11) {
+	if (HAS_PIPELOCK(display)) {
+		u32 ctl2 = intel_de_read(display,
+					 TRANS_DDI_FUNC_CTL2(display, cpu_transcoder));
+
+		if ((ctl2 & GENLOCK_ENABLE) == 0 ||
+		    (ctl2 & GENLOCK_MODE_MASK) != GENLOCK_MODE_LOCAL_SECONDARY)
+			return INVALID_TRANSCODER;
+
+		master_select = REG_FIELD_GET(PORT_SYNC_MODE_MASTER_SELECT_MASK, ctl2);
+	} else if (DISPLAY_VER(display) >= 11) {
 		u32 ctl2 = intel_de_read(display,
 					 TRANS_DDI_FUNC_CTL2(display, cpu_transcoder));
 
@@ -4014,6 +4023,15 @@ static void bdw_get_trans_port_sync_config(struct intel_crtc_state *crtc_state)
 
 	crtc_state->sync_primary_transcoder =
 		bdw_transcoder_master_readout(display, crtc_state->cpu_transcoder);
+
+	if (HAS_PIPELOCK(display) &&
+	    crtc_state->sync_primary_transcoder != INVALID_TRANSCODER) {
+		u32 ctl2 = intel_de_read(display,
+					 TRANS_DDI_FUNC_CTL2(display, crtc_state->cpu_transcoder));
+
+		crtc_state->pipelock.tg_start_delay = REG_FIELD_GET(TG_START_DELAY_MASK, ctl2);
+		crtc_state->pipelock.per_frame_sync = ctl2 & PIPELOCK_PER_FRAME_SYNC;
+	}
 
 	for_each_cpu_transcoder_masked(display, cpu_transcoder, transcoders) {
 		enum intel_display_power_domain power_domain;
