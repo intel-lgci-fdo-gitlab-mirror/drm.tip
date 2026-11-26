@@ -85,7 +85,7 @@ struct bdb_edid_dtd {
 
 /**
  * struct vbt_header - VBT Header structure
- * @signature:		VBT signature, always starts with "$VBT"
+ * @signature:		VBT signature, always starts with "$VBT "
  * @version:		Version of this structure
  * @header_size:	Size of this structure
  * @vbt_size:		Size of VBT (VBT Header, BDB Header and data blocks)
