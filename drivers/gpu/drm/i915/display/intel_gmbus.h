@@ -9,6 +9,7 @@
 #include <linux/types.h>
 
 struct i2c_adapter;
+enum port;
 enum tc_port;
 struct intel_connector;
 struct intel_display;
@@ -44,6 +45,9 @@ int intel_gmbus_output_aksv(struct i2c_adapter *adapter);
 
 struct i2c_adapter *
 intel_gmbus_get_adapter(struct intel_display *display, unsigned int pin);
+struct i2c_adapter *
+intel_gmbus_get_ddi_adapter(struct intel_display *display, enum port ddi);
+void intel_gmbus_ddi_pool_update(struct intel_display *display, bool enable);
 void intel_gmbus_connector_debugfs_add(struct intel_connector *connector);
 void intel_gmbus_force_bit(struct i2c_adapter *adapter, bool force_bit);
 bool intel_gmbus_is_forced_bit(struct i2c_adapter *adapter);

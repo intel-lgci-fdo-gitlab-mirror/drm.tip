@@ -452,6 +452,7 @@ struct intel_display {
 		struct mutex mutex;
 
 		struct intel_gmbus *bus[GMBUS_NUM_PINS];
+		struct intel_gmbus *ddi_bus[I915_MAX_PORTS];
 
 		wait_queue_head_t wait_queue;
 	} gmbus;

@@ -14,5 +14,6 @@ void intel_ddi_mgr_init(struct intel_display *display);
 
 bool intel_ddi_mgr_is_pool_ddi(struct intel_display *display, enum port ddi);
 bool intel_ddi_mgr_pool_supports_hdmi(struct intel_display *display);
+u8 intel_ddi_mgr_ddc_pin_for_ddi(struct intel_display *display, enum port ddi);
 
 #endif

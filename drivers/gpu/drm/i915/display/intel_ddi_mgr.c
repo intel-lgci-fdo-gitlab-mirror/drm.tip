@@ -103,6 +103,23 @@ bool intel_ddi_mgr_pool_supports_hdmi(struct intel_display *display)
 	return mgr && mgr->pool_ddi_mask && mgr->has_hdmi;
 }
 
+/* Zero means that this DDI has no valid legacy DDC route. */
+u8 intel_ddi_mgr_ddc_pin_for_ddi(struct intel_display *display, enum port ddi)
+{
+	struct intel_ddi_mgr *mgr = display->ddi_mgr;
+	const struct intel_ddi_route *route;
+
+	if (!intel_ddi_mgr_is_enabled(mgr) ||
+	    !intel_ddi_mgr_is_pool_ddi(display, ddi))
+		return 0;
+
+	route = &mgr->route[ddi - PORT_TC1];
+	if (route->mode != INTEL_DDI_ROUTE_LEGACY)
+		return 0;
+
+	return mgr->ddc_pin[route->phy];
+}
+
 static const char *iom_lock_owner(u32 semaphore)
 {
 	switch (semaphore & IOM_REQUESTOR_ID_MASK) {
