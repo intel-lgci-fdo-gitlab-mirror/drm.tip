@@ -43,6 +43,7 @@
 #include "intel_hotplug.h"
 #include "intel_modeset_lock.h"
 #include "intel_panel.h"
+#include "intel_pipelock.h"
 #include "intel_psr.h"
 
 /**
@@ -1976,6 +1977,37 @@ out_restore_max_limits:
 	return err;
 }
 
+static void intel_dp_tile_group_fallback(struct intel_dp *intel_dp)
+{
+	struct intel_display *display = to_intel_display(intel_dp);
+	struct intel_connector *connector = intel_dp->attached_connector;
+	struct intel_dp_link_config max_link_limits;
+	struct drm_connector_list_iter conn_iter;
+	struct intel_connector *iter;
+
+	if (!intel_pipelock_connector_possible(connector))
+		return;
+
+	intel_dp_link_caps_get_max_limits(intel_dp->link.caps, &max_link_limits);
+
+	drm_connector_list_iter_begin(display->drm, &conn_iter);
+	for_each_intel_connector_iter(iter, &conn_iter) {
+		struct intel_dp *iter_dp;
+
+		if (iter == connector || !intel_pipelock_connector_possible(iter) ||
+		    iter->base.tile_group != connector->base.tile_group)
+			continue;
+
+		iter_dp = intel_attached_dp(iter);
+
+		if (!intel_dp_link_caps_set_max_limits(iter_dp->link.caps, &max_link_limits))
+			drm_dbg_kms(display->drm,
+				    "[CONNECTOR:%d:%s] Can't limit link to match tile group\n",
+				    iter->base.base.id, iter->base.name);
+	}
+	drm_connector_list_iter_end(&conn_iter);
+}
+
 static bool intel_dp_schedule_fallback_link_training(struct intel_atomic_state *state,
 						     struct intel_dp *intel_dp,
 						     const struct intel_crtc_state *crtc_state)
@@ -1994,6 +2026,8 @@ static bool intel_dp_schedule_fallback_link_training(struct intel_atomic_state *
 	} else if (intel_dp_get_link_train_fallback_values(intel_dp, crtc_state)) {
 		return false;
 	}
+
+	intel_dp_tile_group_fallback(intel_dp);
 
 	/* Schedule a Hotplug Uevent to userspace to start modeset */
 	intel_dp_queue_modeset_retry_for_link(state, encoder, crtc_state);
