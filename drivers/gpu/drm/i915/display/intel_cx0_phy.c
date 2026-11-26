@@ -25,6 +25,7 @@
 #include "intel_hdmi.h"
 #include "intel_lt_phy.h"
 #include "intel_panel.h"
+#include "intel_pipelock.h"
 #include "intel_psr.h"
 #include "intel_snps_hdmi_pll.h"
 #include "intel_tc.h"
@@ -1992,6 +1993,10 @@ static void intel_cx0pll_update_ssc(struct intel_encoder *encoder,
 	if (is_dp) {
 		if (intel_panel_use_ssc(display)) {
 			struct intel_dp *intel_dp = enc_to_intel_dp(encoder);
+
+			if (intel_pipelock_connector_possible(intel_dp->attached_connector))
+				return;
+
 			pll_state->ssc_enabled =
 				(intel_dp->dpcd[DP_MAX_DOWNSPREAD] & DP_MAX_DOWNSPREAD_0_5);
 		}
