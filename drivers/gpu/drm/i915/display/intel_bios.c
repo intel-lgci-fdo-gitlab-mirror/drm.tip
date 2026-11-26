@@ -2891,7 +2891,7 @@ static bool has_ddi_port_info(struct intel_display *display)
 	return DISPLAY_VER(display) >= 5 || display->platform.g4x;
 }
 
-static void parse_ddi_ports(struct intel_display *display)
+static void parse_each_ddi_port(struct intel_display *display)
 {
 	struct intel_bios_encoder_data *devdata;
 
@@ -3355,7 +3355,7 @@ out:
 
 	/* Further processing on pre-parsed or generated child device data */
 	parse_sdvo_device_mapping(display);
-	parse_ddi_ports(display);
+	parse_each_ddi_port(display);
 
 	kfree(vbt);
 }
