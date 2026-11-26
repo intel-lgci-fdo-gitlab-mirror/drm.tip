@@ -1007,10 +1007,10 @@ static void mtp_ddi_hpd_detection_setup(struct intel_display *display)
 static void mtp_ddi_hpd_enable_detection(struct intel_encoder *encoder)
 {
 	struct intel_display *display = to_intel_display(encoder);
+	u32 enables = mtp_ddi_hotplug_enables(encoder);
 
-	intel_de_rmw(display, SHOTPLUG_CTL_DDI,
-		     mtp_ddi_hotplug_mask(encoder->hpd_pin),
-		     mtp_ddi_hotplug_enables(encoder));
+	/* Only set the enable bit; no clear mask is needed. */
+	intel_de_rmw(display, SHOTPLUG_CTL_DDI, 0, enables);
 }
 
 static void mtp_tc_hpd_detection_setup(struct intel_display *display)
@@ -1023,10 +1023,10 @@ static void mtp_tc_hpd_detection_setup(struct intel_display *display)
 static void mtp_tc_hpd_enable_detection(struct intel_encoder *encoder)
 {
 	struct intel_display *display = to_intel_display(encoder);
+	u32 enables = mtp_tc_hotplug_enables(encoder);
 
-	intel_de_rmw(display, SHOTPLUG_CTL_TC,
-		     mtp_tc_hotplug_mask(encoder->hpd_pin),
-		     mtp_tc_hotplug_enables(encoder));
+	/* Only set the enable bit; no clear mask is needed. */
+	intel_de_rmw(display, SHOTPLUG_CTL_TC, 0, enables);
 }
 
 static void mtp_hpd_invert(struct intel_display *display)
