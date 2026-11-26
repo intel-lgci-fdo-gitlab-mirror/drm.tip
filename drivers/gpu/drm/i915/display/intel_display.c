@@ -189,6 +189,16 @@ bool intel_crtc_in_sync_group(const struct intel_crtc_state *crtc_state)
 		intel_crtc_is_sync_secondary(crtc_state);
 }
 
+static bool intel_display_sync_enable_late(const struct intel_crtc_state *crtc_state)
+{
+	struct intel_display *display = to_intel_display(crtc_state);
+
+	if (HAS_PIPELOCK(display))
+		return intel_crtc_is_sync_secondary(crtc_state);
+
+	return intel_crtc_is_sync_primary(crtc_state);
+}
+
 /*
  * Return a bitmask of all the start indices of consecutive bitfields of size
  * width in mask.
@@ -7328,7 +7338,7 @@ static void skl_commit_modeset_enables(struct intel_atomic_state *state)
 			continue;
 
 		if (intel_dp_mst_is_slave_trans(new_crtc_state) ||
-		    intel_crtc_is_sync_primary(new_crtc_state))
+		    intel_display_sync_enable_late(new_crtc_state))
 			continue;
 
 		modeset_pipes &= ~intel_crtc_joined_pipe_mask(new_crtc_state);
@@ -7338,7 +7348,7 @@ static void skl_commit_modeset_enables(struct intel_atomic_state *state)
 
 	/*
 	 * Then we enable all remaining pipes that depend on other
-	 * pipes: MST slaves and port sync primaries
+	 * pipes: MST slaves, port sync primaries and pipelock secondaries
 	 */
 	for_each_new_intel_crtc_in_state(state, crtc, new_crtc_state) {
 		enum pipe pipe = crtc->pipe;
