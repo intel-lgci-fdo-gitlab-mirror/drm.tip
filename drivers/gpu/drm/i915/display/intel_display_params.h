@@ -36,7 +36,6 @@ struct drm_printer;
 	param(int, disable_power_well, -1, 0400) \
 	param(bool, enable_ips, true, 0600) \
 	param(int, invert_brightness, 0, 0600) \
-	param(int, edp_vswing, 0, 0400) \
 	param(int, enable_dpcd_backlight, -1, 0600) \
 	param(bool, load_detect_test, false, 0600) \
 	param(bool, force_reset_modeset_test, false, 0600) \
