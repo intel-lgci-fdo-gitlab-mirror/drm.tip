@@ -286,7 +286,12 @@ void xe_display_pm_resume_early(struct xe_device *xe)
 	intel_display_driver_pm_resume_early(display);
 }
 
-void xe_display_pm_resume(struct xe_device *xe)
+/*
+ * FIXME: Disable display-only interrupts at the end of xe_display_pm_suspend()
+ * and reinitialize them here, including failed-suspend recovery. That would
+ * remove the need to distinguish recovery without an interrupt reset.
+ */
+void xe_display_pm_resume(struct xe_device *xe, bool suspend_failed)
 {
 	struct intel_display *display = xe->display;
 
