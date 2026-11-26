@@ -519,8 +519,8 @@ init_bdb_block(struct intel_display *display,
 	list_add_tail(&entry->node, &display->vbt.bdb_blocks);
 }
 
-static void init_bdb_blocks(struct intel_display *display,
-			    const void *bdb)
+static void init_each_bdb_block(struct intel_display *display,
+				const void *bdb)
 {
 	int i;
 
@@ -3335,7 +3335,7 @@ void intel_bios_init(struct intel_display *display)
 		    (int)sizeof(vbt->signature), vbt->signature,
 		    display->vbt.version);
 
-	init_bdb_blocks(display, bdb);
+	init_each_bdb_block(display, bdb);
 
 	/* Grab useful general definitions */
 	parse_general_features(display);
