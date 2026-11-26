@@ -229,6 +229,44 @@ static void test_sw_cper(struct kunit *test)
 	KUNIT_EXPECT_TRUE(test, is_sw_cper(sw_cper_capture.sigid));
 }
 
+static void test_cper_atomic_err(struct kunit *test)
+{
+	struct xe_gt *gt = to_gt_safe(test->priv);
+
+	kunit_activate_static_stub(test, log_emit_cper_atomic, capture_emit_cper);
+	kunit_activate_static_stub(test, log_dmesg_vprintk, nop_dmesg_vprintk);
+	memset(&sw_cper_capture, 0, sizeof(sw_cper_capture));
+
+	xe_log_err_atomic(gt, PROBE, -ENODEV, "testing %d\n", 123);
+
+	KUNIT_ASSERT_EQ(test, sw_cper_capture.count, 1);
+	KUNIT_EXPECT_EQ(test, sw_cper_capture.cper_sev, CPER_SEV_RECOVERABLE);
+	KUNIT_EXPECT_EQ(test, (u32)sw_cper_capture.sigid, (u32)XE_LOG_COMPONENT_PROBE_SIGID);
+	KUNIT_EXPECT_EQ(test, sw_cper_capture.component, XE_LOG_COMPONENT_PROBE);
+	KUNIT_EXPECT_EQ(test, sw_cper_capture.location, xe_log_location(gt));
+	KUNIT_EXPECT_PTR_EQ(test, sw_cper_capture.data, ERR_PTR(-ENODEV));
+	KUNIT_EXPECT_EQ(test, sw_cper_capture.len, 0);
+}
+
+static void test_cper_atomic_err_fatal(struct kunit *test)
+{
+	struct xe_gt *gt = to_gt_safe(test->priv);
+
+	kunit_activate_static_stub(test, log_emit_cper_atomic, capture_emit_cper);
+	kunit_activate_static_stub(test, log_dmesg_vprintk, nop_dmesg_vprintk);
+	memset(&sw_cper_capture, 0, sizeof(sw_cper_capture));
+
+	xe_log_err_fatal_atomic(gt, PROBE, -EIO, "testing %d\n", 123);
+
+	KUNIT_ASSERT_EQ(test, sw_cper_capture.count, 1);
+	KUNIT_EXPECT_EQ(test, sw_cper_capture.cper_sev, CPER_SEV_FATAL);
+	KUNIT_EXPECT_EQ(test, (u32)sw_cper_capture.sigid, (u32)XE_LOG_COMPONENT_PROBE_SIGID);
+	KUNIT_EXPECT_EQ(test, sw_cper_capture.component, XE_LOG_COMPONENT_PROBE);
+	KUNIT_EXPECT_EQ(test, sw_cper_capture.location, xe_log_location(gt));
+	KUNIT_EXPECT_PTR_EQ(test, sw_cper_capture.data, ERR_PTR(-EIO));
+	KUNIT_EXPECT_EQ(test, sw_cper_capture.len, 0);
+}
+
 static const char *test_fatal(struct xe_device *xe)
 {
 	struct pci_dev *pdev = to_pdev_safe(xe);
@@ -641,6 +679,8 @@ static struct kunit_case xe_log_test_cases[] = {
 	KUNIT_CASE(test_cper_null_xe),
 	KUNIT_CASE_PARAM(test_dmesg, log_gen_params),
 	KUNIT_CASE_PARAM(test_sw_cper, sw_cper_gen_params),
+	KUNIT_CASE(test_cper_atomic_err),
+	KUNIT_CASE(test_cper_atomic_err_fatal),
 	KUNIT_CASE_PARAM(test_invalid, invalid_param_gen_params),
 	{}
 };
