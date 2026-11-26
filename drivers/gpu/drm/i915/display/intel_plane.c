@@ -265,6 +265,40 @@ unsigned int intel_adjusted_rate(const struct drm_rect *src,
 				dst_w * dst_h);
 }
 
+/*
+ * Bspec: 68858
+ *
+ * The horizontal filter works at 2 PPC but still needs a full clock
+ * for a fractional shift of just 1 pixel, so the fractional part of
+ * the horizontal downscale factor costs PPC times more (but at most
+ * one full extra clock). The scaler filters vertically first, so this
+ * inefficiency does not multiply with the vertical downscale factor:
+ *
+ * hscale_ppc = int(hscale) + min(1, ppc * frac(hscale))
+ * scale = max(hscale_ppc, hscale * vscale)
+ */
+unsigned int intel_adjusted_rate_cdclk(const struct drm_rect *src,
+				       const struct drm_rect *dst,
+				       unsigned int rate,
+				       unsigned int ppc)
+{
+	unsigned int hscale, vscale, hscale_ppc;
+	u64 scale;
+
+	hscale = drm_rect_calc_hscale(src, dst, 0, INT_MAX);
+	hscale = max(hscale, 0x10000);
+
+	vscale = drm_rect_calc_vscale(src, dst, 0, INT_MAX);
+	vscale = max(vscale, 0x10000);
+
+	hscale_ppc = (hscale & ~0xffff) + min(ppc * (hscale & 0xffff), 0x10000);
+
+	/* .32 fixed point */
+	scale = max((u64)hscale_ppc << 16, mul_u32_u32(hscale, vscale));
+
+	return DIV64_U64_ROUND_UP(rate * scale, 1ull << 32);
+}
+
 unsigned int intel_plane_pixel_rate(const struct intel_crtc_state *crtc_state,
 				    const struct intel_plane_state *plane_state)
 {
@@ -283,6 +317,17 @@ unsigned int intel_plane_pixel_rate(const struct intel_crtc_state *crtc_state,
 	return intel_adjusted_rate(&plane_state->uapi.src,
 				   &plane_state->uapi.dst,
 				   crtc_state->pixel_rate);
+}
+
+unsigned int intel_plane_pixel_rate_cdclk(const struct intel_crtc_state *crtc_state,
+					  const struct intel_plane_state *plane_state)
+{
+	struct intel_display *display = to_intel_display(crtc_state);
+	unsigned int ppc = HAS_2PPC(display) ? 2 : 1;
+
+	return intel_adjusted_rate_cdclk(&plane_state->uapi.src,
+					 &plane_state->uapi.dst,
+					 crtc_state->pixel_rate_cdclk, ppc);
 }
 
 unsigned int intel_plane_data_rate(const struct intel_crtc_state *crtc_state,
