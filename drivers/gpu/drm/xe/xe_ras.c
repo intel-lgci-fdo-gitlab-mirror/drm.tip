@@ -321,6 +321,9 @@ static int handle_page_offline(struct xe_device *xe, u64 page_address, bool noti
 		return -EINVAL;
 	}
 
+	/* Orders fault handling and firmware commands across workers */
+	guard(mutex)(&state->lock);
+
 	/* User policy set to disable page offlining */
 	if (xe_ras_get_disable_vram_page_offline(xe)) {
 		action = XE_RAS_PAGE_ACTION_REMOVE;
@@ -474,11 +477,13 @@ static void process_offline_pages(struct xe_device *xe, u32 cmd, void *req, size
 	} while (common->additional_data);
 }
 
-/*
- * Retrieve firmware queued pages from warm-retained SRAM during probe. Handle and soft-offline
- * each page as required.
+/**
+ * xe_ras_get_offline_queue() - Drain page offline queue
+ * @xe: xe device instance
+ *
+ * Retrieve firmware queued pages from warm-retained SRAM and process each page as required.
  */
-static void get_offline_queue(struct xe_device *xe)
+void xe_ras_get_offline_queue(struct xe_device *xe)
 {
 	struct xe_ras_offline_common response = {0};
 
@@ -1503,13 +1508,17 @@ int xe_ras_init(struct xe_device *xe)
 
 	xa_init(&state->offlined_pages);
 
+	ret = devm_mutex_init(xe->drm.dev, &state->lock);
+	if (ret)
+		return ret;
+
 	ret = devm_add_action_or_reset(xe->drm.dev, ras_fini, xe);
 	if (ret)
 		return ret;
 
 	/* Fetch the offline list before queue to avoid duplication */
 	get_offline_list(xe);
-	get_offline_queue(xe);
+	xe_ras_get_offline_queue(xe);
 
 	/*
 	 * During probe, process and log any errors detected by firmware while the driver was not

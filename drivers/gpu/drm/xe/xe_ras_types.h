@@ -6,6 +6,7 @@
 #ifndef _XE_RAS_TYPES_H_
 #define _XE_RAS_TYPES_H_
 
+#include <linux/mutex.h>
 #include <linux/types.h>
 #include <linux/xarray.h>
 
@@ -534,6 +535,8 @@ struct xe_ras_state {
 	bool disable_vram_page_offline;
 	/** @max_pages: Total number of pages that can be stored by firmware */
 	u32 max_pages;
+	/** @lock: Serializes page offline handling across workers */
+	struct mutex lock;
 	/** @offlined_pages: XArray of pages offlined by firmware */
 	struct xarray offlined_pages;
 };

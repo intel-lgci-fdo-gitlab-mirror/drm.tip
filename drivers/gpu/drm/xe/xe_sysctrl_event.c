@@ -37,11 +37,17 @@ static void get_pending_event(struct xe_sysctrl *sc, struct xe_sysctrl_mailbox_c
 			return;
 		}
 
-		if (response->event == XE_SYSCTRL_EVENT_THRESHOLD_CROSSED)
+		switch (response->event) {
+		case XE_SYSCTRL_EVENT_THRESHOLD_CROSSED:
 			xe_ras_counter_threshold_crossed(xe, response);
-		else
+			break;
+		case XE_SYSCTRL_EVENT_PAGE_OFFLINE_QUEUE_FULL:
+			xe_ras_get_offline_queue(xe);
+			break;
+		default:
 			xe_log_err_info(xe, SYSCTRL, -ENOPKG,
 					"Unexpected event %#x\n", response->event);
+		}
 
 		if (!--count) {
 			xe_log_err(xe, SYSCTRL, -EXFULL,
@@ -49,7 +55,8 @@ static void get_pending_event(struct xe_sysctrl *sc, struct xe_sysctrl_mailbox_c
 			return;
 		}
 
-		xe_dbg(xe, "sysctrl: %u events pending\n", response->count);
+		xe_dbg(xe, "sysctrl: event code #%x received, %u events pending\n", response->event,
+		       response->count);
 	} while (response->count);
 }
 
