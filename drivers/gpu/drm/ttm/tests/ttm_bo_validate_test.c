@@ -1117,7 +1117,7 @@ static void ttm_bo_validate_evict_gutting(struct kunit *test)
 	ttm_mock_manager_fini(priv->ttm_dev, mem_type);
 }
 
-static void ttm_bo_validate_recrusive_evict(struct kunit *test)
+static void ttm_bo_validate_recursive_evict(struct kunit *test)
 {
 	u32 mem_type = TTM_PL_TT, mem_type_evict = TTM_PL_MOCK2;
 	struct ttm_operation_ctx ctx_init = { }, ctx_val  = { };
@@ -1200,7 +1200,7 @@ static struct kunit_case ttm_bo_validate_test_cases[] = {
 	KUNIT_CASE(ttm_bo_validate_deleted_evict),
 	KUNIT_CASE(ttm_bo_validate_busy_domain_evict),
 	KUNIT_CASE(ttm_bo_validate_evict_gutting),
-	KUNIT_CASE(ttm_bo_validate_recrusive_evict),
+	KUNIT_CASE(ttm_bo_validate_recursive_evict),
 	{}
 };
 
