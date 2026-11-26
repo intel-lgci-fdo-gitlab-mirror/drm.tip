@@ -2880,7 +2880,7 @@ static u8 icl_encoder_to_ddc_pin(struct intel_encoder *encoder)
 	if (intel_encoder_is_combo(encoder))
 		return GMBUS_PIN_1 + port;
 	else if (intel_encoder_is_tc(encoder))
-		return GMBUS_PIN_9_TC1 + intel_encoder_to_tc(encoder);
+		return intel_gmbus_tc_port_to_pin(intel_encoder_to_tc(encoder));
 
 	drm_WARN(display->drm, 1, "Unknown port:%c\n", port_name(port));
 	return GMBUS_PIN_2;
