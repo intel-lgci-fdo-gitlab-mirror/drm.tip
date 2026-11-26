@@ -614,9 +614,9 @@ intel_ddi_transcoder_func_reg_val_get(struct intel_encoder *encoder,
 	}
 
 	if (IS_DISPLAY_VER(display, 8, 10) &&
-	    crtc_state->master_transcoder != INVALID_TRANSCODER) {
+	    crtc_state->sync_primary_transcoder != INVALID_TRANSCODER) {
 		u8 master_select =
-			bdw_trans_port_sync_master_select(crtc_state->master_transcoder);
+			bdw_trans_port_sync_master_select(crtc_state->sync_primary_transcoder);
 
 		temp |= TRANS_DDI_PORT_SYNC_ENABLE |
 			TRANS_DDI_PORT_SYNC_MASTER_SELECT(master_select);
@@ -632,12 +632,12 @@ void intel_ddi_enable_transcoder_func(struct intel_encoder *encoder,
 	enum transcoder cpu_transcoder = crtc_state->cpu_transcoder;
 
 	if (DISPLAY_VER(display) >= 11) {
-		enum transcoder master_transcoder = crtc_state->master_transcoder;
+		enum transcoder primary_transcoder = crtc_state->sync_primary_transcoder;
 		u32 ctl2 = 0;
 
-		if (master_transcoder != INVALID_TRANSCODER) {
+		if (primary_transcoder != INVALID_TRANSCODER) {
 			u8 master_select =
-				bdw_trans_port_sync_master_select(master_transcoder);
+				bdw_trans_port_sync_master_select(primary_transcoder);
 
 			ctl2 |= PORT_SYNC_MODE_ENABLE |
 				PORT_SYNC_MODE_MASTER_SELECT(master_select);
@@ -2739,7 +2739,7 @@ static void mtl_ddi_pre_enable_dp(struct intel_atomic_state *state,
 	intel_dp_start_link_train(state, intel_dp, crtc_state);
 
 	/* 6.n Set DP_TP_CTL link training to Normal */
-	if (!is_trans_port_sync_mode(crtc_state))
+	if (!intel_crtc_in_sync_group(crtc_state))
 		intel_dp_stop_link_train(intel_dp, crtc_state);
 
 	/* 6.o Configure and enable FEC if needed */
@@ -2889,7 +2889,7 @@ static void tgl_ddi_pre_enable_dp(struct intel_atomic_state *state,
 	intel_dp_start_link_train(state, intel_dp, crtc_state);
 
 	/* 7.k Set DP_TP_CTL link training to Normal */
-	if (!is_trans_port_sync_mode(crtc_state))
+	if (!intel_crtc_in_sync_group(crtc_state))
 		intel_dp_stop_link_train(intel_dp, crtc_state);
 
 	/* 7.l Configure and enable FEC if needed */
@@ -2962,7 +2962,7 @@ static void hsw_ddi_pre_enable_dp(struct intel_atomic_state *state,
 	intel_dp_sink_set_fec_ready(intel_dp, crtc_state, true);
 	intel_dp_start_link_train(state, intel_dp, crtc_state);
 	if ((port != PORT_A || DISPLAY_VER(display) >= 9) &&
-	    !is_trans_port_sync_mode(crtc_state))
+	    !intel_crtc_in_sync_group(crtc_state))
 		intel_dp_stop_link_train(intel_dp, crtc_state);
 
 	intel_ddi_enable_fec(encoder, crtc_state);
@@ -3354,27 +3354,27 @@ static void trans_port_sync_stop_link_train(struct intel_atomic_state *state,
 	struct drm_connector *conn;
 	int i;
 
-	if (!crtc_state->sync_mode_slaves_mask)
+	if (!crtc_state->sync_secondaries_mask)
 		return;
 
 	for_each_new_connector_in_state(&state->base, conn, conn_state, i) {
-		struct intel_encoder *slave_encoder =
+		struct intel_encoder *secondary_encoder =
 			to_intel_encoder(conn_state->best_encoder);
-		struct intel_crtc *slave_crtc = to_intel_crtc(conn_state->crtc);
-		const struct intel_crtc_state *slave_crtc_state;
+		struct intel_crtc *secondary_crtc = to_intel_crtc(conn_state->crtc);
+		const struct intel_crtc_state *secondary_crtc_state;
 
-		if (!slave_crtc)
+		if (!secondary_crtc)
 			continue;
 
-		slave_crtc_state =
-			intel_atomic_get_new_crtc_state(state, slave_crtc);
+		secondary_crtc_state =
+			intel_atomic_get_new_crtc_state(state, secondary_crtc);
 
-		if (slave_crtc_state->master_transcoder !=
+		if (secondary_crtc_state->sync_primary_transcoder !=
 		    crtc_state->cpu_transcoder)
 			continue;
 
-		intel_dp_stop_link_train(enc_to_intel_dp(slave_encoder),
-					 slave_crtc_state);
+		intel_dp_stop_link_train(enc_to_intel_dp(secondary_encoder),
+					 secondary_crtc_state);
 	}
 
 	usleep_range(200, 400);
@@ -3989,7 +3989,7 @@ static void bdw_get_trans_port_sync_config(struct intel_crtc_state *crtc_state)
 		BIT(TRANSCODER_C) | BIT(TRANSCODER_D);
 	enum transcoder cpu_transcoder;
 
-	crtc_state->master_transcoder =
+	crtc_state->sync_primary_transcoder =
 		bdw_transcoder_master_readout(display, crtc_state->cpu_transcoder);
 
 	for_each_cpu_transcoder_masked(display, cpu_transcoder, transcoders) {
@@ -4005,14 +4005,14 @@ static void bdw_get_trans_port_sync_config(struct intel_crtc_state *crtc_state)
 
 		if (bdw_transcoder_master_readout(display, cpu_transcoder) ==
 		    crtc_state->cpu_transcoder)
-			crtc_state->sync_mode_slaves_mask |= BIT(cpu_transcoder);
+			crtc_state->sync_secondaries_mask |= BIT(cpu_transcoder);
 
 		intel_display_power_put(display, power_domain, trans_wakeref);
 	}
 
 	drm_WARN_ON(display->drm,
-		    crtc_state->master_transcoder != INVALID_TRANSCODER &&
-		    crtc_state->sync_mode_slaves_mask);
+		    crtc_state->sync_primary_transcoder != INVALID_TRANSCODER &&
+		    crtc_state->sync_secondaries_mask);
 }
 
 static void intel_ddi_read_func_ctl_dvi(struct intel_encoder *encoder,
@@ -4682,17 +4682,17 @@ static int intel_ddi_compute_config_late(struct intel_atomic_state *state,
 									connector->tile_group->id);
 
 	/*
-	 * EDP Transcoders cannot be ensalved
-	 * make them a master always when present
+	 * EDP Transcoders cannot be secondaries
+	 * make them the primary always when present
 	 */
 	if (port_sync_transcoders & BIT(TRANSCODER_EDP))
-		crtc_state->master_transcoder = TRANSCODER_EDP;
+		crtc_state->sync_primary_transcoder = TRANSCODER_EDP;
 	else
-		crtc_state->master_transcoder = ffs(port_sync_transcoders) - 1;
+		crtc_state->sync_primary_transcoder = ffs(port_sync_transcoders) - 1;
 
-	if (crtc_state->master_transcoder == crtc_state->cpu_transcoder) {
-		crtc_state->master_transcoder = INVALID_TRANSCODER;
-		crtc_state->sync_mode_slaves_mask = port_sync_transcoders &
+	if (crtc_state->sync_primary_transcoder == crtc_state->cpu_transcoder) {
+		crtc_state->sync_primary_transcoder = INVALID_TRANSCODER;
+		crtc_state->sync_secondaries_mask = port_sync_transcoders &
 			~REG_BIT(crtc_state->cpu_transcoder);
 	}
 
