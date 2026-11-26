@@ -50,6 +50,7 @@
 #include "intel_connector.h"
 #include "intel_cx0_phy.h"
 #include "intel_ddi.h"
+#include "intel_ddi_mgr.h"
 #include "intel_de.h"
 #include "intel_display_driver.h"
 #include "intel_display_regs.h"
@@ -3133,6 +3134,7 @@ bool intel_hdmi_init_connector(struct intel_digital_port *dig_port,
 	struct drm_device *dev = intel_encoder->base.dev;
 	enum port port = intel_encoder->port;
 	struct cec_connector_info conn_info;
+	struct i2c_adapter *ddc;
 	u8 ddc_pin;
 
 	drm_dbg_kms(display->drm,
@@ -3148,14 +3150,23 @@ bool intel_hdmi_init_connector(struct intel_digital_port *dig_port,
 		     intel_encoder->base.name))
 		return false;
 
-	ddc_pin = intel_hdmi_ddc_pin(intel_encoder);
-	if (!ddc_pin)
+	if (intel_ddi_mgr_is_pool_ddi(display, port)) {
+		ddc = intel_gmbus_get_ddi_adapter(display, port);
+	} else {
+		ddc_pin = intel_hdmi_ddc_pin(intel_encoder);
+		if (!ddc_pin)
+			return false;
+
+		ddc = intel_gmbus_get_adapter(display, ddc_pin);
+	}
+
+	if (!ddc)
 		return false;
 
 	drm_connector_init_with_ddc(dev, connector,
 				    &intel_hdmi_connector_funcs,
 				    DRM_MODE_CONNECTOR_HDMIA,
-				    intel_gmbus_get_adapter(display, ddc_pin));
+				    ddc);
 
 	drm_connector_helper_add(connector, &intel_hdmi_connector_helper_funcs);
 

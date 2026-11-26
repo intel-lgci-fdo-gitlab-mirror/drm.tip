@@ -37,6 +37,7 @@
 #include <drm/drm_print.h>
 #include <drm/display/drm_hdcp_helper.h>
 
+#include "intel_ddi_mgr.h"
 #include "intel_de.h"
 #include "intel_display_regs.h"
 #include "intel_display_types.h"
@@ -52,6 +53,7 @@ struct intel_gmbus {
 	bool debugfs_force_bit;
 	u32 reg0;
 	intel_reg_t gpio_reg;
+	bool disabled;
 	struct i2c_algo_bit_data bit_algo;
 	struct intel_display *display;
 };
@@ -697,6 +699,9 @@ do_gmbus_xfer(struct i2c_adapter *adapter, struct i2c_msg *msgs, int num,
 	int i = 0, inc, try = 0;
 	int ret = 0;
 
+	if (bus->disabled)
+		return -ENXIO;
+
 	/* Display WA #0868: skl,bxt,kbl,cfl,glk */
 	if (display->platform.geminilake || display->platform.broxton)
 		bxt_gmbus_clock_gating(display, false);
@@ -826,6 +831,9 @@ gmbus_xfer(struct i2c_adapter *adapter, struct i2c_msg *msgs, int num)
 	struct intel_display *display = bus->display;
 	struct ref_tracker *wakeref;
 	int ret;
+
+	if (bus->disabled)
+		return -ENXIO;
 
 	wakeref = intel_display_power_get(display, POWER_DOMAIN_GMBUS);
 
@@ -1015,14 +1023,14 @@ static const struct i2c_lock_operations gmbus_lock_ops = {
 };
 
 static struct intel_gmbus *
-intel_gmbus_create(struct intel_display *display, unsigned int pin)
+intel_gmbus_create(struct intel_display *display, unsigned int pin, enum port ddi)
 {
 	struct pci_dev *pdev = to_pci_dev(display->drm->dev);
 	const struct gmbus_pin *gmbus_pin = get_gmbus_pin(display, pin);
 	struct intel_gmbus *bus;
 	int ret;
 
-	if (!gmbus_pin)
+	if (ddi == PORT_NONE && !gmbus_pin)
 		return NULL;
 
 	bus = kzalloc_obj(*bus);
@@ -1030,8 +1038,14 @@ intel_gmbus_create(struct intel_display *display, unsigned int pin)
 		return ERR_PTR(-ENOMEM);
 
 	bus->adapter.owner = THIS_MODULE;
-	snprintf(bus->adapter.name, sizeof(bus->adapter.name),
-		 "i915 gmbus %s", gmbus_pin->name);
+	if (ddi == PORT_NONE)
+		snprintf(bus->adapter.name, sizeof(bus->adapter.name),
+			 "i915 gmbus %s", gmbus_pin->name);
+	else
+		snprintf(bus->adapter.name, sizeof(bus->adapter.name),
+			 "i915 gmbus DDI TC%d", ddi - PORT_TC1 + 1);
+
+	bus->disabled = ddi != PORT_NONE;
 	bus->adapter.dev.parent = &pdev->dev;
 	bus->display = display;
 	bus->adapter.algo = &gmbus_algorithm;
@@ -1050,7 +1064,7 @@ intel_gmbus_create(struct intel_display *display, unsigned int pin)
 	if (display->platform.i830)
 		bus->force_bit = 1;
 
-	intel_gpio_setup(bus, GPIO(display, gmbus_pin->gpio));
+	intel_gpio_setup(bus, gmbus_pin ? GPIO(display, gmbus_pin->gpio) : INTEL_REG_INVALID);
 
 	ret = i2c_add_adapter(&bus->adapter);
 	if (ret) {
@@ -1069,6 +1083,80 @@ static void intel_gmbus_destroy(struct intel_gmbus *bus)
 
 	i2c_del_adapter(&bus->adapter);
 	kfree(bus);
+}
+
+/* Keep each pool connector's adapter fixed while changing its physical pins. */
+void intel_gmbus_ddi_pool_update(struct intel_display *display, bool enable)
+{
+	enum port ddi;
+
+	mutex_lock(&display->gmbus.mutex);
+
+	for (ddi = PORT_A; ddi < I915_MAX_PORTS; ddi++) {
+		struct intel_gmbus *bus = display->gmbus.ddi_bus[ddi];
+		const struct gmbus_pin *gmbus_pin;
+		u8 pin;
+
+		if (!bus)
+			continue;
+
+		bus->disabled = true;
+
+		if (!enable)
+			continue;
+
+		pin = intel_ddi_mgr_ddc_pin_for_ddi(display, ddi);
+		gmbus_pin = get_gmbus_pin(display, pin);
+		if (!gmbus_pin)
+			continue;
+
+		/* Retry hardware only when switching to different DDC pins. */
+		if (bus->reg0 != (pin | GMBUS_RATE_100KHZ))
+			bus->force_bit &= ~GMBUS_FORCE_BIT_RETRY;
+
+		bus->reg0 = pin | GMBUS_RATE_100KHZ;
+		bus->gpio_reg = GPIO(display, gmbus_pin->gpio);
+
+		bus->disabled = false;
+	}
+
+	mutex_unlock(&display->gmbus.mutex);
+}
+
+struct i2c_adapter *
+intel_gmbus_get_ddi_adapter(struct intel_display *display, enum port ddi)
+{
+	struct intel_gmbus *bus;
+
+	if (!intel_ddi_mgr_is_pool_ddi(display, ddi))
+		return NULL;
+
+	bus = display->gmbus.ddi_bus[ddi];
+
+	return bus ? &bus->adapter : NULL;
+}
+
+static void intel_gmbus_ddi_pool_setup(struct intel_display *display)
+{
+	enum port ddi;
+
+	if (!intel_ddi_mgr_pool_supports_hdmi(display))
+		return;
+
+	for (ddi = PORT_A; ddi < I915_MAX_PORTS; ddi++) {
+		struct intel_gmbus *bus;
+
+		if (!intel_ddi_mgr_is_pool_ddi(display, ddi))
+			continue;
+
+		bus = intel_gmbus_create(display, 0, ddi);
+		if (IS_ERR(bus))
+			continue;
+
+		display->gmbus.ddi_bus[ddi] = bus;
+	}
+
+	intel_gmbus_ddi_pool_update(display, true);
 }
 
 /**
@@ -1093,7 +1181,7 @@ int intel_gmbus_setup(struct intel_display *display)
 	init_waitqueue_head(&display->gmbus.wait_queue);
 
 	for (pin = 0; pin < ARRAY_SIZE(display->gmbus.bus); pin++) {
-		struct intel_gmbus *bus = intel_gmbus_create(display, pin);
+		struct intel_gmbus *bus = intel_gmbus_create(display, pin, PORT_NONE);
 
 		if (IS_ERR(bus)) {
 			ret = PTR_ERR(bus);
@@ -1102,6 +1190,8 @@ int intel_gmbus_setup(struct intel_display *display)
 
 		display->gmbus.bus[pin] = bus;
 	}
+
+	intel_gmbus_ddi_pool_setup(display);
 
 	intel_gmbus_reset(display);
 
@@ -1149,6 +1239,12 @@ bool intel_gmbus_is_forced_bit(struct i2c_adapter *adapter)
 void intel_gmbus_teardown(struct intel_display *display)
 {
 	unsigned int pin;
+	enum port ddi;
+
+	for (ddi = PORT_A; ddi < I915_MAX_PORTS; ddi++) {
+		intel_gmbus_destroy(display->gmbus.ddi_bus[ddi]);
+		display->gmbus.ddi_bus[ddi] = NULL;
+	}
 
 	for (pin = 0; pin < ARRAY_SIZE(display->gmbus.bus); pin++) {
 		intel_gmbus_destroy(display->gmbus.bus[pin]);
