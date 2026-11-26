@@ -2232,6 +2232,12 @@ parse_vswing_preemph_override(struct intel_display *display)
 	if (!block)
 		return;
 
+	/* adjust size for num_tables and num_columns fields */
+	if (mem_is_zero(block->tables, get_blocksize(block) - 2)) {
+		drm_dbg_kms(display->drm, "VBT#57 tables are zeroed\n");
+		return;
+	}
+
 	display->vbt.vspeo.tables = block->tables;
 	display->vbt.vspeo.num_tables = block->num_tables;
 	display->vbt.vspeo.num_columns = block->num_columns;
@@ -2663,6 +2669,9 @@ static void allocate_vswing_preemph_override(struct intel_bios_encoder_data *dev
 	struct intel_ddi_buf_trans *vspeo;
 
 	if (!intel_bios_encoder_requests_vspeo(devdata))
+		return;
+
+	if (!devdata->display->vbt.vspeo.tables)
 		return;
 
 	vspeo = kzalloc_obj(*vspeo);
