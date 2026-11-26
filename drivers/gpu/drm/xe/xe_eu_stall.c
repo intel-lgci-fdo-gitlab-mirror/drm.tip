@@ -719,6 +719,12 @@ static int xe_eu_stall_stream_enable(struct xe_eu_stall_data_stream *stream)
 		xe_gt_mcr_multicast_write(gt, ROW_CHICKEN2,
 					  REG_MASKED_FIELD_ENABLE(DISABLE_DOP_GATING));
 
+	if (gt_to_xe(gt)->info.platform == XE_CRESCENTISLAND) {
+		reg_value = xe_gt_mcr_unicast_read_any(gt, SUBSLICE_UNIT_LEVEL_CLKGATE2);
+		reg_value |= TDLUNIT_CLKGATE_DIS;
+		xe_gt_mcr_multicast_write(gt, SUBSLICE_UNIT_LEVEL_CLKGATE2, reg_value);
+	}
+
 	for_each_dss_steering(xecore, gt, group, instance) {
 		write_ptr_reg = xe_gt_mcr_unicast_read(gt, XEHPC_EUSTALL_REPORT, group, instance);
 		/* Clear any drop bits set and not cleared in the previous session. */
@@ -864,6 +870,7 @@ static int xe_eu_stall_enable_locked(struct xe_eu_stall_data_stream *stream)
 static int xe_eu_stall_disable_locked(struct xe_eu_stall_data_stream *stream)
 {
 	struct xe_gt *gt = stream->gt;
+	u32 reg_value;
 	int ret = 0;
 
 	if (!stream->enabled)
@@ -874,6 +881,12 @@ static int xe_eu_stall_disable_locked(struct xe_eu_stall_data_stream *stream)
 	xe_gt_mcr_multicast_write(gt, XEHPC_EUSTALL_BASE, 0);
 
 	cancel_delayed_work_sync(&stream->buf_poll_work);
+
+	if (gt_to_xe(gt)->info.platform == XE_CRESCENTISLAND) {
+		reg_value = xe_gt_mcr_unicast_read_any(gt, SUBSLICE_UNIT_LEVEL_CLKGATE2);
+		reg_value &= ~TDLUNIT_CLKGATE_DIS;
+		xe_gt_mcr_multicast_write(gt, SUBSLICE_UNIT_LEVEL_CLKGATE2, reg_value);
+	}
 
 	if (XE_GT_WA(gt, 22016596838))
 		xe_gt_mcr_multicast_write(gt, ROW_CHICKEN2,
