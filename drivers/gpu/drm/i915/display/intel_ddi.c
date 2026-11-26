@@ -488,6 +488,17 @@ static u32 bdw_trans_port_sync_master_select(enum transcoder master_transcoder)
 		return master_transcoder + 1;
 }
 
+static u32 pipelock_ctl2_val_get(const struct intel_crtc_state *crtc_state)
+{
+	u32 val = GENLOCK_ENABLE | GENLOCK_MODE_LOCAL_SECONDARY |
+		TG_START_DELAY(crtc_state->pipelock.tg_start_delay);
+
+	if (crtc_state->pipelock.per_frame_sync)
+		val |= PIPELOCK_PER_FRAME_SYNC;
+
+	return val;
+}
+
 static void
 intel_ddi_config_transcoder_dp2(const struct intel_crtc_state *crtc_state,
 				bool enable)
@@ -639,8 +650,12 @@ void intel_ddi_enable_transcoder_func(struct intel_encoder *encoder,
 			u8 master_select =
 				bdw_trans_port_sync_master_select(primary_transcoder);
 
-			ctl2 |= PORT_SYNC_MODE_ENABLE |
-				PORT_SYNC_MODE_MASTER_SELECT(master_select);
+			if (HAS_PIPELOCK(display))
+				ctl2 |= pipelock_ctl2_val_get(crtc_state);
+			else
+				ctl2 |= PORT_SYNC_MODE_ENABLE;
+
+			ctl2 |= PORT_SYNC_MODE_MASTER_SELECT(master_select);
 		}
 
 		intel_de_write(display,
