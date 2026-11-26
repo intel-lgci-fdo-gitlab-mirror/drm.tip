@@ -36,7 +36,7 @@ intel_display_param_named_unsafe(dmc_firmware_path, charp, 0400,
 	"DMC firmware path to use instead of the default one. "
 	"Use /dev/null to disable DMC and runtime PM.");
 
-intel_display_param_named_unsafe(vbt_firmware, charp, 0400,
+intel_display_param_named_unsafe(i915_vbt, charp, 0400,
 	"Load VBT from specified file under /lib/firmware");
 
 intel_display_param_named_unsafe(lvds_channel_mode, int, 0400,

@@ -3185,7 +3185,7 @@ static struct vbt_header *firmware_get_vbt(struct intel_display *display,
 {
 	struct vbt_header *vbt = NULL;
 	const struct firmware *fw = NULL;
-	const char *name = display->params.vbt_firmware;
+	const char *name = display->params.i915_vbt;
 	int ret;
 
 	if (!name || !*name)
