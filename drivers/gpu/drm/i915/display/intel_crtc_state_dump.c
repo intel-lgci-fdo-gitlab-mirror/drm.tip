@@ -217,6 +217,11 @@ void intel_crtc_state_dump(const struct intel_crtc_state *pipe_config,
 		   transcoder_name(pipe_config->sync_primary_transcoder),
 		   pipe_config->sync_secondaries_mask);
 
+	if (HAS_PIPELOCK(display))
+		drm_printf(&p, "pipelock: tg start delay: %u, per frame sync: %s\n",
+			   pipe_config->pipelock.tg_start_delay,
+			   str_yes_no(pipe_config->pipelock.per_frame_sync));
+
 	drm_printf(&p, "joiner: %s, pipes: 0x%x\n",
 		   intel_crtc_is_joiner_secondary(pipe_config) ? "secondary" :
 		   intel_crtc_is_joiner_primary(pipe_config) ? "primary" : "no",
