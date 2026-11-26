@@ -1552,14 +1552,8 @@ parse_edp(struct intel_display *display,
 	if (display->vbt.version >= 173) {
 		u8 vswing;
 
-		/* Don't read from VBT if module parameter has valid value*/
-		if (display->params.edp_vswing) {
-			panel->vbt.edp.low_vswing =
-				display->params.edp_vswing == 1;
-		} else {
-			vswing = (edp->edp_vswing_preemph >> (panel_type * 4)) & 0xF;
-			panel->vbt.edp.low_vswing = vswing == 0;
-		}
+		vswing = (edp->edp_vswing_preemph >> (panel_type * 4)) & 0xF;
+		panel->vbt.edp.low_vswing = vswing == 0;
 	}
 
 	panel->vbt.edp.drrs_msa_timing_delay =
