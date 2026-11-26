@@ -14,6 +14,7 @@
 #include "xe_bo_types.h"
 #include "xe_ggtt.h"
 #include "xe_macros.h"
+#include "xe_module.h"
 #include "xe_validation.h"
 #include "xe_vm_types.h"
 #include "xe_vm.h"
@@ -556,7 +557,7 @@ xe_bo_put_async(struct xe_bo *bo)
 	struct xe_bo_dev *bo_device = &xe_bo_device(bo)->bo_device;
 
 	if (xe_bo_put_deferred(bo, &bo_device->async_list, NULL))
-		schedule_work(&bo_device->async_free);
+		xe_destroy_wq_queue(&bo_device->async_free);
 }
 
 void xe_bo_dev_init(struct xe_bo_dev *bo_device);
