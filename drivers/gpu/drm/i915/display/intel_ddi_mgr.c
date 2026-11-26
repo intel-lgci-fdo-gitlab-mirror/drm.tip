@@ -840,6 +840,83 @@ static void update_hpd_sources(struct intel_display *display)
 	}
 }
 
+void intel_ddi_mgr_suspend(struct intel_display *display)
+{
+	if (!intel_ddi_mgr_is_enabled(display->ddi_mgr))
+		return;
+
+	intel_gmbus_ddi_pool_update(display, false);
+}
+
+static void resume_ddi_resource(struct intel_display *display,
+				struct intel_encoder *encoder,
+				const struct intel_ddi_route *old_route)
+{
+	struct intel_ddi_mgr *mgr = display->ddi_mgr;
+	struct intel_digital_port *dig_port;
+	const struct intel_ddi_route *route;
+
+	if (!encoder)
+		return;
+
+	route = &mgr->route[encoder->port - PORT_TC1];
+	dig_port = enc_to_dig_port(encoder);
+	encoder->devdata = intel_ddi_mgr_get_devdata_for_ddi(display, encoder->port);
+	intel_tc_port_set_legacy(dig_port, mgr->enabled &&
+				route->mode == INTEL_DDI_ROUTE_LEGACY);
+	dig_port->lane_reversal = intel_ddi_mgr_encoder_has_lane_reversal(encoder);
+
+	if (mgr->enabled && old_route->mode == route->mode &&
+	    old_route->phy == route->phy)
+		return;
+
+	intel_dp_update_source_caps(&dig_port->dp);
+}
+
+static void resume_ddi_resources(struct intel_display *display)
+{
+	struct intel_ddi_mgr *mgr = display->ddi_mgr;
+	struct intel_encoder *encoders[INTEL_DDI_MGR_NUM_PORTS] = {};
+	struct intel_ddi_route old_route[INTEL_DDI_MGR_NUM_PORTS];
+	struct intel_encoder *encoder;
+	int ddi, err;
+
+	/* Only normal resume gets here, with HPD masked by IRQ postinstall. */
+	memcpy(old_route, mgr->route, sizeof(old_route));
+
+	err = configure_ddi_resources(display, old_route);
+	WRITE_ONCE(mgr->disabled_ddi_mask, 0);
+	if (err)
+		fallback_to_alt(mgr);
+	else
+		mgr->enabled = true;
+
+	update_hpd_sources(display);
+
+	if (err)
+		drm_err(display->drm, "DDIMGR: Cannot restore DDI pool: %d; using ALT mode\n", err);
+
+	for_each_intel_encoder(display->drm, encoder)
+		if (encoder->type == INTEL_OUTPUT_DDI &&
+		    intel_ddi_mgr_is_pool_ddi(display, encoder->port))
+			encoders[encoder->port - PORT_TC1] = encoder;
+
+	for (ddi = 0; ddi < INTEL_DDI_MGR_NUM_PORTS; ddi++)
+		resume_ddi_resource(display, encoders[ddi], &old_route[ddi]);
+}
+
+void intel_ddi_mgr_resume(struct intel_display *display, bool suspend_failed)
+{
+	if (!display->ddi_mgr)
+		return;
+
+	/* Failed suspend leaves HPD IRQs enabled: preserve cached assignments. */
+	if (!suspend_failed)
+		resume_ddi_resources(display);
+
+	intel_gmbus_ddi_pool_update(display, true);
+}
+
 static u8 legacy_ddi_mismatch_mask(const struct intel_ddi_mgr *mgr, u32 resources)
 {
 	u8 ddi_mask = 0;

@@ -14,6 +14,8 @@ struct intel_display;
 struct intel_encoder;
 
 void intel_ddi_mgr_init(struct intel_display *display);
+void intel_ddi_mgr_suspend(struct intel_display *display);
+void intel_ddi_mgr_resume(struct intel_display *display, bool suspend_failed);
 void intel_ddi_mgr_verify_state(struct intel_display *display);
 
 bool intel_ddi_mgr_is_pool_ddi(struct intel_display *display, enum port ddi);

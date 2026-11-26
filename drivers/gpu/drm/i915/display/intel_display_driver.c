@@ -780,6 +780,7 @@ static int __intel_display_driver_pm_suspend(struct intel_display *display, bool
 	intel_display_driver_suspend_access(display);
 
 	intel_encoder_suspend_all(display);
+	intel_ddi_mgr_suspend(display);
 
 	intel_dmc_suspend(display);
 

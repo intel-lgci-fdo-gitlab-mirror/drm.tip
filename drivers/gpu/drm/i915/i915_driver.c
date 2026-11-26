@@ -54,6 +54,7 @@
 #include "display/i9xx_display_sr.h"
 #include "display/intel_cdclk.h"
 #include "display/intel_crtc.h"
+#include "display/intel_ddi_mgr.h"
 #include "display/intel_display_device.h"
 #include "display/intel_display_driver.h"
 #include "display/intel_display_power.h"
@@ -1236,6 +1237,12 @@ static int i915_drm_resume(struct drm_device *dev)
 	 * interrupts.
 	 */
 	intel_irq_resume(dev_priv);
+
+	/*
+	 * TODO: Move this to display code, keeping it before
+	 * drm_mode_config_reset().
+	 */
+	intel_ddi_mgr_resume(display, false);
 
 	if (intel_display_device_present(display))
 		drm_mode_config_reset(dev);
