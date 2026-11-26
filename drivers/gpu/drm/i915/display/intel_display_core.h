@@ -168,6 +168,10 @@ struct intel_hotplug {
 	struct delayed_work hotplug_work;
 
 	const u32 *hpd, *pch_hpd;
+	/* Mutable hardware sources for stable logical pins on NVL+. */
+	u32 hpd_map[HPD_NUM_PINS], pch_hpd_map[HPD_NUM_PINS];
+	/* Logical to physical PCH pin; HPD_NONE means no south source. */
+	enum hpd_pin pch_pin_map[HPD_NUM_PINS];
 
 	struct {
 		unsigned long last_jiffies;

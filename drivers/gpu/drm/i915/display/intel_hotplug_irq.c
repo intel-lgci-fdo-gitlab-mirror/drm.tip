@@ -136,6 +136,14 @@ static const u32 hpd_mtp[HPD_NUM_PINS] = {
 static void intel_hpd_init_pins(struct intel_display *display)
 {
 	struct intel_hotplug *hpd = &display->hotplug;
+	enum hpd_pin pin;
+
+	/*
+	 * NOTE: the pin map is only used by MTL+, but for simplicity init it
+	 * for all platforms.
+	 */
+	for (pin = HPD_NONE; pin < HPD_NUM_PINS; pin++)
+		hpd->pch_pin_map[pin] = pin;
 
 	if (HAS_GMCH(display)) {
 		if (display->platform.g4x || display->platform.valleyview ||
@@ -146,7 +154,14 @@ static void intel_hpd_init_pins(struct intel_display *display)
 		return;
 	}
 
-	if (DISPLAY_VER(display) >= 14)
+	if (DISPLAY_VER(display) >= 35) {
+		/*
+		 * The (north) HPD map is only used by NVL+.
+		 * TODO: Make the mapping logic platform independent.
+		 */
+		memcpy(hpd->hpd_map, hpd_xelpdp, sizeof(hpd->hpd_map));
+		hpd->hpd = hpd->hpd_map;
+	} else if (DISPLAY_VER(display) >= 14)
 		hpd->hpd = hpd_xelpdp;
 	else if (DISPLAY_VER(display) >= 11)
 		hpd->hpd = hpd_gen11;
@@ -165,7 +180,14 @@ static void intel_hpd_init_pins(struct intel_display *display)
 	    (!HAS_PCH_SPLIT(display) || HAS_PCH_NOP(display)))
 		return;
 
-	if (INTEL_PCH_TYPE(display) >= PCH_MTL)
+	if (DISPLAY_VER(display) >= 35) {
+		/*
+		 * The PCH HPD map is only used by NVL+.
+		 * TODO: Make the mapping logic platform independent.
+		 */
+		memcpy(hpd->pch_hpd_map, hpd_mtp, sizeof(hpd->pch_hpd_map));
+		hpd->pch_hpd = hpd->pch_hpd_map;
+	} else if (INTEL_PCH_TYPE(display) >= PCH_MTL)
 		hpd->pch_hpd = hpd_mtp;
 	else if (INTEL_PCH_TYPE(display) >= PCH_DG1)
 		hpd->pch_hpd = hpd_sde_dg1;
@@ -179,6 +201,38 @@ static void intel_hpd_init_pins(struct intel_display *display)
 		hpd->pch_hpd = hpd_ibx;
 	else
 		MISSING_CASE(INTEL_PCH_TYPE(display));
+}
+
+/*
+ * Remap an encoder's logical TC HPD pin to separate north and PCH HW HPD
+ * pins. The north mapping must be an identity mapping or disable the
+ * source. The PCH mapping may select any TC HW pin or disable the source.
+ * Either source is disabled by mapping it to HPD_NONE.
+ *
+ * TODO: Make the remapping generic and independent of the platform.
+ */
+void intel_hpd_set_pin_sources(struct intel_display *display, enum
+			       hpd_pin logical_pin, enum hpd_pin hw_pin,
+			       enum hpd_pin pch_hw_pin)
+{
+	struct intel_hotplug *hpd = &display->hotplug;
+
+	if (drm_WARN_ON(display->drm, DISPLAY_VER(display) < 35))
+		return;
+
+	if (drm_WARN_ON(display->drm, logical_pin < HPD_PORT_TC1 || logical_pin > HPD_PORT_TC4))
+		return;
+
+	if (drm_WARN_ON(display->drm, hw_pin != HPD_NONE && logical_pin != hw_pin))
+		return;
+
+	if (drm_WARN_ON(display->drm, pch_hw_pin != HPD_NONE &&
+				      (pch_hw_pin < HPD_PORT_TC1 || pch_hw_pin > HPD_PORT_TC4)))
+		return;
+
+	hpd->hpd_map[logical_pin] = hpd_xelpdp[hw_pin];
+	hpd->pch_pin_map[logical_pin] = pch_hw_pin;
+	hpd->pch_hpd_map[logical_pin] = hpd_mtp[pch_hw_pin];
 }
 
 /* For display hotplug interrupt */
@@ -552,6 +606,28 @@ void xelpdp_pica_irq_handler(struct intel_display *display, u32 iir)
 			"Unexpected DE HPD/AUX interrupt 0x%08x\n", iir);
 }
 
+static void xe3plpd_tc_hpd_pins(struct intel_display *display,
+			      u32 *pin_mask, u32 *long_mask,
+			      u32 trigger, u32 hotplug_reg)
+{
+	enum hpd_pin pin;
+
+	for (pin = HPD_PORT_TC1; pin <= HPD_PORT_TC4; pin++) {
+		enum hpd_pin hw_pin = display->hotplug.pch_pin_map[pin];
+
+		if (!(display->hotplug.pch_hpd[pin] & trigger))
+			continue;
+
+		*pin_mask |= BIT(pin);
+		if (icp_tc_port_hotplug_long_detect(hw_pin, hotplug_reg))
+			*long_mask |= BIT(pin);
+	}
+
+	drm_dbg_kms(display->drm,
+		    "hotplug event received, stat 0x%08x, dig 0x%08x, pins 0x%08x, long 0x%08x\n",
+		    trigger, hotplug_reg, *pin_mask, *long_mask);
+}
+
 void icp_irq_handler(struct intel_display *display, u32 pch_iir)
 {
 	u32 ddi_hotplug_trigger = pch_iir & SDE_DDI_HOTPLUG_MASK_ICP;
@@ -577,10 +653,14 @@ void icp_irq_handler(struct intel_display *display, u32 pch_iir)
 
 		dig_hotplug_reg = intel_de_rmw_fw(display, SHOTPLUG_CTL_TC, 0, 0);
 
-		intel_get_hpd_pins(display, &pin_mask, &long_mask,
-				   tc_hotplug_trigger, dig_hotplug_reg,
-				   display->hotplug.pch_hpd,
-				   icp_tc_port_hotplug_long_detect);
+		if (DISPLAY_VER(display) >= 35)
+			xe3plpd_tc_hpd_pins(display, &pin_mask, &long_mask,
+					   tc_hotplug_trigger, dig_hotplug_reg);
+		else
+			intel_get_hpd_pins(display, &pin_mask, &long_mask,
+					   tc_hotplug_trigger, dig_hotplug_reg,
+					   display->hotplug.pch_hpd,
+					   icp_tc_port_hotplug_long_detect);
 	}
 
 	if (pin_mask)
@@ -994,7 +1074,10 @@ static u32 mtp_tc_hotplug_mask(enum hpd_pin hpd_pin)
 
 static u32 mtp_tc_hotplug_enables(struct intel_encoder *encoder)
 {
-	return mtp_tc_hotplug_mask(encoder->hpd_pin);
+	struct intel_display *display = to_intel_display(encoder);
+	enum hpd_pin hw_pin = display->hotplug.pch_pin_map[encoder->hpd_pin];
+
+	return mtp_tc_hotplug_mask(hw_pin);
 }
 
 static void mtp_ddi_hpd_detection_setup(struct intel_display *display)
@@ -1096,6 +1179,12 @@ static void _xelpdp_pica_hpd_detection_setup(struct intel_display *display,
 	u32 mask = XELPDP_TBT_HOTPLUG_ENABLE |
 		XELPDP_DP_ALT_HOTPLUG_ENABLE;
 
+	/*
+	 * North HPD mappings are either identity mappings or disabled, so the
+	 * logical pin passed here can also be used as the HW pin.
+	 *
+	 * TODO: Unify north and PCH HPD mapping handling.
+	 */
 	if (!is_xelpdp_pica_hpd_pin(hpd_pin))
 		return;
 
@@ -1119,7 +1208,8 @@ static void xelpdp_pica_hpd_detection_setup(struct intel_display *display)
 	BUILD_BUG_ON(BITS_PER_TYPE(available_pins) < HPD_NUM_PINS);
 
 	for_each_intel_encoder(display->drm, encoder)
-		available_pins |= BIT(encoder->hpd_pin);
+		if (display->hotplug.hpd[encoder->hpd_pin])
+			available_pins |= BIT(encoder->hpd_pin);
 
 	for_each_hpd_pin(pin)
 		_xelpdp_pica_hpd_detection_setup(display, pin, available_pins & BIT(pin));
@@ -1127,8 +1217,13 @@ static void xelpdp_pica_hpd_detection_setup(struct intel_display *display)
 
 static void xelpdp_hpd_enable_detection(struct intel_encoder *encoder)
 {
-	xelpdp_pica_hpd_enable_detection(encoder);
-	mtp_hpd_enable_detection(encoder);
+	struct intel_display *display = to_intel_display(encoder);
+
+	if (display->hotplug.hpd[encoder->hpd_pin])
+		xelpdp_pica_hpd_enable_detection(encoder);
+
+	if (display->hotplug.pch_hpd[encoder->hpd_pin])
+		mtp_hpd_enable_detection(encoder);
 }
 
 static void xelpdp_hpd_irq_setup(struct intel_display *display)
