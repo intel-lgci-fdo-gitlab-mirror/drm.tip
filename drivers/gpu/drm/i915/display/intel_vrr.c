@@ -25,6 +25,7 @@
 #include "intel_dmc.h"
 #include "intel_dmc_regs.h"
 #include "intel_dp.h"
+#include "intel_pipelock.h"
 #include "intel_psr.h"
 #include "intel_vrr.h"
 #include "intel_vrr_regs.h"
@@ -483,6 +484,7 @@ intel_vrr_compute_config(struct intel_crtc_state *crtc_state,
 	struct intel_connector *connector =
 		to_intel_connector(conn_state->connector);
 	struct drm_display_mode *adjusted_mode = &crtc_state->hw.adjusted_mode;
+	bool pipelock = intel_pipelock_connector_possible(connector);
 	int vmin, vmax;
 
 	if (!HAS_VRR(display))
@@ -523,7 +525,8 @@ intel_vrr_compute_config(struct intel_crtc_state *crtc_state,
 		 * the fixed refresh rate path. It is generic across transcoders
 		 * and gated on platform support and a valid debugfs ratio.
 		 */
-		intel_vrr_cmrr_compute_config(crtc_state);
+		if (!pipelock)
+			intel_vrr_cmrr_compute_config(crtc_state);
 		intel_vrr_compute_fixed_rr_timings(crtc_state);
 	}
 
@@ -536,7 +539,8 @@ intel_vrr_compute_config(struct intel_crtc_state *crtc_state,
 			 crtc_state->hw.adjusted_mode.crtc_vsync_end);
 	}
 
-	intel_vrr_dc_balance_compute_config(crtc_state);
+	if (!pipelock)
+		intel_vrr_dc_balance_compute_config(crtc_state);
 }
 
 static int
