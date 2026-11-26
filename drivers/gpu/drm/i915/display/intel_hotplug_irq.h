@@ -8,6 +8,7 @@
 
 #include <linux/types.h>
 
+enum hpd_pin;
 struct intel_display;
 struct intel_encoder;
 
@@ -26,6 +27,9 @@ void i915_hotplug_interrupt_update_locked(struct intel_display *display,
 					  u32 mask, u32 bits);
 void i915_hotplug_interrupt_update(struct intel_display *display,
 				   u32 mask, u32 bits);
+
+void intel_hpd_set_pin_sources(struct intel_display *display, enum hpd_pin logical_pin,
+			       enum hpd_pin hw_pin, enum hpd_pin pch_hw_pin);
 
 void intel_hpd_enable_detection(struct intel_encoder *encoder);
 void intel_hpd_irq_setup(struct intel_display *display);
