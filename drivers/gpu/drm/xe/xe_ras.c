@@ -5,6 +5,8 @@
 
 #include <linux/bitfield.h>
 
+#include <drm/drm_drv.h>
+
 #include <generated/xe_device_wa_oob.h>
 
 #include "xe_assert.h"
@@ -486,9 +488,16 @@ static void process_offline_pages(struct xe_device *xe, u32 cmd, void *req, size
 void xe_ras_get_offline_queue(struct xe_device *xe)
 {
 	struct xe_ras_offline_common response = {0};
+	int idx;
+
+	/* Unplug waits for this section, so nothing runs after ras_fini() */
+	if (!drm_dev_enter(&xe->drm, &idx))
+		return;
 
 	process_offline_pages(xe, XE_SYSCTRL_CMD_GET_OFFLINE_QUEUE, NULL, 0, &response,
 			      sizeof(response), &response, true);
+
+	drm_dev_exit(idx);
 }
 
 /*
