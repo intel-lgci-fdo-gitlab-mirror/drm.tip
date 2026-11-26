@@ -19,6 +19,7 @@ bool intel_ddi_mgr_is_pool_ddi(struct intel_display *display, enum port ddi);
 bool intel_ddi_mgr_pool_supports_hdmi(struct intel_display *display);
 bool intel_ddi_mgr_is_legacy_pool_encoder(struct intel_encoder *encoder);
 bool intel_ddi_mgr_encoder_has_lane_reversal(struct intel_encoder *encoder);
+bool intel_ddi_mgr_aux_available(struct intel_encoder *encoder);
 bool intel_ddi_mgr_connector_available(struct intel_connector *connector);
 u8 intel_ddi_mgr_ddc_pin_for_ddi(struct intel_display *display, enum port ddi);
 const struct intel_bios_encoder_data *
