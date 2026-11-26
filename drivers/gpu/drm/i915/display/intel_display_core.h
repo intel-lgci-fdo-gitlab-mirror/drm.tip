@@ -41,6 +41,7 @@ struct intel_cdclk_vals;
 struct intel_color_funcs;
 struct intel_crtc;
 struct intel_crtc_state;
+struct intel_ddi_mgr;
 struct intel_display_parent_interface;
 struct intel_dmc;
 struct intel_dpll_global_funcs;
@@ -311,6 +312,8 @@ struct intel_wm {
 struct intel_display {
 	/* drm device backpointer */
 	struct drm_device *drm;
+
+	struct intel_ddi_mgr *ddi_mgr;
 
 	/* Platform (and subplatform, if any) identification */
 	struct intel_display_platforms platform;
