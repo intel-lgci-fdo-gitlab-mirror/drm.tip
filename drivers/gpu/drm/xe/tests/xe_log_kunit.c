@@ -146,7 +146,7 @@ static void test_cper_null_xe(struct kunit *test)
 {
 	xe_cper_emit(NULL, CPER_SEV_FATAL, XE_SIGID_PROBE,
 		     XE_LOG_COMPONENT_PROBE, XE_LOG_LOCATION_NONE,
-		     ERR_PTR(-ENODEV), 0, NULL);
+		     ERR_PTR(-ENODEV), 0, NULL, GFP_KERNEL);
 	KUNIT_SUCCEED(test);
 }
 

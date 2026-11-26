@@ -22,7 +22,7 @@ static void log_emit_cper(struct pci_dev *pdev, int cper_sev, enum xe_sigid sigi
 				   component, location, data, len, vaf);
 
 	xe_cper_emit(xe_any_to_xe(pdev), cper_sev, sigid,
-		     component, location, data, len, vaf);
+		     component, location, data, len, vaf, GFP_KERNEL);
 }
 
 static void log_emit_cper_atomic(struct pci_dev *pdev, int cper_sev, enum xe_sigid sigid,
@@ -33,7 +33,7 @@ static void log_emit_cper_atomic(struct pci_dev *pdev, int cper_sev, enum xe_sig
 				   component, location, data, len, vaf);
 
 	xe_cper_emit(xe_any_to_xe(pdev), cper_sev, sigid,
-		     component, location, data, len, vaf);
+		     component, location, data, len, vaf, GFP_ATOMIC | __GFP_NOWARN);
 }
 
 static const char *log_unknown_component_prefix(u32 component)

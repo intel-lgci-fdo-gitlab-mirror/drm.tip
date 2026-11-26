@@ -6,6 +6,7 @@
 #ifndef _XE_CPER_H_
 #define _XE_CPER_H_
 
+#include <linux/gfp_types.h>
 #include <linux/types.h>
 
 #include "abi/xe_sigid_abi.h"
@@ -17,17 +18,18 @@ struct xe_ras_get_counter_response;
 #if IS_ENABLED(CONFIG_UEFI_CPER)
 void xe_cper_emit(struct xe_device *xe, int cper_sev, enum xe_sigid sigid,
 		  u32 component, u32 location, const void *data, size_t len,
-		  struct va_format *vaf);
+		  struct va_format *vaf, gfp_t gfp);
 void xe_cper_emit_counter(struct xe_device *xe, int cper_sev, enum xe_sigid sigid,
-			  const struct xe_ras_get_counter_response *response);
+			  const struct xe_ras_get_counter_response *response, gfp_t gfp);
 int xe_cper_sysfs_init(struct xe_device *xe);
 #else
 static inline void xe_cper_emit(struct xe_device *xe, int cper_sev, enum xe_sigid sigid,
 				u32 component, u32 location, const void *data, size_t len,
-				struct va_format *vaf) {}
+				struct va_format *vaf, gfp_t gfp) {}
 static inline void xe_cper_emit_counter(struct xe_device *xe, int cper_sev,
 					enum xe_sigid sigid,
-					const struct xe_ras_get_counter_response *response) {}
+					const struct xe_ras_get_counter_response *response,
+					gfp_t gfp) {}
 static inline int xe_cper_sysfs_init(struct xe_device *xe) { return 0; }
 #endif
 

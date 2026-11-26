@@ -6,6 +6,7 @@
 #include <linux/bcd.h>
 #include <linux/device.h>
 #include <linux/err.h>
+#include <linux/gfp.h>
 #include <linux/kernel.h>
 #include <linux/minmax.h>
 #include <linux/pci.h>
@@ -179,10 +180,6 @@ static void cper_init_section_desc(struct xe_device *xe, u8 severity,
 		sdesc->validation_bits |= CPER_SEC_VALID_FRU_ID;
 	}
 }
-
-/* TODO: Handle xe_log_* helper function for atomic context */
-/* Software CPER may be emitted from atomic context */
-#define XE_CPER_SW_GFP	(GFP_NOWAIT | __GFP_NOWARN)
 
 static void cper_record_emit(struct xe_device *xe, u8 severity,
 			     const guid_t *notification_type,
@@ -451,11 +448,12 @@ static u32 cper_prepare_info(struct xe_device *xe,
  * @cper_sev: CPER severity
  * @sigid: Error signature identifier
  * @response: Counter response returned by firmware
+ * @gfp: Allocation flags for the CPER records
  *
  * Build and emit CPER records from @response, including any info queue data.
  */
 void xe_cper_emit_counter(struct xe_device *xe, int cper_sev, enum xe_sigid sigid,
-			  const struct xe_ras_get_counter_response *response)
+			  const struct xe_ras_get_counter_response *response, gfp_t gfp)
 {
 	struct xe_cper_info_entry *info_arr = NULL, *entries;
 	struct xe_cper_info_entry single = {};
@@ -485,14 +483,14 @@ void xe_cper_emit_counter(struct xe_device *xe, int cper_sev, enum xe_sigid sigi
 				    entries[i].einfo_size, &ihdr);
 
 		cper_record_emit(xe, cper_sev, &INTEL_CPER_NOTIFY_GPU_ERROR, &ihdr,
-				 entries[i].einfo, entries[i].einfo_size, GFP_KERNEL);
+				 entries[i].einfo, entries[i].einfo_size, gfp);
 	}
 
 	free_info_arr(info_arr, num_entries);
 }
 
 static void cper_emit_hw_err(struct xe_device *xe, int cper_sev, enum xe_sigid sigid,
-			     const struct xe_ras_error_class *counter)
+			     const struct xe_ras_error_class *counter, gfp_t gfp)
 {
 	struct xe_ras_get_counter_response response = {};
 
@@ -505,12 +503,12 @@ static void cper_emit_hw_err(struct xe_device *xe, int cper_sev, enum xe_sigid s
 		return;
 	}
 
-	xe_cper_emit_counter(xe, cper_sev, sigid, &response);
+	xe_cper_emit_counter(xe, cper_sev, sigid, &response, gfp);
 }
 
 static void cper_emit_sw_err(struct xe_device *xe, int cper_sev, enum xe_sigid sigid,
 			     u32 component, u32 location, const void *data,
-			     struct va_format *vaf)
+			     struct va_format *vaf, gfp_t gfp)
 {
 	union xe_cper_error_class error_class = {};
 	struct xe_cper_intel_hdr ihdr = {};
@@ -519,7 +517,7 @@ static void cper_emit_sw_err(struct xe_device *xe, int cper_sev, enum xe_sigid s
 	char *msg;
 	size_t msg_len;
 
-	msg = kvasprintf(XE_CPER_SW_GFP, vaf->fmt, *vaf->va);
+	msg = kvasprintf(gfp, vaf->fmt, *vaf->va);
 	if (!msg)
 		xe_warn_ratelimited(xe, "CPER: message dropped\n");
 
@@ -533,8 +531,7 @@ static void cper_emit_sw_err(struct xe_device *xe, int cper_sev, enum xe_sigid s
 	timestamp = ktime_get_real_ns();
 
 	cper_init_intel_hdr(xe, &error_class, timestamp, sigid, 1, msg_len, &ihdr);
-	cper_record_emit(xe, cper_sev, &INTEL_CPER_NOTIFY_DRV_ERROR, &ihdr, msg, msg_len,
-			 XE_CPER_SW_GFP);
+	cper_record_emit(xe, cper_sev, &INTEL_CPER_NOTIFY_DRV_ERROR, &ihdr, msg, msg_len, gfp);
 	kfree(msg);
 }
 
@@ -548,6 +545,7 @@ static void cper_emit_sw_err(struct xe_device *xe, int cper_sev, enum xe_sigid s
  * @data: Pointer to the additional details, or ERR_PTR, or NULL if not applicable
  * @len: Length of the @data in bytes, or 0 if not applicable
  * @vaf: Formatted log message
+ * @gfp: Allocation flags for the CPER record
  *
  * Emit a CPER record for a SIGID log entry
  *
@@ -564,21 +562,25 @@ static void cper_emit_sw_err(struct xe_device *xe, int cper_sev, enum xe_sigid s
  */
 void xe_cper_emit(struct xe_device *xe, int cper_sev, enum xe_sigid sigid,
 		  u32 component, u32 location, const void *data, size_t len,
-		  struct va_format *vaf)
+		  struct va_format *vaf, gfp_t gfp)
 {
 	/* TODO: Handle using pdev instead of xe. */
 	if (!xe)
 		return;
 
 	if (is_hw_sigid(sigid) && !IS_ERR_OR_NULL(data)) {
-		cper_emit_hw_err(xe, cper_sev, sigid, data);
+		/* HW records drain the sysctrl info queue, which sleeps */
+		if (WARN_ON_ONCE(!gfpflags_allow_blocking(gfp)))
+			return;
+
+		cper_emit_hw_err(xe, cper_sev, sigid, data, gfp);
 		return;
 	}
 
 	if (xe->info.has_driver_cper) {
 		if (is_sw_sigid(sigid) &&
 		    (cper_sev == CPER_SEV_RECOVERABLE || cper_sev == CPER_SEV_FATAL))
-			cper_emit_sw_err(xe, cper_sev, sigid, component, location, data, vaf);
+			cper_emit_sw_err(xe, cper_sev, sigid, component, location, data, vaf, gfp);
 		return;
 	}
 }
