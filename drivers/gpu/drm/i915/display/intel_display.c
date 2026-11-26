@@ -68,6 +68,7 @@
 #include "intel_cursor_regs.h"
 #include "intel_cx0_phy.h"
 #include "intel_ddi.h"
+#include "intel_ddi_mgr.h"
 #include "intel_de.h"
 #include "intel_dip.h"
 #include "intel_display_driver.h"
@@ -6812,7 +6813,16 @@ int intel_atomic_check(struct drm_device *dev,
 
 static int intel_atomic_prepare_commit(struct intel_atomic_state *state)
 {
-	int ret;
+	struct drm_connector *connector;
+	struct drm_connector_state *conn_state;
+	int i, ret;
+
+	/* Runtime resume may have invalidated a DDI after atomic check. */
+	for_each_new_connector_in_state(&state->base, connector, conn_state, i) {
+		if (conn_state->crtc &&
+		    !intel_ddi_mgr_connector_available(to_intel_connector(connector)))
+			return -ENODEV;
+	}
 
 	ret = drm_atomic_helper_prepare_planes(state->base.dev, &state->base);
 	if (ret < 0)

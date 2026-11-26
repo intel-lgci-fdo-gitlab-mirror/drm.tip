@@ -10,6 +10,7 @@
 #include "intel_atomic.h"
 #include "intel_cx0_phy_regs.h"
 #include "intel_ddi.h"
+#include "intel_ddi_mgr.h"
 #include "intel_de.h"
 #include "intel_display.h"
 #include "intel_display_driver.h"
@@ -1173,6 +1174,17 @@ static void xelpdp_tc_phy_get_hw_state(struct intel_tc_port *tc)
 
 	tc_cold_wref = __tc_cold_block(tc, &domain);
 
+	if (intel_ddi_mgr_is_ddi_disabled(display, tc->dig_port->base.port)) {
+		tc->mode = TC_PORT_DISCONNECTED;
+		drm_dbg_kms(display->drm,
+			    "Port %s: skipping PHY readout, legacy DDI allocation unavailable\n",
+			    tc->port_name);
+
+		__tc_cold_unblock(tc, domain, tc_cold_wref);
+
+		return;
+	}
+
 	tc->mode = tc_phy_get_current_mode(tc);
 	if (tc->mode != TC_PORT_DISCONNECTED) {
 		tc->lock_wakeref = tc_cold_block(tc);
@@ -1195,6 +1207,8 @@ static void xelpdp_tc_phy_get_hw_state(struct intel_tc_port *tc)
 
 static bool xelpdp_tc_phy_connect(struct intel_tc_port *tc, int required_lanes)
 {
+	struct intel_display *display = to_intel_display(tc->dig_port);
+
 	tc->lock_wakeref = tc_cold_block(tc);
 
 	if (tc->mode == TC_PORT_TBT_ALT) {
@@ -1202,6 +1216,10 @@ static bool xelpdp_tc_phy_connect(struct intel_tc_port *tc, int required_lanes)
 
 		return true;
 	}
+
+	/* AUX transfers and modesets reject DDIs without their legacy allocation. */
+	if (intel_ddi_mgr_is_ddi_disabled(display, tc->dig_port->base.port))
+		return true;
 
 	if (!xelpdp_tc_phy_enable_tcss_power(tc, true))
 		goto out_unblock_tccold;
@@ -1227,6 +1245,14 @@ out_unblock_tccold:
 
 static void xelpdp_tc_phy_disconnect(struct intel_tc_port *tc)
 {
+	struct intel_display *display = to_intel_display(tc->dig_port);
+
+	if (intel_ddi_mgr_is_ddi_disabled(display, tc->dig_port->base.port)) {
+		tc_cold_unblock(tc, fetch_and_zero(&tc->lock_wakeref));
+
+		return;
+	}
+
 	switch (tc->mode) {
 	case TC_PORT_LEGACY:
 	case TC_PORT_DP_ALT:
@@ -1733,6 +1759,9 @@ bool intel_tc_port_connected(struct intel_encoder *encoder)
 
 	drm_WARN_ON(display->drm, !intel_tc_port_ref_held(dig_port));
 
+	if (intel_ddi_mgr_is_ddi_disabled(display, encoder->port))
+		return false;
+
 	if (tc->mode != TC_PORT_DISCONNECTED)
 		mask = BIT(tc->mode);
 
@@ -1880,7 +1909,9 @@ static void __intel_tc_port_lock(struct intel_tc_port *tc,
 					  false);
 
 	drm_WARN_ON(display->drm, tc->mode == TC_PORT_DISCONNECTED);
-	drm_WARN_ON(display->drm, tc->mode != TC_PORT_TBT_ALT && !tc_phy_is_owned(tc));
+	drm_WARN_ON(display->drm,
+		    !intel_ddi_mgr_is_ddi_disabled(display, tc->dig_port->base.port) &&
+		    tc->mode != TC_PORT_TBT_ALT && !tc_phy_is_owned(tc));
 }
 
 void intel_tc_port_lock(struct intel_digital_port *dig_port)
