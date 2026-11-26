@@ -484,6 +484,7 @@ int intel_display_driver_probe_nogem(struct intel_display *display)
 
 	intel_pps_setup(display);
 
+	intel_ddi_mgr_init(display);
 	intel_gmbus_setup(display);
 
 	ret = intel_crtc_init(display);
