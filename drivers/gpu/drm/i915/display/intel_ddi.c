@@ -48,6 +48,7 @@
 #include "intel_cx0_phy_regs.h"
 #include "intel_ddi.h"
 #include "intel_ddi_buf_trans.h"
+#include "intel_ddi_mgr.h"
 #include "intel_de.h"
 #include "intel_dip.h"
 #include "intel_display_power.h"
@@ -5298,6 +5299,12 @@ void intel_ddi_init(struct intel_display *display,
 		intel_bios_encoder_supports_hdmi(devdata);
 	init_dp = intel_bios_encoder_supports_dp(devdata);
 
+	if (intel_ddi_mgr_is_pool_ddi(display, port)) {
+		init_dp = true;
+		init_hdmi = intel_ddi_mgr_pool_supports_hdmi(display);
+		devdata = intel_ddi_mgr_get_devdata_for_ddi(display, port);
+	}
+
 	if (intel_bios_encoder_is_lspcon(devdata)) {
 		/*
 		 * Lspcon device needs to be driven with DP connector
@@ -5480,8 +5487,11 @@ void intel_ddi_init(struct intel_display *display,
 
 	ddi_buf_ctl = intel_de_read(display, DDI_BUF_CTL(port));
 
-	dig_port->lane_reversal = intel_bios_encoder_lane_reversal(devdata) ||
-		ddi_buf_ctl & DDI_BUF_PORT_REVERSAL;
+	if (intel_ddi_mgr_is_pool_ddi(display, port))
+		dig_port->lane_reversal = intel_ddi_mgr_encoder_has_lane_reversal(encoder);
+	else
+		dig_port->lane_reversal = intel_bios_encoder_lane_reversal(devdata) ||
+			ddi_buf_ctl & DDI_BUF_PORT_REVERSAL;
 
 	dig_port->ddi_a_4_lanes = DISPLAY_VER(display) < 11 && ddi_buf_ctl & DDI_A_4_LANES;
 
@@ -5509,7 +5519,9 @@ void intel_ddi_init(struct intel_display *display,
 			!intel_bios_encoder_supports_typec_usb(devdata) &&
 			!intel_bios_encoder_supports_tbt(devdata);
 
-		if (!is_legacy && init_hdmi) {
+		if (intel_ddi_mgr_is_pool_ddi(display, port)) {
+			is_legacy = intel_ddi_mgr_is_legacy_pool_encoder(encoder);
+		} else if (!is_legacy && init_hdmi) {
 			is_legacy = !init_dp;
 
 			drm_dbg_kms(display->drm,
