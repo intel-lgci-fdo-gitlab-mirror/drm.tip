@@ -347,7 +347,7 @@ static int handle_page_offline(struct xe_device *xe, u64 page_address, bool noti
 		break;
 	case -EIO:
 		xe_err(xe, "[RAS]: Page address 0x%llx belongs to critical BO\n", page_address);
-		return ret;
+		break;
 	case -EEXIST:
 		xe_dbg(xe, "[RAS]: Repeated error on already soft-offlined page address 0x%llx\n",
 		       page_address);
@@ -355,15 +355,24 @@ static int handle_page_offline(struct xe_device *xe, u64 page_address, bool noti
 			action = XE_RAS_PAGE_ACTION_REMOVE;
 		else
 			action = XE_RAS_PAGE_ACTION_OFFLINE;
-		break;
+		goto notify;
 	case -ENOMEM:
+		break;
 	default:
 		xe_err(xe, "[RAS]: Failed to offline page address 0x%llx: %d\n", page_address, ret);
-		/* Only allocation failure is propagated, other errors are not actionable */
-		return ret == -ENOMEM ? ret : 0;
+		return 0;
 	}
 
- notify:
+	/*
+	 * Wedge the device with a bus reset for critical BO's and memory unavailability.
+	 * TODO: Trigger SBR using pci_reset_bus
+	 */
+	if (ret) {
+		xe_wedge_declare(xe, DRM_WEDGE_RECOVERY_BUS_RESET);
+		return ret;
+	}
+
+notify:
 	if (notify_fw) {
 		ret = send_page_offline_cmd(xe, page_address, action);
 		if (ret)
@@ -673,14 +682,8 @@ static u8 handle_device_memory_errors(struct xe_device *xe, struct xe_ras_error_
 			    DEVICE_MEMORY, &arr->counter, sizeof(arr->counter),
 			    "Double-bit ECC error detected at sw address 0x%llx\n",
 			    info->sw_address);
-		/*
-		 * Wedge the device with a bus reset for errors that require SBR to recover.
-		 * TODO: Trigger SBR using pci_reset_bus
-		 */
-		if (ret) {
-			xe_wedge_declare(xe, DRM_WEDGE_RECOVERY_BUS_RESET);
+		if (ret)
 			return XE_RAS_RECOVERY_ACTION_RESET;
-		}
 		break;
 	default:
 		xe_log_comp(xe, cper_sev, DEVICE_MEMORY, &arr->counter, sizeof(arr->counter),
