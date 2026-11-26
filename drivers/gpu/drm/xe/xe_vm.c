@@ -1644,6 +1644,33 @@ static const struct xe_pt_ops xelp_pt_ops = {
 
 static void vm_destroy_work_func(struct work_struct *w);
 
+static void vm_put_work_func(struct work_struct *w)
+{
+	struct xe_vm *vm = container_of(w, struct xe_vm, put_work);
+
+	xe_vm_put(vm);
+}
+
+/**
+ * xe_vm_put_async() - Put a VM reference, deferring the final put
+ * @vm: The VM.
+ *
+ * The final VM put may drop the last device reference and run device
+ * teardown. Defer it to xe_destroy_wq, which device teardown doesn't wait
+ * for, for callers that teardown does wait for, like the async BO free and
+ * TTM delayed delete workers.
+ */
+void xe_vm_put_async(struct xe_vm *vm)
+{
+	/*
+	 * kref has no put-unless-last helper. Only the holder of the last
+	 * reference queues put_work, so it can't already be pending. @vm may
+	 * be freed once queued, so only the return value is checked.
+	 */
+	if (!refcount_dec_not_one(&vm->gpuvm.kref.refcount))
+		WARN_ON(!xe_destroy_wq_queue(&vm->put_work));
+}
+
 /**
  * xe_vm_create_scratch() - Setup a scratch memory pagetable tree for the
  * given tile and vm.
@@ -1785,6 +1812,7 @@ struct xe_vm *xe_vm_create(struct xe_device *xe, u32 flags, struct xe_file *xef)
 	ttm_lru_bulk_move_init(&vm->lru_bulk_move);
 
 	INIT_WORK(&vm->destroy_work, vm_destroy_work_func);
+	INIT_WORK(&vm->put_work, vm_put_work_func);
 
 	INIT_LIST_HEAD(&vm->preempt.exec_queues);
 	for (id = 0; id < XE_MAX_TILES_PER_DEVICE * XE_MAX_GT_PER_TILE; ++id)

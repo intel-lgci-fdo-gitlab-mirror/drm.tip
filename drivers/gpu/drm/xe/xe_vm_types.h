@@ -313,6 +313,9 @@ struct xe_vm {
 	 */
 	struct work_struct destroy_work;
 
+	/** @put_work: worker for the final VM put, see xe_vm_put_async() */
+	struct work_struct put_work;
+
 	/**
 	 * @rftree: range fence tree to track updates to page table structure.
 	 * Used to implement conflict tracking between independent bind engines.

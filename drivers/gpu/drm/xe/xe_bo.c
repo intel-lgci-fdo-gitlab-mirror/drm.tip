@@ -2009,6 +2009,8 @@ static void xe_ttm_bo_destroy(struct ttm_buffer_object *ttm_bo)
 {
 	struct xe_bo *bo = ttm_to_xe_bo(ttm_bo);
 	struct xe_device *xe = ttm_to_xe_device(ttm_bo->bdev);
+	struct xe_bo *parent = bo->parent_obj;
+	struct xe_vm *vm = NULL;
 	struct xe_tile *tile;
 	u8 id;
 
@@ -2030,10 +2032,7 @@ static void xe_ttm_bo_destroy(struct ttm_buffer_object *ttm_bo)
 #endif
 
 	if (bo->vm && (xe_bo_is_user(bo) || bo->flags & XE_BO_FLAG_PAGETABLE))
-		xe_vm_put(bo->vm);
-
-	if (bo->parent_obj)
-		xe_bo_put(bo->parent_obj);
+		vm = bo->vm;
 
 	mutex_lock(&xe->mem_access.vram_userfault.lock);
 	if (!list_empty(&bo->vram_userfault_link))
@@ -2041,6 +2040,15 @@ static void xe_ttm_bo_destroy(struct ttm_buffer_object *ttm_bo)
 	mutex_unlock(&xe->mem_access.vram_userfault.lock);
 
 	kfree(bo);
+
+	/*
+	 * Once a reference is dropped, another context may drop the last
+	 * device reference, so nothing may use @xe after these puts.
+	 */
+	if (parent)
+		xe_bo_put(parent);
+	if (vm)
+		xe_vm_put_async(vm);
 }
 
 static void xe_gem_object_free(struct drm_gem_object *obj)

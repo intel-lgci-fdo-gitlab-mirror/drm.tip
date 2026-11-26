@@ -52,6 +52,8 @@ static inline void xe_vm_put(struct xe_vm *vm)
 	drm_gpuvm_put(&vm->gpuvm);
 }
 
+void xe_vm_put_async(struct xe_vm *vm);
+
 int xe_vm_lock(struct xe_vm *vm, bool intr);
 
 void xe_vm_unlock(struct xe_vm *vm);
