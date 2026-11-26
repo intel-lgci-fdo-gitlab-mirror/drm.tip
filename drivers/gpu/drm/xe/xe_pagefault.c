@@ -369,7 +369,7 @@ xe_pagefault_queue_add(struct xe_pagefault_queue *pf_queue,
 	do {
 		/* Not possible, warn on and drop page fault */
 		if (WARN_ON_ONCE(xe_pagefault_queue_full(pf_queue))) {
-			xe_log_err(xe, PAGEFAULT, -ENOSPC, "Queue full!\n");
+			xe_log_err_atomic(xe, PAGEFAULT, -ENOSPC, "Queue full!\n");
 			return NULL;
 		}
 
