@@ -290,13 +290,13 @@ static int __intel_get_crtc_scanline(struct intel_crtc *crtc)
 static void intel_vblank_section_enter(struct intel_display *display)
 	__acquires(display->mmio.lock)
 {
-	spin_lock(&display->mmio.lock);
+	raw_spin_lock(&display->mmio.lock);
 }
 
 static void intel_vblank_section_exit(struct intel_display *display)
 	__releases(display->mmio.lock)
 {
-	spin_unlock(&display->mmio.lock);
+	raw_spin_unlock(&display->mmio.lock);
 }
 #else
 static void intel_vblank_section_enter(struct intel_display *display)
@@ -528,8 +528,8 @@ void intel_crtc_update_active_timings(const struct intel_crtc_state *crtc_state,
 	struct intel_crtc *crtc = to_intel_crtc(crtc_state->uapi.crtc);
 	u8 mode_flags = crtc_state->mode_flags;
 	struct drm_display_mode adjusted_mode;
+	unsigned long irqflags, irqflags2;
 	int vmax_vblank_start = 0;
-	unsigned long irqflags;
 
 	intel_crtc_active_timings(&adjusted_mode, &vmax_vblank_start,
 				  crtc_state, vrr_enable);
@@ -552,6 +552,7 @@ void intel_crtc_update_active_timings(const struct intel_crtc_state *crtc_state,
 	 * Need to audit everything to make sure it's safe.
 	 */
 	spin_lock_irqsave(&display->drm->vblank_time_lock, irqflags);
+	local_irq_save(irqflags2);
 	intel_vblank_section_enter(display);
 
 	drm_calc_timestamping_constants(&crtc->base, &adjusted_mode);
@@ -562,6 +563,7 @@ void intel_crtc_update_active_timings(const struct intel_crtc_state *crtc_state,
 
 	crtc->scanline_offset = intel_crtc_scanline_offset(crtc_state);
 	intel_vblank_section_exit(display);
+	local_irq_restore(irqflags2);
 	spin_unlock_irqrestore(&display->drm->vblank_time_lock, irqflags);
 }
 

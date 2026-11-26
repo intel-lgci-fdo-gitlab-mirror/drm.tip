@@ -1889,9 +1889,9 @@ static void vlv_atomic_update_fifo(struct intel_atomic_state *state,
 	 * parallel updates from multiple pipes.
 	 *
 	 * intel_pipe_update_start() has already disabled interrupts
-	 * for us, so a plain spin_lock() is sufficient here.
+	 * for us, so a plain raw_spin_lock() is sufficient here.
 	 */
-	spin_lock(&display->mmio.lock);
+	raw_spin_lock(&display->mmio.lock);
 
 	switch (crtc->pipe) {
 	case PIPE_A:
@@ -1951,7 +1951,7 @@ static void vlv_atomic_update_fifo(struct intel_atomic_state *state,
 
 	intel_de_read_fw(display, DSPARB(display));
 
-	spin_unlock(&display->mmio.lock);
+	raw_spin_unlock(&display->mmio.lock);
 }
 
 #undef VLV_FIFO
