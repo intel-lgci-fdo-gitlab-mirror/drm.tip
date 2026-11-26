@@ -71,6 +71,11 @@ static enum tc_port ddi_to_tc(int ddi)
 	return TC_PORT_1 + ddi;
 }
 
+static enum port tc_to_port(enum tc_port tc_port)
+{
+	return PORT_TC1 + tc_port - TC_PORT_1;
+}
+
 static enum hpd_pin tc_to_hpd_pin(enum tc_port tc_port)
 {
 	return HPD_PORT_TC1 + tc_port - TC_PORT_1;
@@ -118,6 +123,72 @@ u8 intel_ddi_mgr_ddc_pin_for_ddi(struct intel_display *display, enum port ddi)
 		return 0;
 
 	return mgr->ddc_pin[route->phy];
+}
+
+bool intel_ddi_mgr_is_legacy_pool_encoder(struct intel_encoder *encoder)
+{
+	struct intel_display *display = to_intel_display(encoder);
+
+	return intel_ddi_mgr_is_enabled(display->ddi_mgr) &&
+		intel_ddi_mgr_is_pool_ddi(display, encoder->port) &&
+		display->ddi_mgr->route[encoder->port - PORT_TC1].mode == INTEL_DDI_ROUTE_LEGACY;
+}
+
+bool intel_ddi_mgr_encoder_has_lane_reversal(struct intel_encoder *encoder)
+{
+	struct intel_display *display = to_intel_display(encoder);
+
+	if (!intel_ddi_mgr_is_legacy_pool_encoder(encoder))
+		return false;
+
+	return intel_bios_encoder_lane_reversal(encoder->devdata) ||
+		intel_de_read(display, DDI_BUF_CTL(encoder->port)) & DDI_BUF_PORT_REVERSAL;
+}
+
+const struct intel_bios_encoder_data *
+intel_ddi_mgr_get_devdata_for_ddi(struct intel_display *display, enum port ddi)
+{
+	struct intel_ddi_mgr *mgr = display->ddi_mgr;
+	enum port port = ddi;
+
+	if (intel_ddi_mgr_is_enabled(mgr) && intel_ddi_mgr_is_pool_ddi(display, ddi)) {
+		const struct intel_ddi_route *route = &mgr->route[ddi - PORT_TC1];
+
+		if (route->mode == INTEL_DDI_ROUTE_LEGACY)
+			port = tc_to_port(route->phy);
+	}
+
+	return intel_bios_encoder_data_lookup(display, port);
+}
+
+static struct intel_digital_port *connector_dig_port(struct intel_connector *connector)
+{
+	if (intel_attached_encoder(connector))
+		return intel_attached_dig_port(connector);
+
+	if (connector->mst.dp)
+		return dp_to_dig_port(connector->mst.dp);
+
+	return NULL;
+}
+
+bool intel_ddi_mgr_connector_available(struct intel_connector *connector)
+{
+	struct intel_digital_port *dig_port = connector_dig_port(connector);
+	struct intel_display *display = to_intel_display(connector);
+	struct intel_encoder *encoder;
+
+	if (!dig_port || !intel_ddi_mgr_is_pool_ddi(display, dig_port->base.port))
+		return true;
+
+	encoder = &dig_port->base;
+	if (connector->base.connector_type == DRM_MODE_CONNECTOR_HDMIA)
+		return intel_ddi_mgr_is_legacy_pool_encoder(encoder) &&
+			(intel_bios_encoder_supports_hdmi(encoder->devdata) ||
+			 intel_bios_encoder_supports_dvi(encoder->devdata));
+
+	return !intel_ddi_mgr_is_legacy_pool_encoder(encoder) ||
+		intel_bios_encoder_supports_dp(encoder->devdata);
 }
 
 static const char *iom_lock_owner(u32 semaphore)

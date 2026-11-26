@@ -37,6 +37,7 @@
 
 #include "intel_atomic.h"
 #include "intel_cdclk.h"
+#include "intel_ddi_mgr.h"
 #include "intel_display_core.h"
 #include "intel_display_types.h"
 #include "intel_dp_tunnel.h"
@@ -128,6 +129,9 @@ int intel_digital_connector_atomic_check(struct drm_connector *conn,
 
 	if (!new_state->crtc)
 		return 0;
+
+	if (!intel_ddi_mgr_connector_available(to_intel_connector(conn)))
+		return -ENODEV;
 
 	crtc_state = drm_atomic_get_new_crtc_state(state, new_state->crtc);
 
