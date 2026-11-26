@@ -702,6 +702,15 @@ static bool intel_dp_set_common_link_params(struct intel_dp *intel_dp)
 	return params_changed;
 }
 
+/* Rebuild source limits after selecting a different physical port's VBT data. */
+void intel_dp_update_source_caps(struct intel_dp *intel_dp)
+{
+	intel_dp_set_source_rates(intel_dp);
+	intel_dp->reset_link_params = true;
+	intel_dp_set_common_link_params(intel_dp);
+	intel_dp_reset_link_params(intel_dp);
+}
+
 u32 intel_dp_mode_to_fec_clock(u32 mode_clock)
 {
 	return div_u64(mul_u32_u32(mode_clock, DP_DSC_FEC_OVERHEAD_FACTOR),

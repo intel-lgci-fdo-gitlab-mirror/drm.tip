@@ -96,6 +96,7 @@ void intel_tc_port_set_fia_lane_count(struct intel_digital_port *dig_port,
 				      int required_lanes);
 
 void intel_tc_port_init_mode(struct intel_digital_port *dig_port);
+void intel_tc_port_set_legacy(struct intel_digital_port *dig_port, bool legacy);
 void intel_tc_port_sanitize_mode(struct intel_digital_port *dig_port,
 				 const struct intel_crtc_state *crtc_state);
 void intel_tc_port_lock(struct intel_digital_port *dig_port);

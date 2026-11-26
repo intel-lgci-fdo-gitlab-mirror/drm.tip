@@ -301,6 +301,12 @@ void xe_display_pm_resume(struct xe_device *xe, bool suspend_failed)
 
 	intel_dmc_resume(display);
 
+	/*
+	 * TODO: Move this to display code, keeping it before
+	 * drm_mode_config_reset().
+	 */
+	intel_ddi_mgr_resume(display, suspend_failed);
+
 	if (intel_display_device_present(display))
 		drm_mode_config_reset(&xe->drm);
 

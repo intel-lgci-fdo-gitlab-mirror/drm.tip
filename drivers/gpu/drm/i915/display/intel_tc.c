@@ -1595,6 +1595,19 @@ static bool tc_port_is_enabled(struct intel_tc_port *tc)
 	       DDI_BUF_CTL_ENABLE;
 }
 
+void intel_tc_port_set_legacy(struct intel_digital_port *dig_port, bool legacy)
+{
+	struct intel_display *display = to_intel_display(dig_port);
+	struct intel_tc_port *tc = to_tc_port(dig_port);
+
+	mutex_lock(&tc->lock);
+
+	drm_WARN_ON(display->drm, tc->mode != TC_PORT_DISCONNECTED || tc->link_refcount);
+	tc->legacy_port = legacy;
+
+	mutex_unlock(&tc->lock);
+}
+
 /**
  * intel_tc_port_init_mode: Read out HW state and init the given port's TypeC mode
  * @dig_port: digital port
