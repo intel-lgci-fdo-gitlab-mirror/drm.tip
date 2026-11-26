@@ -329,6 +329,7 @@ xe-$(CONFIG_DRM_XE_DISPLAY) += \
 	i915-display/intel_parent.o \
 	i915-display/intel_pch.o \
 	i915-display/intel_pfit.o \
+	i915-display/intel_pipelock.o \
 	i915-display/intel_plane.o \
 	i915-display/intel_pmdemand.o \
 	i915-display/intel_pps.o \

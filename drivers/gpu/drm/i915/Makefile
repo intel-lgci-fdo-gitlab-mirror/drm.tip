@@ -305,6 +305,7 @@ i915-y += \
 	display/intel_pch.o \
 	display/intel_pch_display.o \
 	display/intel_pch_refclk.o \
+	display/intel_pipelock.o \
 	display/intel_plane.o \
 	display/intel_pmdemand.o \
 	display/intel_psr.o \
