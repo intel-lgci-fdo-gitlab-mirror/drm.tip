@@ -1132,7 +1132,7 @@ err_unregister_vsec:
 	xe_vsec_remove(xe);
 err_unregister_display:
 	xe_display_unregister(xe);
-	drm_dev_unregister(&xe->drm);
+	drm_dev_unplug(&xe->drm);
 
 	return err;
 }
