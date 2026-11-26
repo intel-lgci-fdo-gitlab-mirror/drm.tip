@@ -8,6 +8,7 @@
 #include <drm/display/drm_dp_helper.h>
 #include <drm/drm_print.h>
 
+#include "intel_display.h"
 #include "intel_display_core.h"
 #include "intel_display_types.h"
 #include "intel_dp.h"
@@ -92,14 +93,38 @@ bool intel_pipelock_compatible(const struct intel_crtc_state *crtc_state1,
 		crtc_state1->vrr.vmin == crtc_state2->vrr.vmin &&
 		crtc_state1->vrr.vmax == crtc_state2->vrr.vmax &&
 		crtc_state1->vrr.flipline == crtc_state2->vrr.flipline &&
-		crtc_state1->vrr.guardband == crtc_state2->vrr.guardband &&
 		crtc_state1->infoframes.enable == crtc_state2->infoframes.enable &&
 		intel_dpll_compare_hw_state(display, &crtc_state1->dpll_hw_state,
 					    &crtc_state2->dpll_hw_state);
 }
 
-void intel_pipelock_compute_config(struct intel_crtc_state *crtc_state)
+static int pipelock_group_guardband(struct intel_atomic_state *state, u16 transcoders)
 {
+	const struct intel_crtc_state *crtc_state;
+	struct intel_crtc *crtc;
+	int guardband = 0;
+
+	for_each_new_intel_crtc_in_state(state, crtc, crtc_state) {
+		if (transcoders & BIT(crtc_state->cpu_transcoder))
+			guardband = max_t(int, guardband, crtc_state->vrr.guardband);
+	}
+
+	return guardband;
+}
+
+void intel_pipelock_compute_config(struct intel_atomic_state *state,
+				   struct intel_crtc_state *crtc_state,
+				   u16 transcoders)
+{
+	int guardband;
+
+	if (!transcoders)
+		return;
+
+	guardband = pipelock_group_guardband(state, transcoders);
+	if (guardband != crtc_state->vrr.guardband)
+		intel_vrr_guardband_val(crtc_state, guardband);
+
 	if (crtc_state->sync_primary_transcoder == INVALID_TRANSCODER)
 		return;
 

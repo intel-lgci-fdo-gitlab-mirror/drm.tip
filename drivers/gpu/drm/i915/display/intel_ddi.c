@@ -4716,13 +4716,6 @@ static int intel_ddi_compute_config_late(struct intel_atomic_state *state,
 	struct intel_display *display = to_intel_display(encoder);
 	struct drm_connector *connector = conn_state->connector;
 	u16 port_sync_transcoders = 0;
-	int ret = 0;
-
-	if (intel_crtc_has_dp_encoder(crtc_state))
-		ret = intel_dp_compute_config_late(encoder, crtc_state, conn_state);
-
-	if (ret)
-		return ret;
 
 	drm_dbg_kms(display->drm, "[ENCODER:%d:%s] [CRTC:%d:%s]\n",
 		    encoder->base.base.id, encoder->base.name,
@@ -4748,7 +4741,10 @@ static int intel_ddi_compute_config_late(struct intel_atomic_state *state,
 	}
 
 	if (HAS_PIPELOCK(display))
-		intel_pipelock_compute_config(crtc_state);
+		intel_pipelock_compute_config(state, crtc_state, port_sync_transcoders);
+
+	if (intel_crtc_has_dp_encoder(crtc_state))
+		return intel_dp_compute_config_late(encoder, crtc_state, conn_state);
 
 	return 0;
 }
