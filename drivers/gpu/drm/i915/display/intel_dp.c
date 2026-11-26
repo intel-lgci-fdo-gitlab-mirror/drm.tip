@@ -548,8 +548,7 @@ static int vbt_max_link_rate(struct intel_dp *intel_dp)
 	return max_rate;
 }
 
-static void
-intel_dp_set_source_rates(struct intel_dp *intel_dp)
+void intel_dp_set_source_rates(struct intel_dp *intel_dp)
 {
 	/* The values must be in increasing order */
 	static const int bmg_rates[] = {
@@ -579,10 +578,6 @@ intel_dp_set_source_rates(struct intel_dp *intel_dp)
 	struct intel_display *display = to_intel_display(intel_dp);
 	const int *source_rates;
 	int size, max_rate = 0, vbt_max_rate;
-
-	/* This should only be done once */
-	drm_WARN_ON(display->drm,
-		    intel_dp->source_rates || intel_dp->num_source_rates);
 
 	if (DISPLAY_VER(display) >= 14) {
 		if (display->platform.battlemage) {
