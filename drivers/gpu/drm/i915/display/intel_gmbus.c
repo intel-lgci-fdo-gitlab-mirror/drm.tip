@@ -202,6 +202,11 @@ static const struct gmbus_pin *get_gmbus_pin(struct intel_display *display,
 	return &pins[pin];
 }
 
+u8 intel_gmbus_tc_port_to_pin(enum tc_port tc_port)
+{
+	return GMBUS_PIN_9_TC1 + tc_port - TC_PORT_1;
+}
+
 bool intel_gmbus_is_valid_pin(struct intel_display *display, unsigned int pin)
 {
 	return get_gmbus_pin(display, pin);

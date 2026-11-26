@@ -9,6 +9,7 @@
 #include <linux/types.h>
 
 struct i2c_adapter;
+enum tc_port;
 struct intel_connector;
 struct intel_display;
 
@@ -37,6 +38,7 @@ struct intel_display;
 
 int intel_gmbus_setup(struct intel_display *display);
 void intel_gmbus_teardown(struct intel_display *display);
+u8 intel_gmbus_tc_port_to_pin(enum tc_port tc_port);
 bool intel_gmbus_is_valid_pin(struct intel_display *display, unsigned int pin);
 int intel_gmbus_output_aksv(struct i2c_adapter *adapter);
 
