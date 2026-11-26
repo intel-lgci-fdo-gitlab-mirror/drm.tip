@@ -60,7 +60,7 @@
  * The VBT consists of a VBT Header (defined as &struct vbt_header), a BDB
  * Header (&struct bdb_header), and a number of BIOS Data Blocks (BDB) that
  * contain the actual configuration information. The VBT Header, and thus the
- * VBT, begins with "$VBT" signature. The VBT Header contains the offset of the
+ * VBT, begins with "$VBT " signature. The VBT Header contains the offset of the
  * BDB Header. The data blocks are concatenated after the BDB Header. The data
  * blocks have a 1-byte Block ID, 2-byte Block Size, and Block Size bytes of
  * data. (Block 53, the MIPI Sequence Block is an exception.)
@@ -3131,8 +3131,8 @@ static const struct bdb_header *get_bdb_header(const struct vbt_header *vbt)
 	return _vbt + vbt->bdb_offset;
 }
 
-static const char vbt_signature[] = "$VBT";
-static const int vbt_signature_len = 4;
+static const char vbt_signature[] = "$VBT ";
+static const int vbt_signature_len = 5;
 
 /**
  * intel_bios_is_valid_vbt - does the given buffer contain a valid VBT
@@ -3235,7 +3235,7 @@ static struct vbt_header *oprom_get_vbt(struct intel_display *display,
 		return NULL;
 
 	BUILD_BUG_ON(vbt_signature_len != sizeof(vbt_signature) - 1);
-	BUILD_BUG_ON(vbt_signature_len != sizeof(u32));
+	BUILD_BUG_ON(vbt_signature_len != sizeof(u32) + 1);
 
 	offset = intel_rom_find(rom, *(const u32 *)vbt_signature);
 	if (offset < 0)
