@@ -28,6 +28,7 @@
  */
 
 #include <linux/debugfs.h>
+#include <linux/err.h>
 #include <linux/export.h>
 #include <linux/i2c-algo-bit.h>
 #include <linux/i2c.h>
@@ -1013,13 +1014,69 @@ static const struct i2c_lock_operations gmbus_lock_ops = {
 	.unlock_bus =  gmbus_unlock_bus,
 };
 
+static struct intel_gmbus *
+intel_gmbus_create(struct intel_display *display, unsigned int pin)
+{
+	struct pci_dev *pdev = to_pci_dev(display->drm->dev);
+	const struct gmbus_pin *gmbus_pin = get_gmbus_pin(display, pin);
+	struct intel_gmbus *bus;
+	int ret;
+
+	if (!gmbus_pin)
+		return NULL;
+
+	bus = kzalloc_obj(*bus);
+	if (!bus)
+		return ERR_PTR(-ENOMEM);
+
+	bus->adapter.owner = THIS_MODULE;
+	snprintf(bus->adapter.name, sizeof(bus->adapter.name),
+		 "i915 gmbus %s", gmbus_pin->name);
+	bus->adapter.dev.parent = &pdev->dev;
+	bus->display = display;
+	bus->adapter.algo = &gmbus_algorithm;
+	bus->adapter.lock_ops = &gmbus_lock_ops;
+
+	/*
+	 * We wish to retry with bit banging
+	 * after a timed out GMBUS attempt.
+	 */
+	bus->adapter.retries = 1;
+
+	/* By default use a conservative clock rate */
+	bus->reg0 = pin | GMBUS_RATE_100KHZ;
+
+	/* gmbus seems to be broken on i830 */
+	if (display->platform.i830)
+		bus->force_bit = 1;
+
+	intel_gpio_setup(bus, GPIO(display, gmbus_pin->gpio));
+
+	ret = i2c_add_adapter(&bus->adapter);
+	if (ret) {
+		kfree(bus);
+
+		return ERR_PTR(ret);
+	}
+
+	return bus;
+}
+
+static void intel_gmbus_destroy(struct intel_gmbus *bus)
+{
+	if (!bus)
+		return;
+
+	i2c_del_adapter(&bus->adapter);
+	kfree(bus);
+}
+
 /**
  * intel_gmbus_setup - instantiate all Intel i2c GMBuses
  * @display: display device
  */
 int intel_gmbus_setup(struct intel_display *display)
 {
-	struct pci_dev *pdev = to_pci_dev(display->drm->dev);
 	unsigned int pin;
 	int ret;
 
@@ -1036,48 +1093,10 @@ int intel_gmbus_setup(struct intel_display *display)
 	init_waitqueue_head(&display->gmbus.wait_queue);
 
 	for (pin = 0; pin < ARRAY_SIZE(display->gmbus.bus); pin++) {
-		const struct gmbus_pin *gmbus_pin;
-		struct intel_gmbus *bus;
+		struct intel_gmbus *bus = intel_gmbus_create(display, pin);
 
-		gmbus_pin = get_gmbus_pin(display, pin);
-		if (!gmbus_pin)
-			continue;
-
-		bus = kzalloc_obj(*bus);
-		if (!bus) {
-			ret = -ENOMEM;
-			goto err;
-		}
-
-		bus->adapter.owner = THIS_MODULE;
-		snprintf(bus->adapter.name,
-			 sizeof(bus->adapter.name),
-			 "i915 gmbus %s", gmbus_pin->name);
-
-		bus->adapter.dev.parent = &pdev->dev;
-		bus->display = display;
-
-		bus->adapter.algo = &gmbus_algorithm;
-		bus->adapter.lock_ops = &gmbus_lock_ops;
-
-		/*
-		 * We wish to retry with bit banging
-		 * after a timed out GMBUS attempt.
-		 */
-		bus->adapter.retries = 1;
-
-		/* By default use a conservative clock rate */
-		bus->reg0 = pin | GMBUS_RATE_100KHZ;
-
-		/* gmbus seems to be broken on i830 */
-		if (display->platform.i830)
-			bus->force_bit = 1;
-
-		intel_gpio_setup(bus, GPIO(display, gmbus_pin->gpio));
-
-		ret = i2c_add_adapter(&bus->adapter);
-		if (ret) {
-			kfree(bus);
+		if (IS_ERR(bus)) {
+			ret = PTR_ERR(bus);
 			goto err;
 		}
 
@@ -1132,15 +1151,7 @@ void intel_gmbus_teardown(struct intel_display *display)
 	unsigned int pin;
 
 	for (pin = 0; pin < ARRAY_SIZE(display->gmbus.bus); pin++) {
-		struct intel_gmbus *bus;
-
-		bus = display->gmbus.bus[pin];
-		if (!bus)
-			continue;
-
-		i2c_del_adapter(&bus->adapter);
-
-		kfree(bus);
+		intel_gmbus_destroy(display->gmbus.bus[pin]);
 		display->gmbus.bus[pin] = NULL;
 	}
 }
