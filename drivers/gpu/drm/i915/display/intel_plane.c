@@ -266,25 +266,28 @@ unsigned int intel_adjusted_rate(const struct drm_rect *src,
 }
 
 static unsigned int hscale_cdclk(const struct drm_rect *src,
-				 const struct drm_rect *dst,
-				 unsigned int ppc)
+				 const struct drm_rect *dst)
 {
 	unsigned int hscale;
 
 	hscale = drm_rect_calc_hscale(src, dst, 0, INT_MAX);
 	hscale = max(hscale, 0x10000);
 
-	/*
-	 * Double the fractional part due to some 2 PPC granularity issue
-	 *
-	 * FIXME: BSpec calls for doubling only the <0.5 fractional part,
-	 * and rounding it down to a unit fraction. In practice that is
-	 * not sufficient, and we need a more aggressive CDCLK bump in
-	 * many cases. The updated formula was derived empirically.
-	 * This may need to be updated once we have better undestading
-	 * of what's happening in the hardware...
-	 */
-	return (hscale & ~0xffff) + ppc * (hscale & 0xffff);
+	return hscale;
+}
+
+/*
+ * Bspec: 68858
+ *
+ * The horizontal filter works at 2 PPC but still needs a full clock
+ * for a fractional shift of just 1 pixel, so the fractional part of
+ * the horizontal downscale factor costs PPC times more, but at most
+ * one full extra clock.
+ */
+static unsigned int hscale_ppc_cdclk(unsigned int hscale,
+				     unsigned int ppc)
+{
+	return (hscale & ~0xffff) + min(ppc * (hscale & 0xffff), 0x10000);
 }
 
 static unsigned int vscale_cdclk(const struct drm_rect *src,
@@ -303,10 +306,19 @@ unsigned int intel_adjusted_rate_cdclk(const struct drm_rect *src,
 				       unsigned int rate,
 				       unsigned int ppc)
 {
-	unsigned int hscale = hscale_cdclk(src, dst, ppc);
+	unsigned int hscale = hscale_cdclk(src, dst);
 	unsigned int vscale = vscale_cdclk(src, dst);
+	u64 scale;
 
-	return DIV64_U64_ROUND_UP((u64)rate * hscale * vscale, 1ull << 32);
+	/*
+	 * The scaler filters vertically first, so the horizontal
+	 * PPC inefficiency doesn't multiply with the vertical
+	 * downscale factor. .32 fixed point.
+	 */
+	scale = max((u64)hscale_ppc_cdclk(hscale, ppc) << 16,
+		    mul_u32_u32(hscale, vscale));
+
+	return DIV64_U64_ROUND_UP(rate * scale, 1ull << 32);
 }
 
 unsigned int intel_plane_pixel_rate(const struct intel_crtc_state *crtc_state,
