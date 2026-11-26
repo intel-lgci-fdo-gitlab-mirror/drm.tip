@@ -540,7 +540,7 @@ struct intel_display {
 		 * using intel_de_{read,write}(), but not those
 		 * done using intel_de_{read,write}_fw().
 		 */
-		spinlock_t lock;
+		raw_spinlock_t lock;
 
 		struct intel_uncore *uncore;
 		const struct intel_mmio_funcs *funcs;
