@@ -1464,7 +1464,7 @@ int xe_device_suspend(struct xe_device *xe, bool hibernate, bool flr)
 	return 0;
 
 err_display:
-	xe_display_pm_resume(xe);
+	xe_display_pm_resume(xe, true);
 	xe_pxp_pm_resume(xe->pxp);
 	return err;
 }
@@ -1543,7 +1543,7 @@ int xe_device_resume(struct xe_device *xe, bool flr)
 		 * Try to bring up display before bailing from GT resume failure,
 		 * so we don't leave the user clueless with a blank screen.
 		 */
-		xe_display_pm_resume(xe);
+		xe_display_pm_resume(xe, false);
 		if (err)
 			return err;
 
