@@ -213,9 +213,9 @@ void intel_crtc_state_dump(const struct intel_crtc_state *pipe_config,
 	drm_printf(&p, "MST master transcoder: %s\n",
 		   transcoder_name(pipe_config->mst_master_transcoder));
 
-	drm_printf(&p, "port sync: master transcoder: %s, slave transcoder bitmask = 0x%x\n",
-		   transcoder_name(pipe_config->master_transcoder),
-		   pipe_config->sync_mode_slaves_mask);
+	drm_printf(&p, "transcoder sync: primary: %s, secondaries: 0x%x\n",
+		   transcoder_name(pipe_config->sync_primary_transcoder),
+		   pipe_config->sync_secondaries_mask);
 
 	drm_printf(&p, "joiner: %s, pipes: 0x%x\n",
 		   intel_crtc_is_joiner_secondary(pipe_config) ? "secondary" :

@@ -1399,11 +1399,11 @@ struct intel_crtc_state {
 
 	bool sdp_split_enable;
 
-	/* Pointer to master transcoder in case of tiled displays */
-	enum transcoder master_transcoder;
+	/* Primary transcoder this one is synced to, for tiled displays */
+	enum transcoder sync_primary_transcoder;
 
-	/* Bitmask to indicate slaves attached */
-	u16 sync_mode_slaves_mask;
+	/* Bitmask of secondary transcoders synced to this one */
+	u16 sync_secondaries_mask;
 
 	/* Only valid on TGL+ */
 	enum transcoder mst_master_transcoder;

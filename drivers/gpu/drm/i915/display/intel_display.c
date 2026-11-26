@@ -173,23 +173,20 @@ icl_wa_cursorclkgating(struct intel_display *display, enum pipe pipe,
 		     enable ? CURSOR_GATING_DIS : 0);
 }
 
-static bool
-is_trans_port_sync_slave(const struct intel_crtc_state *crtc_state)
+static bool intel_crtc_is_sync_secondary(const struct intel_crtc_state *crtc_state)
 {
-	return crtc_state->master_transcoder != INVALID_TRANSCODER;
+	return crtc_state->sync_primary_transcoder != INVALID_TRANSCODER;
 }
 
-bool
-is_trans_port_sync_master(const struct intel_crtc_state *crtc_state)
+bool intel_crtc_is_sync_primary(const struct intel_crtc_state *crtc_state)
 {
-	return crtc_state->sync_mode_slaves_mask != 0;
+	return crtc_state->sync_secondaries_mask != 0;
 }
 
-bool
-is_trans_port_sync_mode(const struct intel_crtc_state *crtc_state)
+bool intel_crtc_in_sync_group(const struct intel_crtc_state *crtc_state)
 {
-	return is_trans_port_sync_master(crtc_state) ||
-		is_trans_port_sync_slave(crtc_state);
+	return intel_crtc_is_sync_primary(crtc_state) ||
+		intel_crtc_is_sync_secondary(crtc_state);
 }
 
 /*
@@ -5618,8 +5615,8 @@ intel_pipe_config_compare(const struct intel_crtc_state *current_config,
 	}
 	PIPE_CONF_CHECK_DP_VSC_SDP(vsc);
 
-	PIPE_CONF_CHECK_X(sync_mode_slaves_mask);
-	PIPE_CONF_CHECK_I(master_transcoder);
+	PIPE_CONF_CHECK_X(sync_secondaries_mask);
+	PIPE_CONF_CHECK_I(sync_primary_transcoder);
 	PIPE_CONF_CHECK_X(joiner_pipes);
 
 	PIPE_CONF_CHECK_BOOL(dsc.config.block_pred_enable);
@@ -6707,11 +6704,11 @@ int intel_atomic_check(struct drm_device *dev,
 				intel_crtc_flag_modeset(new_crtc_state);
 		}
 
-		if (is_trans_port_sync_mode(new_crtc_state)) {
-			u16 trans = new_crtc_state->sync_mode_slaves_mask;
+		if (intel_crtc_in_sync_group(new_crtc_state)) {
+			u16 trans = new_crtc_state->sync_secondaries_mask;
 
-			if (new_crtc_state->master_transcoder != INVALID_TRANSCODER)
-				trans |= BIT(new_crtc_state->master_transcoder);
+			if (new_crtc_state->sync_primary_transcoder != INVALID_TRANSCODER)
+				trans |= BIT(new_crtc_state->sync_primary_transcoder);
 
 			if (intel_cpu_transcoders_need_modeset(state, trans))
 				intel_crtc_flag_modeset(new_crtc_state);
@@ -7178,7 +7175,7 @@ static void intel_commit_modeset_disables(struct intel_atomic_state *state)
 		drm_vblank_work_flush_all(&crtc->base);
 	}
 
-	/* Only disable port sync and MST slaves */
+	/* Only disable port sync secondaries and MST slaves */
 	for_each_old_intel_crtc_in_state(state, crtc, old_crtc_state) {
 		if ((disable_pipes & BIT(crtc->pipe)) == 0)
 			continue;
@@ -7186,12 +7183,12 @@ static void intel_commit_modeset_disables(struct intel_atomic_state *state)
 		if (intel_crtc_is_joiner_secondary(old_crtc_state))
 			continue;
 
-		/* In case of Transcoder port Sync master slave CRTCs can be
-		 * assigned in any order and we need to make sure that
-		 * slave CRTCs are disabled first and then master CRTC since
-		 * Slave vblanks are masked till Master Vblanks.
+		/* In case of Transcoder port Sync primary and secondary CRTCs
+		 * can be assigned in any order and we need to make sure that
+		 * secondary CRTCs are disabled first and then the primary CRTC
+		 * since secondary vblanks are masked till primary vblanks.
 		 */
-		if (!is_trans_port_sync_slave(old_crtc_state) &&
+		if (!intel_crtc_is_sync_secondary(old_crtc_state) &&
 		    !intel_dp_mst_is_slave_trans(old_crtc_state))
 			continue;
 
@@ -7331,7 +7328,7 @@ static void skl_commit_modeset_enables(struct intel_atomic_state *state)
 			continue;
 
 		if (intel_dp_mst_is_slave_trans(new_crtc_state) ||
-		    is_trans_port_sync_master(new_crtc_state))
+		    intel_crtc_is_sync_primary(new_crtc_state))
 			continue;
 
 		modeset_pipes &= ~intel_crtc_joined_pipe_mask(new_crtc_state);
@@ -7341,7 +7338,7 @@ static void skl_commit_modeset_enables(struct intel_atomic_state *state)
 
 	/*
 	 * Then we enable all remaining pipes that depend on other
-	 * pipes: MST slaves and port sync masters
+	 * pipes: MST slaves and port sync primaries
 	 */
 	for_each_new_intel_crtc_in_state(state, crtc, new_crtc_state) {
 		enum pipe pipe = crtc->pipe;
