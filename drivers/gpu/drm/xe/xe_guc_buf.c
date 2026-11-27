@@ -95,7 +95,7 @@ struct xe_guc_buf xe_guc_buf_reserve(struct xe_guc_buf_cache *cache, u32 dwords)
 	struct drm_suballoc *sa;
 
 	if (cache->sam)
-		sa = __xe_sa_bo_new(cache->sam, dwords * sizeof(u32), GFP_ATOMIC);
+		sa = __xe_sa_bo_new(cache->sam, dwords * sizeof(u32), GFP_ATOMIC, false);
 	else
 		sa = ERR_PTR(-EOPNOTSUPP);
 
@@ -117,7 +117,7 @@ struct xe_guc_buf xe_guc_buf_from_data(struct xe_guc_buf_cache *cache,
 {
 	struct drm_suballoc *sa;
 
-	sa = __xe_sa_bo_new(cache->sam, size, GFP_ATOMIC);
+	sa = __xe_sa_bo_new(cache->sam, size, GFP_ATOMIC, false);
 	if (!IS_ERR(sa))
 		memcpy(xe_sa_bo_cpu_addr(sa), data, size);
 

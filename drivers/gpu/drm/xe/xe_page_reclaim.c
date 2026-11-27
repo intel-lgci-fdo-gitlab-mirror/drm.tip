@@ -76,7 +76,7 @@ struct drm_suballoc *xe_page_reclaim_create_prl_bo(struct xe_tlb_inval *tlb_inva
 
 	/* Maximum size of PRL is 1 4K-page */
 	prl_sa = __xe_sa_bo_new(tile->mem.reclaim_pool,
-				prl_size, GFP_ATOMIC);
+				prl_size, GFP_ATOMIC, false);
 	if (IS_ERR(prl_sa))
 		return prl_sa;
 

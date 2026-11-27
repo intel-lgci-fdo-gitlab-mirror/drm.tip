@@ -17,7 +17,8 @@ struct xe_tile;
 #define XE_SA_BO_MANAGER_FLAG_SHADOW	BIT(0)
 struct xe_sa_manager *__xe_sa_bo_manager_init(struct xe_tile *tile, u32 size,
 					      u32 guard, u32 align, u32 flags);
-struct drm_suballoc *__xe_sa_bo_new(struct xe_sa_manager *sa_manager, u32 size, gfp_t gfp);
+struct drm_suballoc *__xe_sa_bo_new(struct xe_sa_manager *sa_manager, u32 size,
+				    gfp_t gfp, bool intr);
 
 static inline struct xe_sa_manager *xe_sa_bo_manager_init(struct xe_tile *tile, u32 size, u32 align)
 {
@@ -28,14 +29,16 @@ static inline struct xe_sa_manager *xe_sa_bo_manager_init(struct xe_tile *tile, 
  * xe_sa_bo_new() - Make a suballocation.
  * @sa_manager: the &xe_sa_manager
  * @size: number of bytes we want to suballocate
+ * @intr: whether to wait interruptibly if space is not immediately available
  *
  * Try to make a suballocation of size @size.
  *
  * Return: a &drm_suballoc, or an ERR_PTR.
  */
-static inline struct drm_suballoc *xe_sa_bo_new(struct xe_sa_manager *sa_manager, u32 size)
+static inline struct drm_suballoc *xe_sa_bo_new(struct xe_sa_manager *sa_manager,
+						u32 size, bool intr)
 {
-	return __xe_sa_bo_new(sa_manager, size, GFP_KERNEL);
+	return __xe_sa_bo_new(sa_manager, size, GFP_KERNEL, intr);
 }
 
 struct drm_suballoc *xe_sa_bo_alloc(gfp_t gfp);

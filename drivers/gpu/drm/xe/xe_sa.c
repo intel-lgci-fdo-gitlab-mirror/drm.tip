@@ -164,12 +164,14 @@ void xe_sa_bo_sync_shadow(struct drm_suballoc *sa_bo)
  * @sa_manager: the &xe_sa_manager
  * @size: number of bytes we want to suballocate
  * @gfp: gfp flags used for memory allocation. Typically GFP_KERNEL.
+ * @intr: whether to wait interruptibly if space is not immediately available
  *
  * Try to make a suballocation of size @size.
  *
  * Return: a &drm_suballoc, or an ERR_PTR.
  */
-struct drm_suballoc *__xe_sa_bo_new(struct xe_sa_manager *sa_manager, u32 size, gfp_t gfp)
+struct drm_suballoc *__xe_sa_bo_new(struct xe_sa_manager *sa_manager, u32 size,
+				    gfp_t gfp, bool intr)
 {
 	/*
 	 * BB to large, return -ENOBUFS indicating user should split
@@ -178,7 +180,7 @@ struct drm_suballoc *__xe_sa_bo_new(struct xe_sa_manager *sa_manager, u32 size, 
 	if (size > sa_manager->base.size)
 		return ERR_PTR(-ENOBUFS);
 
-	return drm_suballoc_new(&sa_manager->base, size, gfp, true, 0);
+	return drm_suballoc_new(&sa_manager->base, size, gfp, intr, 0);
 }
 
 /**

@@ -28,7 +28,7 @@ static int bb_prefetch(struct xe_gt *gt)
 		return SZ_512;
 }
 
-struct xe_bb *xe_bb_new(struct xe_gt *gt, u32 dwords, bool usm)
+struct xe_bb *__xe_bb_new(struct xe_gt *gt, u32 dwords, bool usm, bool intr)
 {
 	struct xe_tile *tile = gt_to_tile(gt);
 	struct xe_bb *bb = kmalloc_obj(*bb);
@@ -44,7 +44,7 @@ struct xe_bb *xe_bb_new(struct xe_gt *gt, u32 dwords, bool usm)
 	 * requirements.
 	 */
 	bb->bo = xe_sa_bo_new(!usm ? tile->mem.kernel_bb_pool : gt->usm.bb_pool,
-			      4 * (dwords + 1) + bb_prefetch(gt));
+			      4 * (dwords + 1) + bb_prefetch(gt), intr);
 	if (IS_ERR(bb->bo)) {
 		err = PTR_ERR(bb->bo);
 		goto err;

@@ -6,6 +6,8 @@
 #ifndef _XE_BB_H_
 #define _XE_BB_H_
 
+#include <linux/types.h>
+
 #include "xe_bb_types.h"
 
 struct dma_fence;
@@ -15,7 +17,12 @@ struct xe_exec_queue;
 struct xe_sa_manager;
 struct xe_sched_job;
 
-struct xe_bb *xe_bb_new(struct xe_gt *gt, u32 dwords, bool usm);
+struct xe_bb *__xe_bb_new(struct xe_gt *gt, u32 dwords, bool usm, bool intr);
+
+static inline struct xe_bb *xe_bb_new(struct xe_gt *gt, u32 dwords, bool usm)
+{
+	return __xe_bb_new(gt, dwords, usm, false);
+}
 struct xe_bb *xe_bb_alloc(struct xe_gt *gt);
 int xe_bb_init(struct xe_bb *bb, struct xe_sa_manager *bb_pool, u32 dwords);
 struct xe_sched_job *xe_bb_create_job(struct xe_exec_queue *q,
