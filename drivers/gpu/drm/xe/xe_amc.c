@@ -115,6 +115,8 @@ static void xe_amc_work(struct work_struct *work)
 	u8 alert_reason = AMC_ALERT_UNKNOWN;
 	struct amc_response response;
 	struct i2c_client *client;
+	const char *alert_str;
+	unsigned long recovery = 0;
 	int ret;
 
 	xe_pm_runtime_get(xe);
@@ -161,18 +163,24 @@ out_reassert_interrupt:
 
 	switch (alert_reason) {
 	case AMC_ALERT_FW_DOWNLOAD:
-	case AMC_ALERT_THERMAL_TRIP:
 	case AMC_ALERT_OOB_REQUEST:
 	case AMC_ALERT_OOB_RESET:
 	case AMC_ALERT_CATERR:
-		dev_warn(amc->i2c->drm_dev, "AMC Alert: %s\n", amc_alert[alert_reason]);
-		xe_wedge_declare(i2c_client_to_xe_device(client),
-				 DRM_WEDGE_RECOVERY_REBIND | DRM_WEDGE_RECOVERY_BUS_RESET);
+		alert_str = amc_alert[alert_reason];
+		recovery = DRM_WEDGE_RECOVERY_REBIND | DRM_WEDGE_RECOVERY_BUS_RESET;
+		break;
+	case AMC_ALERT_THERMAL_TRIP:
+		alert_str = amc_alert[alert_reason];
+		recovery = DRM_WEDGE_RECOVERY_COLD_RESET;
 		break;
 	default:
-		dev_warn(amc->i2c->drm_dev, "unknown AMC alert: %d\n", alert_reason);
+		alert_str = "unknown";
 		break;
 	}
+
+	dev_warn(amc->i2c->drm_dev, "AMC Alert: %s (%u)\n", alert_str, alert_reason);
+	if (recovery)
+		xe_wedge_declare(i2c_client_to_xe_device(client), recovery);
 
 	xe_pm_runtime_put(xe);
 }
