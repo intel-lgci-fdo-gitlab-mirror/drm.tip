@@ -35,9 +35,6 @@
 #include <drm/display/drm_dp.h>
 #include <drm/drm_print.h>
 
-#include "display/intel_dpio_phy.h"
-#include "display/intel_dpll_mgr.h"
-
 #include "display_registers.h"
 #include "gvt.h"
 #include "i915_drv.h"

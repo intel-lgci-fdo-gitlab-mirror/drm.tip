@@ -34,6 +34,16 @@
 #include "display/skl_watermark_regs.h"
 #include "display/vlv_dsi_pll_regs.h"
 
+/* some duplicate definitions to avoid extra display includes */
+#define DPLL_ID_SKL_DPLL0 0
+#define DPLL_ID_WRPLL1 0
+#define DPLL_ID_WRPLL2 1
+#define INTEL_FBC_A 0
+#define DPIO_CH0 0
+#define DPIO_CH1 1
+#define DPIO_PHY0 0
+#define DPIO_PHY1 1
+
 #define DISPLAY_MMIO_BASE(display) \
 	intel_display_device_mmio_base((display))
 

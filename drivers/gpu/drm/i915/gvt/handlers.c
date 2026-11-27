@@ -43,10 +43,6 @@
 #include <drm/intel/intel_pcode_regs.h>
 #include <drm/intel/intel_gmd_interrupt_regs.h>
 
-#include "display/intel_dpio_phy.h"
-#include "display/intel_dpll_mgr.h"
-#include "display/intel_fbc.h"
-
 #include "gt/intel_engine_regs.h"
 #include "gt/intel_gt_regs.h"
 
@@ -544,8 +540,8 @@ static u32 bxt_vgpu_get_dp_bitrate(struct intel_vgpu *vgpu, enum port port)
 {
 	u32 dp_br = 0;
 	int refclk = 100000;
-	enum dpio_phy phy = DPIO_PHY0;
-	enum dpio_channel ch = DPIO_CH0;
+	int phy = DPIO_PHY0;
+	int ch = DPIO_CH0;
 	int m1, m2, n, p1, p2, m, p, vco, dot;
 	u32 temp;
 
@@ -602,7 +598,7 @@ out:
 static u32 skl_vgpu_get_dp_bitrate(struct intel_vgpu *vgpu, enum port port)
 {
 	u32 dp_br = 0;
-	enum intel_dpll_id dpll_id = DPLL_ID_SKL_DPLL0;
+	int dpll_id = DPLL_ID_SKL_DPLL0;
 
 	/* Find the enabled DPLL for the DDI/PORT */
 	if (!(vgpu_vreg_t(vgpu, DPLL_CTRL2) & DPLL_CTRL2_DDI_CLK_OFF(port)) &&
