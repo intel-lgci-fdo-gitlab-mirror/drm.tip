@@ -35,14 +35,8 @@
 #include <drm/display/drm_dp.h>
 #include <drm/drm_print.h>
 
-#include "display/bxt_dpio_phy_regs.h"
-#include "display/i9xx_plane_regs.h"
-#include "display/intel_crt_regs.h"
-#include "display/intel_cursor_regs.h"
-#include "display/intel_display_regs.h"
 #include "display/intel_dpio_phy.h"
 #include "display/intel_dpll_mgr.h"
-#include "display/intel_sprite_regs.h"
 
 #include "display_registers.h"
 #include "gvt.h"

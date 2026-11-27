@@ -35,12 +35,6 @@
 
 #include <uapi/drm/drm_fourcc.h>
 
-#include "display/i9xx_plane_regs.h"
-#include "display/intel_cursor_regs.h"
-#include "display/intel_display_regs.h"
-#include "display/intel_sprite_regs.h"
-#include "display/skl_universal_plane_regs.h"
-
 #include "display_registers.h"
 #include "gvt.h"
 #include "i915_drv.h"

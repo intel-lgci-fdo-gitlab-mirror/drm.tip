@@ -34,8 +34,7 @@
 #include <drm/drm_print.h>
 #include <drm/intel/intel_gmd_interrupt_regs.h>
 
-#include "display/intel_display_regs.h"
-
+#include "display_registers.h"
 #include "gvt.h"
 #include "i915_drv.h"
 #include "i915_reg.h"

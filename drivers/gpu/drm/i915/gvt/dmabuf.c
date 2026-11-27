@@ -35,10 +35,8 @@
 #include <drm/drm_plane.h>
 #include <drm/drm_print.h>
 
-#include "display/skl_universal_plane_regs.h"
-
 #include "gem/i915_gem_dmabuf.h"
-
+#include "display_registers.h"
 #include "gvt.h"
 #include "i915_drv.h"
 

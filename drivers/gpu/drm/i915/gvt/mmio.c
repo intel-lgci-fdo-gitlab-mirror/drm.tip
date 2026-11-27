@@ -37,12 +37,11 @@
 
 #include <drm/drm_print.h>
 
-#include "display/bxt_dpio_phy_regs.h"
-#include "display/intel_display_regs.h"
 #include "display/intel_dpio_phy.h"
 
 #include "gt/intel_gt_regs.h"
 
+#include "display_registers.h"
 #include "gvt.h"
 #include "i915_drv.h"
 #include "i915_reg.h"

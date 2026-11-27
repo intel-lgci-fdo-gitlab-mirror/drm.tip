@@ -8,6 +8,32 @@
 
 #include "display/intel_gvt_api.h"
 
+/* register includes */
+#include "display/bxt_dpio_phy_regs.h"
+#include "display/i9xx_plane_regs.h"
+#include "display/i9xx_wm_regs.h"
+#include "display/intel_audio_regs.h"
+#include "display/intel_backlight_regs.h"
+#include "display/intel_color_regs.h"
+#include "display/intel_crt_regs.h"
+#include "display/intel_cursor_regs.h"
+#include "display/intel_display_regs.h"
+#include "display/intel_dmc_regs.h"
+#include "display/intel_dp_aux_regs.h"
+#include "display/intel_fbc_regs.h"
+#include "display/intel_fdi_regs.h"
+#include "display/intel_gmbus_regs.h"
+#include "display/intel_lvds_regs.h"
+#include "display/intel_pfit_regs.h"
+#include "display/intel_pps_regs.h"
+#include "display/intel_psr_regs.h"
+#include "display/intel_sbi_regs.h"
+#include "display/intel_sprite_regs.h"
+#include "display/intel_vga_regs.h"
+#include "display/skl_universal_plane_regs.h"
+#include "display/skl_watermark_regs.h"
+#include "display/vlv_dsi_pll_regs.h"
+
 #define DISPLAY_MMIO_BASE(display) \
 	intel_display_device_mmio_base((display))
 

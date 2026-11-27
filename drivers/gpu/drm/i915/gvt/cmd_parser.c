@@ -39,10 +39,6 @@
 #include <drm/drm_print.h>
 #include <drm/intel/intel_gmd_misc_regs.h>
 
-#include "display/i9xx_plane_regs.h"
-#include "display/intel_display_regs.h"
-#include "display/intel_sprite_regs.h"
-
 #include "gem/i915_gem_context.h"
 #include "gem/i915_gem_pm.h"
 
