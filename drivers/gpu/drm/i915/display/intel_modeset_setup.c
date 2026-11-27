@@ -210,37 +210,38 @@ static u16 get_transcoder_pipes(struct intel_display *display,
 }
 
 /*
- * Return the port sync master and slave pipes linked to @crtc.
+ * Return the port sync primary and secondary pipes linked to @crtc.
  * For joiner configs return only the joiner primary pipes.
  */
 static void get_portsync_pipes(struct intel_crtc *crtc,
-			       u16 *master_pipe_mask, u16 *slave_pipes_mask)
+			       u16 *primary_pipe_mask, u16 *secondary_pipes_mask)
 {
 	struct intel_display *display = to_intel_display(crtc);
 	struct intel_crtc_state *crtc_state =
 		to_intel_crtc_state(crtc->base.state);
-	struct intel_crtc *master_crtc;
-	struct intel_crtc_state *master_crtc_state;
-	enum transcoder master_transcoder;
+	struct intel_crtc *primary_crtc;
+	struct intel_crtc_state *primary_crtc_state;
+	enum transcoder primary_transcoder;
 
-	if (!is_trans_port_sync_mode(crtc_state)) {
-		*master_pipe_mask = BIT(crtc->pipe);
-		*slave_pipes_mask = 0;
+	if (!intel_crtc_in_sync_group(crtc_state)) {
+		*primary_pipe_mask = BIT(crtc->pipe);
+		*secondary_pipes_mask = 0;
 
 		return;
 	}
 
-	if (is_trans_port_sync_master(crtc_state))
-		master_transcoder = crtc_state->cpu_transcoder;
+	if (intel_crtc_is_sync_primary(crtc_state))
+		primary_transcoder = crtc_state->cpu_transcoder;
 	else
-		master_transcoder = crtc_state->master_transcoder;
+		primary_transcoder = crtc_state->sync_primary_transcoder;
 
-	*master_pipe_mask = get_transcoder_pipes(display, BIT(master_transcoder));
-	drm_WARN_ON(display->drm, !is_power_of_2(*master_pipe_mask));
+	*primary_pipe_mask = get_transcoder_pipes(display, BIT(primary_transcoder));
+	drm_WARN_ON(display->drm, !is_power_of_2(*primary_pipe_mask));
 
-	master_crtc = intel_crtc_for_pipe(display, ffs(*master_pipe_mask) - 1);
-	master_crtc_state = to_intel_crtc_state(master_crtc->base.state);
-	*slave_pipes_mask = get_transcoder_pipes(display, master_crtc_state->sync_mode_slaves_mask);
+	primary_crtc = intel_crtc_for_pipe(display, ffs(*primary_pipe_mask) - 1);
+	primary_crtc_state = to_intel_crtc_state(primary_crtc->base.state);
+	*secondary_pipes_mask = get_transcoder_pipes(display,
+						     primary_crtc_state->sync_secondaries_mask);
 }
 
 static u16 get_joiner_secondary_pipes(struct intel_display *display, u16 primary_pipes_mask)
@@ -263,34 +264,34 @@ static void intel_crtc_disable_noatomic(struct intel_crtc *crtc,
 {
 	struct intel_display *display = to_intel_display(crtc);
 	struct intel_crtc *temp_crtc;
-	u16 portsync_master_mask;
-	u16 portsync_slaves_mask;
+	u16 portsync_primary_mask;
+	u16 portsync_secondaries_mask;
 	u16 joiner_secondaries_mask;
 
 	/* TODO: Add support for MST */
-	get_portsync_pipes(crtc, &portsync_master_mask, &portsync_slaves_mask);
+	get_portsync_pipes(crtc, &portsync_primary_mask, &portsync_secondaries_mask);
 	joiner_secondaries_mask = get_joiner_secondary_pipes(display,
-							     portsync_master_mask |
-							     portsync_slaves_mask);
+							     portsync_primary_mask |
+							     portsync_secondaries_mask);
 
 	drm_WARN_ON(display->drm,
-		    portsync_master_mask & portsync_slaves_mask ||
-		    portsync_master_mask & joiner_secondaries_mask ||
-		    portsync_slaves_mask & joiner_secondaries_mask);
+		    portsync_primary_mask & portsync_secondaries_mask ||
+		    portsync_primary_mask & joiner_secondaries_mask ||
+		    portsync_secondaries_mask & joiner_secondaries_mask);
 
 	for_each_intel_crtc_in_pipe_mask(display, temp_crtc, joiner_secondaries_mask)
 		intel_crtc_disable_noatomic_begin(temp_crtc, ctx);
 
-	for_each_intel_crtc_in_pipe_mask(display, temp_crtc, portsync_slaves_mask)
+	for_each_intel_crtc_in_pipe_mask(display, temp_crtc, portsync_secondaries_mask)
 		intel_crtc_disable_noatomic_begin(temp_crtc, ctx);
 
-	for_each_intel_crtc_in_pipe_mask(display, temp_crtc, portsync_master_mask)
+	for_each_intel_crtc_in_pipe_mask(display, temp_crtc, portsync_primary_mask)
 		intel_crtc_disable_noatomic_begin(temp_crtc, ctx);
 
 	for_each_intel_crtc_in_pipe_mask(display, temp_crtc,
 					 joiner_secondaries_mask |
-					 portsync_slaves_mask |
-					 portsync_master_mask)
+					 portsync_secondaries_mask |
+					 portsync_primary_mask)
 		intel_crtc_disable_noatomic_complete(temp_crtc);
 }
 
