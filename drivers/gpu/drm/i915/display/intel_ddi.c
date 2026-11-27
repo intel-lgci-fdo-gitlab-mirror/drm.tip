@@ -79,6 +79,7 @@
 #include "intel_modeset_lock.h"
 #include "intel_panel.h"
 #include "intel_pfit.h"
+#include "intel_pipelock.h"
 #include "intel_pps.h"
 #include "intel_psr.h"
 #include "intel_quirks.h"
@@ -4670,7 +4671,7 @@ intel_ddi_port_sync_transcoder_mask(const struct intel_crtc_state *ref_crtc_stat
 	 * From, xe3lpd onwards we have defeatured this with reference to
 	 * Wa_16024710867
 	 */
-	if (!HAS_PORT_SYNC(display))
+	if (!HAS_PORT_SYNC(display) && !HAS_PIPELOCK(display))
 		return 0;
 
 	if (!intel_crtc_has_type(ref_crtc_state, INTEL_OUTPUT_DP))
@@ -4692,8 +4693,17 @@ intel_ddi_port_sync_transcoder_mask(const struct intel_crtc_state *ref_crtc_stat
 		if (!crtcs_port_sync_compatible(ref_crtc_state,
 						crtc_state))
 			continue;
+
+		if (HAS_PIPELOCK(display) &&
+		    (!intel_pipelock_possible(crtc_state, to_intel_connector(connector)) ||
+		     !intel_pipelock_compatible(ref_crtc_state, crtc_state)))
+			continue;
+
 		transcoder_mask |= BIT(crtc_state->cpu_transcoder);
 	}
+
+	if (!(transcoder_mask & BIT(ref_crtc_state->cpu_transcoder)))
+		return 0;
 
 	return transcoder_mask;
 }
@@ -4737,6 +4747,9 @@ static int intel_ddi_compute_config_late(struct intel_atomic_state *state,
 		crtc_state->sync_secondaries_mask = port_sync_transcoder_mask &
 			~REG_BIT(crtc_state->cpu_transcoder);
 	}
+
+	if (HAS_PIPELOCK(display))
+		intel_pipelock_compute_config(crtc_state);
 
 	return 0;
 }
