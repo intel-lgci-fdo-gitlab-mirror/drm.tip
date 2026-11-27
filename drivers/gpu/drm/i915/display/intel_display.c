@@ -173,7 +173,7 @@ icl_wa_cursorclkgating(struct intel_display *display, enum pipe pipe,
 		     enable ? CURSOR_GATING_DIS : 0);
 }
 
-static bool intel_crtc_is_sync_secondary(const struct intel_crtc_state *crtc_state)
+bool intel_crtc_is_sync_secondary(const struct intel_crtc_state *crtc_state)
 {
 	return crtc_state->sync_primary_transcoder != INVALID_TRANSCODER;
 }
