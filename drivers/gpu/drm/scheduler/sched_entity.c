@@ -78,8 +78,8 @@ ktime_t drm_sched_entity_stats_job_add_gpu_time(struct drm_sched_job *job)
 	struct drm_sched_fence *s_fence = job->s_fence;
 	ktime_t start, end, duration;
 
-	start = dma_fence_timestamp(&s_fence->scheduled);
-	end = dma_fence_timestamp(&s_fence->finished);
+	dma_fence_timestamp(&s_fence->scheduled, &start);
+	dma_fence_timestamp(&s_fence->finished, &end);
 	duration = ktime_sub(end, start);
 
 	spin_lock(&stats->lock);

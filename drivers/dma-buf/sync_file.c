@@ -268,6 +268,7 @@ err_put_fd:
 static int sync_fill_fence_info(struct dma_fence *fence,
 				 struct sync_fence_info *info)
 {
+	ktime_t fence_ts = ktime_set(0, 0);
 	const char __rcu *timeline;
 	const char __rcu *driver;
 
@@ -282,10 +283,9 @@ static int sync_fill_fence_info(struct dma_fence *fence,
 		sizeof(info->driver_name));
 
 	info->status = dma_fence_get_status(fence);
-	info->timestamp_ns =
-		dma_fence_is_signaled(fence) ?
-			ktime_to_ns(dma_fence_timestamp(fence)) :
-			ktime_set(0, 0);
+
+	dma_fence_timestamp(fence, &fence_ts);
+	info->timestamp_ns = ktime_to_ns(fence_ts);
 
 	rcu_read_unlock();
 

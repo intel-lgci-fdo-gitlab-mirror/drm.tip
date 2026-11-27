@@ -136,10 +136,14 @@ struct dma_fence *__dma_fence_unwrap_merge(size_t num_fences,
 				unsignaled = dma_fence_get(tmp);
 				++count;
 			} else {
-				ktime_t t = dma_fence_timestamp(tmp);
+				ktime_t fence_ts = ktime_get();
+				/* Leaves fence_ts unchanged if fence is not yet
+				 * signaled.
+				 */
+				dma_fence_timestamp(tmp, &fence_ts);
 
-				if (ktime_after(t, timestamp))
-					timestamp = t;
+				if (ktime_after(fence_ts, timestamp))
+					timestamp = fence_ts;
 			}
 		}
 	}
@@ -168,10 +172,14 @@ struct dma_fence *__dma_fence_unwrap_merge(size_t num_fences,
 			if (!dma_fence_is_signaled(tmp)) {
 				array[count++] = dma_fence_get(tmp);
 			} else {
-				ktime_t t = dma_fence_timestamp(tmp);
+				ktime_t fence_ts = ktime_get();
+				/* Leaves fence_ts unchanged if fence is not yet
+				 * signaled.
+				 */
+				dma_fence_timestamp(tmp, &fence_ts);
 
-				if (ktime_after(t, timestamp))
-					timestamp = t;
+				if (ktime_after(fence_ts, timestamp))
+					timestamp = fence_ts;
 			}
 		}
 	}

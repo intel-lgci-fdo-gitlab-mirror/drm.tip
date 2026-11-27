@@ -898,6 +898,26 @@ drm_sched_select_entity(struct drm_gpu_scheduler *sched)
 	return IS_ERR(entity) ? NULL : entity;
 }
 
+/*
+ * This is a temporary, hacky function until we can find a canonical solution
+ * for not overwriting fence timestamps.
+ *
+ * FIXME: Remove this hack.
+ */
+static void drm_sched_overwrite_scheduled_ts(struct drm_sched_job *current_job,
+					     struct drm_sched_job *next_job)
+{
+	struct dma_fence *current_fence = &current_job->s_fence->finished;
+	struct dma_fence *next_fence = &next_job->s_fence->scheduled;
+	ktime_t current_finished, next_scheduled;
+
+	if (dma_fence_timestamp(next_fence, &next_scheduled) != 0)
+		return;
+
+	if (dma_fence_timestamp(current_fence, &current_finished) == 0)
+		next_fence->timestamp = current_finished;
+}
+
 /**
  * drm_sched_get_finished_job - fetch the next finished job to be destroyed
  *
@@ -928,19 +948,7 @@ drm_sched_get_finished_job(struct drm_gpu_scheduler *sched)
 		next = list_first_entry_or_null(&sched->pending_list,
 						typeof(*next), list);
 		if (next) {
-			/* Make the scheduled timestamp more accurate.
-			 *
-			 * TODO
-			 * The test_bit_acquire() is a hotfix against timestamp
-			 * misordering. Replace it with something better.
-			 *
-			 * The counter-part of the barrier is located in
-			 * dma_fence_signal_timestamp_locked().
-			 */
-			if (test_bit_acquire(DMA_FENCE_FLAG_TIMESTAMP_BIT,
-				     &next->s_fence->scheduled.flags))
-				next->s_fence->scheduled.timestamp =
-					dma_fence_timestamp(&job->s_fence->finished);
+			drm_sched_overwrite_scheduled_ts(job, next);
 
 			/* start TO timer for next job */
 			drm_sched_start_timeout(sched);
