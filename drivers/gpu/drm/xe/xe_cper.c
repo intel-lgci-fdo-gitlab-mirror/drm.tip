@@ -508,6 +508,12 @@ static void cper_emit_sw_err(struct xe_device *xe, int cper_sev, enum xe_sigid s
 	struct xe_cper_intel_hdr ihdr = {};
 	struct xe_cper_driver_error_class *driver = &error_class.driver;
 	u64 timestamp;
+	char *msg;
+	size_t msg_len;
+
+	msg = kvasprintf(GFP_KERNEL, vaf->fmt, *vaf->va);
+	if (!msg)
+		xe_warn(xe, "Failed to allocate CPER message\n");
 
 	driver->error_type = cper_sev;
 	driver->error_component = component;
@@ -515,8 +521,12 @@ static void cper_emit_sw_err(struct xe_device *xe, int cper_sev, enum xe_sigid s
 	if (IS_ERR(data))
 		driver->cause = -PTR_ERR(data);
 
+	msg_len = msg ? strlen(msg) + 1 : 0;
 	timestamp = ktime_get_real_ns();
-	cper_init_intel_hdr(xe, &error_class, timestamp, sigid, 1, 0, &ihdr);
+
+	cper_init_intel_hdr(xe, &error_class, timestamp, sigid, 1, msg_len, &ihdr);
+	cper_record_emit(xe, cper_sev, &INTEL_CPER_NOTIFY_DRV_ERROR, &ihdr, msg, msg_len);
+	kfree(msg);
 }
 
 /**
