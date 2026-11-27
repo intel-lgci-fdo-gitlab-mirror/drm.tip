@@ -40,6 +40,7 @@ driver. The display driver isn't an independent driver in that sense.
    hotplug
    dp-link-training
    dp-link-capabilities
+   pipelock
    plane
    psr
    snps-phy
