@@ -138,7 +138,6 @@ static void
 __dma_fence_signal__timestamp(struct dma_fence *fence, ktime_t timestamp)
 {
 	fence->timestamp = timestamp;
-	set_bit(DMA_FENCE_FLAG_TIMESTAMP_BIT, &fence->flags);
 	trace_dma_fence_signaled(fence);
 }
 
