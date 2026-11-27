@@ -2657,6 +2657,13 @@ static void mtl_port_buf_ctl_io_selection(struct intel_encoder *encoder)
 		     XELPDP_PORT_BUF_IO_SELECT_TBT, val);
 }
 
+static bool port_sync_hold_link_idle(const struct intel_crtc_state *crtc_state)
+{
+	struct intel_display *display = to_intel_display(crtc_state);
+
+	return !HAS_PIPELOCK(display) && intel_crtc_in_sync_group(crtc_state);
+}
+
 static void mtl_ddi_pre_enable_dp(struct intel_atomic_state *state,
 				  struct intel_encoder *encoder,
 				  const struct intel_crtc_state *crtc_state,
@@ -2754,7 +2761,7 @@ static void mtl_ddi_pre_enable_dp(struct intel_atomic_state *state,
 	intel_dp_start_link_train(state, intel_dp, crtc_state);
 
 	/* 6.n Set DP_TP_CTL link training to Normal */
-	if (!intel_crtc_in_sync_group(crtc_state))
+	if (!port_sync_hold_link_idle(crtc_state))
 		intel_dp_stop_link_train(intel_dp, crtc_state);
 
 	/* 6.o Configure and enable FEC if needed */
@@ -2904,7 +2911,7 @@ static void tgl_ddi_pre_enable_dp(struct intel_atomic_state *state,
 	intel_dp_start_link_train(state, intel_dp, crtc_state);
 
 	/* 7.k Set DP_TP_CTL link training to Normal */
-	if (!intel_crtc_in_sync_group(crtc_state))
+	if (!port_sync_hold_link_idle(crtc_state))
 		intel_dp_stop_link_train(intel_dp, crtc_state);
 
 	/* 7.l Configure and enable FEC if needed */
@@ -2977,7 +2984,7 @@ static void hsw_ddi_pre_enable_dp(struct intel_atomic_state *state,
 	intel_dp_sink_set_fec_ready(intel_dp, crtc_state, true);
 	intel_dp_start_link_train(state, intel_dp, crtc_state);
 	if ((port != PORT_A || DISPLAY_VER(display) >= 9) &&
-	    !intel_crtc_in_sync_group(crtc_state))
+	    !port_sync_hold_link_idle(crtc_state))
 		intel_dp_stop_link_train(intel_dp, crtc_state);
 
 	intel_ddi_enable_fec(encoder, crtc_state);
@@ -3369,7 +3376,8 @@ static void trans_port_sync_stop_link_train(struct intel_atomic_state *state,
 	struct drm_connector *conn;
 	int i;
 
-	if (!crtc_state->sync_secondaries_mask)
+	if (!port_sync_hold_link_idle(crtc_state) ||
+	    !intel_crtc_is_sync_primary(crtc_state))
 		return;
 
 	for_each_new_connector_in_state(&state->base, conn, conn_state, i) {
