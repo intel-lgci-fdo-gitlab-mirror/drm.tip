@@ -100,11 +100,14 @@ static u64 cper_timestamp_now(void)
 	return ts;
 }
 
-static void cper_init_intel_hdr(struct xe_device *xe, const struct xe_ras_error_class *counter,
+static void cper_init_intel_hdr(struct xe_device *xe, const union xe_cper_error_class *error_class,
 				u64 first_timestamp, u32 sig_id, u32 error_count,
 				u32 einfo_size, struct xe_cper_intel_hdr *ihdr)
 {
-	ihdr->counter = *counter;
+	BUILD_BUG_ON(sizeof(struct xe_ras_error_class) !=
+		     sizeof(struct xe_cper_driver_error_class));
+
+	ihdr->error_class = *error_class;
 	ihdr->validation_bits |= XE_CPER_VALID_LOCATION;
 	ihdr->sig_id = U32_MAX;
 
@@ -466,9 +469,10 @@ void xe_cper_emit_counter(struct xe_device *xe, int cper_sev, enum xe_sigid sigi
 	}
 
 	for (i = 0; i < count; i++) {
+		union xe_cper_error_class error_class = { .counter = entries[i].hdr.counter };
 		struct xe_cper_intel_hdr ihdr = {};
 
-		cper_init_intel_hdr(xe, &entries[i].hdr.counter, entries[i].timestamp,
+		cper_init_intel_hdr(xe, &error_class, entries[i].timestamp,
 				    sigid, entries[i].hdr.error_count,
 				    entries[i].einfo_size, &ihdr);
 
@@ -500,6 +504,19 @@ static void cper_emit_sw_err(struct xe_device *xe, int cper_sev, enum xe_sigid s
 			     u32 component, u32 location, const void *data,
 			     struct va_format *vaf)
 {
+	union xe_cper_error_class error_class = {};
+	struct xe_cper_intel_hdr ihdr = {};
+	struct xe_cper_driver_error_class *driver = &error_class.driver;
+	u64 timestamp;
+
+	driver->error_type = cper_sev;
+	driver->error_component = component;
+	driver->tile = location;
+	if (IS_ERR(data))
+		driver->cause = -PTR_ERR(data);
+
+	timestamp = ktime_get_real_ns();
+	cper_init_intel_hdr(xe, &error_class, timestamp, sigid, 1, 0, &ihdr);
 }
 
 /**
