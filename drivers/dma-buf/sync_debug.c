@@ -46,6 +46,8 @@ static void sync_print_fence(struct seq_file *s,
 			     struct dma_fence *fence, bool show)
 {
 	struct sync_timeline *parent = dma_fence_parent(fence);
+	struct timespec64 ts64;
+	ktime_t ts;
 	int status;
 
 	status = dma_fence_get_status_locked(fence);
@@ -55,10 +57,8 @@ static void sync_print_fence(struct seq_file *s,
 		   show ? "_" : "",
 		   sync_status_str(status));
 
-	if (test_bit(DMA_FENCE_FLAG_TIMESTAMP_BIT, &fence->flags)) {
-		struct timespec64 ts64 =
-			ktime_to_timespec64(fence->timestamp);
-
+	if (dma_fence_timestamp(fence, &ts) == 0) {
+		ts64 = ktime_to_timespec64(ts);
 		seq_printf(s, "@%ptSp", &ts64);
 	}
 
