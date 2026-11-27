@@ -14,20 +14,6 @@
 #include "xe_sched_job.h"
 #include "xe_vm_types.h"
 
-static int bb_prefetch(struct xe_gt *gt)
-{
-	struct xe_device *xe = gt_to_xe(gt);
-
-	if (GRAPHICS_VERx100(xe) >= 1250 && xe_gt_is_main_type(gt))
-		/*
-		 * RCS and CCS require 1K, although other engines would be
-		 * okay with 512.
-		 */
-		return SZ_1K;
-	else
-		return SZ_512;
-}
-
 struct xe_bb *__xe_bb_new(struct xe_gt *gt, u32 dwords, bool usm, bool intr)
 {
 	struct xe_tile *tile = gt_to_tile(gt);
@@ -38,13 +24,13 @@ struct xe_bb *__xe_bb_new(struct xe_gt *gt, u32 dwords, bool usm, bool intr)
 		return ERR_PTR(-ENOMEM);
 
 	/*
-	 * We need to allocate space for the requested number of dwords,
-	 * one additional MI_BATCH_BUFFER_END dword, and additional buffer
-	 * space to accommodate the platform-specific hardware prefetch
-	 * requirements.
+	 * We need to allocate space for the requested number of dwords and
+	 * one additional MI_BATCH_BUFFER_END dword. Hardware CS prefetch
+	 * at the end of the pool BO is covered by the SZ_4K guard region
+	 * reserved by xe_sa_bo_manager_init().
 	 */
 	bb->bo = xe_sa_bo_new(!usm ? tile->mem.kernel_bb_pool : gt->usm.bb_pool,
-			      4 * (dwords + 1) + bb_prefetch(gt), intr);
+			      4 * (dwords + 1), intr);
 	if (IS_ERR(bb->bo)) {
 		err = PTR_ERR(bb->bo);
 		goto err;
@@ -129,7 +115,7 @@ __xe_bb_create_job(struct xe_exec_queue *q, struct xe_bb *bb, u64 *addr)
 	if (bb->len == 0 || bb->cs[bb->len - 1] != MI_BATCH_BUFFER_END)
 		bb->cs[bb->len++] = MI_BATCH_BUFFER_END;
 
-	xe_gt_assert(q->gt, bb->len * 4 + bb_prefetch(q->gt) <= size);
+	xe_gt_assert(q->gt, bb->len * 4 <= size);
 
 	xe_sa_bo_flush_write(bb->bo);
 
