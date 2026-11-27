@@ -261,6 +261,7 @@ struct xe_migrate {
 
 #define MAX_PREEMPTDISABLE_TRANSFER SZ_8M /* Around 1ms. */
 #define MAX_CCS_LIMITED_TRANSFER SZ_4M /* XE_PAGE_SIZE * (FIELD_MAX(XE2_CCS_SIZE_MASK) + 1) */
+#define MAX_IDENTITY_CLEAR_TRANSFER SZ_128M
 #define NUM_PT_SLOTS 48
 #define LEVEL0_PAGE_TABLE_ENCODE_SIZE SZ_2M
 #define MAX_NUM_PTE 512
@@ -2053,6 +2054,11 @@ struct dma_fence *xe_migrate_clear(struct xe_migrate *m,
 		u32 avail_pts = max_mem_transfer_per_pass(xe) / LEVEL0_PAGE_TABLE_ENCODE_SIZE;
 
 		clear_L0 = xe_migrate_res_sizes(m, &src_it);
+		if (clear_vram && !xe_migrate_needs_ccs_emit(xe) &&
+		    gt->info.has_xe2_blt_instructions &&
+		    xe_migrate_allow_identity(clear_L0, &src_it))
+			clear_L0 = min_t(u64, MAX_IDENTITY_CLEAR_TRANSFER,
+					 src_it.size);
 
 		/* Calculate final sizes and batch size.. */
 		pte_flags = clear_vram ? PTE_UPDATE_FLAG_IS_VRAM : 0;
