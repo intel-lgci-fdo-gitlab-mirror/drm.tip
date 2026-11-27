@@ -1401,7 +1401,7 @@ static struct dma_fence *__xe_migrate_copy(struct xe_migrate *m,
 		batch_size += ((copy_only_ccs) ? 0 : emit_copy_cmd_len(xe)) +
 			((needs_ccs_emit ? EMIT_COPY_CCS_DW : 0));
 
-		bb = __xe_bb_new(gt, batch_size, usm, intr);
+		bb = __xe_bb_new(gt, batch_size, usm, !fence && intr);
 		if (IS_ERR(bb)) {
 			err = PTR_ERR(bb);
 			goto err_sync;
@@ -2070,7 +2070,7 @@ struct dma_fence *xe_migrate_clear(struct xe_migrate *m,
 		if (WARN_ON_ONCE(!clear_L0))
 			break;
 
-		bb = __xe_bb_new(gt, batch_size, usm, intr);
+		bb = __xe_bb_new(gt, batch_size, usm, !fence && intr);
 		if (IS_ERR(bb)) {
 			err = PTR_ERR(bb);
 			goto err_sync;
