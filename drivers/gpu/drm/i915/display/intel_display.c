@@ -5627,6 +5627,8 @@ intel_pipe_config_compare(const struct intel_crtc_state *current_config,
 
 	PIPE_CONF_CHECK_X(sync_secondaries_mask);
 	PIPE_CONF_CHECK_I(sync_primary_transcoder);
+	PIPE_CONF_CHECK_I(pipelock.tg_start_delay);
+	PIPE_CONF_CHECK_BOOL(pipelock.per_frame_sync);
 	PIPE_CONF_CHECK_X(joiner_pipes);
 
 	PIPE_CONF_CHECK_BOOL(dsc.config.block_pred_enable);
