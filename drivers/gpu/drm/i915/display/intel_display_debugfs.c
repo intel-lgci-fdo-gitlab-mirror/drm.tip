@@ -540,6 +540,26 @@ static void crtc_updates_add(struct intel_crtc *crtc)
 }
 #endif
 
+static void intel_crtc_sync_info(struct drm_printer *p,
+				 const struct intel_crtc_state *crtc_state)
+{
+	struct intel_display *display = to_intel_display(crtc_state);
+	const char *name = HAS_PIPELOCK(display) ? "Pipelock" : "Port sync";
+
+	if (intel_crtc_is_sync_primary(crtc_state)) {
+		drm_printf_indent(p, 1, "%s: primary, secondaries: 0x%x\n",
+				  name, crtc_state->sync_secondaries_mask);
+	} else if (intel_crtc_is_sync_secondary(crtc_state)) {
+		drm_printf_indent(p, 1, "%s: secondary of transcoder %s\n",
+				  name, transcoder_name(crtc_state->sync_primary_transcoder));
+
+		if (HAS_PIPELOCK(display))
+			drm_printf_indent(p, 2, "start delay: %u, per frame sync: %s\n",
+					  crtc_state->pipelock.tg_start_delay,
+					  str_yes_no(crtc_state->pipelock.per_frame_sync));
+	}
+}
+
 static void intel_crtc_info(struct drm_printer *p, struct intel_crtc *crtc)
 {
 	struct intel_display *display = to_intel_display(crtc);
@@ -580,6 +600,8 @@ static void intel_crtc_info(struct drm_printer *p, struct intel_crtc *crtc)
 		drm_printf_indent(p, 1, "Linked to 0x%x pipes as a %s\n",
 				  crtc_state->joiner_pipes,
 				  intel_crtc_is_joiner_secondary(crtc_state) ? "slave" : "master");
+
+	intel_crtc_sync_info(p, crtc_state);
 
 	intel_vdsc_state_dump(p, 1, crtc_state);
 
