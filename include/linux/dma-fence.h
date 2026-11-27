@@ -687,23 +687,23 @@ static inline void dma_fence_set_error(struct dma_fence *fence,
  * dma_fence_timestamp - helper to get the completion timestamp of a fence
  * @fence: fence to get the timestamp from.
  *
- * After a fence is signaled the timestamp is updated with the signaling time,
- * but setting the timestamp can race with tasks waiting for the signaling. This
- * helper busy waits for the correct timestamp to appear.
+ * Return:
+ * The fence's timestamp if the fence is already signaled, the current time
+ * otherwise.
  */
 static inline ktime_t dma_fence_timestamp(struct dma_fence *fence)
 {
-	/*
-	 * The test_bit_acquire() calls order against the
-	 * smp_mb__before_atomic() in dma_fence_signal_timestamp_locked().
-	 */
+	unsigned long flags;
+	ktime_t ret;
+
+	dma_fence_lock_irqsave(fence, flags);
 	if (WARN_ON(!test_bit_acquire(DMA_FENCE_FLAG_SIGNALED_BIT, &fence->flags)))
-		return ktime_get();
+		ret = ktime_get();
+	else
+		ret = fence->timestamp;
+	dma_fence_unlock_irqrestore(fence, flags);
 
-	while (!test_bit_acquire(DMA_FENCE_FLAG_TIMESTAMP_BIT, &fence->flags))
-		cpu_relax();
-
-	return fence->timestamp;
+	return ret;
 }
 
 signed long dma_fence_wait_timeout(struct dma_fence *,
