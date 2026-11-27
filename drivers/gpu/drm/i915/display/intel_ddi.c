@@ -4653,15 +4653,15 @@ static bool crtcs_port_sync_compatible(const struct intel_crtc_state *crtc_state
 }
 
 static u16
-intel_ddi_port_sync_transcoders(const struct intel_crtc_state *ref_crtc_state,
-				int tile_group_id)
+intel_ddi_port_sync_transcoder_mask(const struct intel_crtc_state *ref_crtc_state,
+				    int tile_group_id)
 {
 	struct intel_display *display = to_intel_display(ref_crtc_state);
 	struct drm_connector *connector;
 	const struct drm_connector_state *conn_state;
 	struct intel_atomic_state *state =
 		to_intel_atomic_state(ref_crtc_state->uapi.state);
-	u16 transcoders = 0;
+	u16 transcoder_mask = 0;
 	int i;
 
 	/*
@@ -4692,10 +4692,10 @@ intel_ddi_port_sync_transcoders(const struct intel_crtc_state *ref_crtc_state,
 		if (!crtcs_port_sync_compatible(ref_crtc_state,
 						crtc_state))
 			continue;
-		transcoders |= BIT(crtc_state->cpu_transcoder);
+		transcoder_mask |= BIT(crtc_state->cpu_transcoder);
 	}
 
-	return transcoders;
+	return transcoder_mask;
 }
 
 static int intel_ddi_compute_config_late(struct intel_atomic_state *state,
@@ -4705,7 +4705,7 @@ static int intel_ddi_compute_config_late(struct intel_atomic_state *state,
 {
 	struct intel_display *display = to_intel_display(encoder);
 	struct drm_connector *connector = conn_state->connector;
-	u16 port_sync_transcoders = 0;
+	u16 port_sync_transcoder_mask = 0;
 	int ret = 0;
 
 	if (intel_crtc_has_dp_encoder(crtc_state))
@@ -4719,21 +4719,22 @@ static int intel_ddi_compute_config_late(struct intel_atomic_state *state,
 		    crtc_state->uapi.crtc->base.id, crtc_state->uapi.crtc->name);
 
 	if (connector->has_tile)
-		port_sync_transcoders = intel_ddi_port_sync_transcoders(crtc_state,
-									connector->tile_group->id);
+		port_sync_transcoder_mask =
+			intel_ddi_port_sync_transcoder_mask(crtc_state,
+							    connector->tile_group->id);
 
 	/*
 	 * EDP Transcoders cannot be secondaries
 	 * make them the primary always when present
 	 */
-	if (port_sync_transcoders & BIT(TRANSCODER_EDP))
+	if (port_sync_transcoder_mask & BIT(TRANSCODER_EDP))
 		crtc_state->sync_primary_transcoder = TRANSCODER_EDP;
 	else
-		crtc_state->sync_primary_transcoder = ffs(port_sync_transcoders) - 1;
+		crtc_state->sync_primary_transcoder = ffs(port_sync_transcoder_mask) - 1;
 
 	if (crtc_state->sync_primary_transcoder == crtc_state->cpu_transcoder) {
 		crtc_state->sync_primary_transcoder = INVALID_TRANSCODER;
-		crtc_state->sync_secondaries_mask = port_sync_transcoders &
+		crtc_state->sync_secondaries_mask = port_sync_transcoder_mask &
 			~REG_BIT(crtc_state->cpu_transcoder);
 	}
 
