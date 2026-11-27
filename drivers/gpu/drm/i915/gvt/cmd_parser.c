@@ -55,7 +55,7 @@
 #include "gt/intel_ring.h"
 #include "gt/shmem_utils.h"
 
-#include "display_helpers.h"
+#include "display_registers.h"
 #include "gvt.h"
 #include "i915_drv.h"
 #include "i915_pvinfo.h"

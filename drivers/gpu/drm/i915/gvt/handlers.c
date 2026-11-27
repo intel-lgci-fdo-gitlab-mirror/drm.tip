@@ -66,7 +66,7 @@
 #include "gt/intel_engine_regs.h"
 #include "gt/intel_gt_regs.h"
 
-#include "display_helpers.h"
+#include "display_registers.h"
 #include "gvt.h"
 #include "i915_drv.h"
 #include "i915_pvinfo.h"

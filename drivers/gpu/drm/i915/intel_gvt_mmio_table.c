@@ -38,7 +38,7 @@
 #include "gt/intel_engine_regs.h"
 #include "gt/intel_gt_regs.h"
 
-#include "gvt/display_helpers.h"
+#include "gvt/display_registers.h"
 #include "gvt/reg.h"
 
 #include "i915_drv.h"

@@ -41,7 +41,7 @@
 #include "display/intel_sprite_regs.h"
 #include "display/skl_universal_plane_regs.h"
 
-#include "display_helpers.h"
+#include "display_registers.h"
 #include "gvt.h"
 #include "i915_drv.h"
 #include "i915_pvinfo.h"

@@ -3,8 +3,8 @@
  * Copyright © 2025 Intel Corporation
  */
 
-#ifndef __DISPLAY_HELPERS_H__
-#define __DISPLAY_HELPERS_H__
+#ifndef __DISPLAY_REGISTERS_H__
+#define __DISPLAY_REGISTERS_H__
 
 #include "display/intel_gvt_api.h"
 
@@ -34,4 +34,4 @@
 	for ((__p) = PIPE_A; (__p) < I915_MAX_PIPES; (__p)++) \
 		for_each_if(intel_display_device_pipe_valid((display), (__p)))
 
-#endif /* __DISPLAY_HELPERS_H__ */
+#endif /* __DISPLAY_REGISTERS_H__ */
