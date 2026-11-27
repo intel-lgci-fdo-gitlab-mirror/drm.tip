@@ -51,6 +51,7 @@
 #include "intel_dsb.h"
 #include "intel_frontbuffer.h"
 #include "intel_hdmi.h"
+#include "intel_pipelock.h"
 #include "intel_psr.h"
 #include "intel_psr_regs.h"
 #include "intel_quirks.h"
@@ -1894,6 +1895,12 @@ void intel_psr_compute_config(struct intel_dp *intel_dp,
 	if (adjusted_mode->flags & DRM_MODE_FLAG_INTERLACE) {
 		drm_dbg_kms(display->drm,
 			    "PSR condition failed: Interlaced mode enabled\n");
+		return;
+	}
+
+	if (intel_pipelock_connector_possible(connector)) {
+		drm_dbg_kms(display->drm,
+			    "PSR condition failed: Tiled display with pipelock\n");
 		return;
 	}
 
