@@ -378,6 +378,15 @@ void dma_fence_signal_timestamp_locked(struct dma_fence *fence,
 	list_replace(&fence->cb_list, &cb_list);
 
 	fence->timestamp = timestamp;
+	/*
+	 * TODO:
+	 * This is a temporary hotfix to prevent misordering until we
+	 * can completely remove the TIMESTAMP bit.
+	 *
+	 * The counterpart of this barrier are the test_bit_acquire()s in
+	 * dma_fence_timestamp().
+	 */
+	smp_mb__before_atomic();
 	set_bit(DMA_FENCE_FLAG_TIMESTAMP_BIT, &fence->flags);
 
 	list_for_each_entry_safe(cur, tmp, &cb_list, node) {
