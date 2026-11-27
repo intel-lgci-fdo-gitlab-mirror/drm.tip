@@ -928,8 +928,16 @@ drm_sched_get_finished_job(struct drm_gpu_scheduler *sched)
 		next = list_first_entry_or_null(&sched->pending_list,
 						typeof(*next), list);
 		if (next) {
-			/* make the scheduled timestamp more accurate */
-			if (test_bit(DMA_FENCE_FLAG_TIMESTAMP_BIT,
+			/* Make the scheduled timestamp more accurate.
+			 *
+			 * TODO
+			 * The test_bit_acquire() is a hotfix against timestamp
+			 * misordering. Replace it with something better.
+			 *
+			 * The counter-part of the barrier is located in
+			 * dma_fence_signal_timestamp_locked().
+			 */
+			if (test_bit_acquire(DMA_FENCE_FLAG_TIMESTAMP_BIT,
 				     &next->s_fence->scheduled.flags))
 				next->s_fence->scheduled.timestamp =
 					dma_fence_timestamp(&job->s_fence->finished);
