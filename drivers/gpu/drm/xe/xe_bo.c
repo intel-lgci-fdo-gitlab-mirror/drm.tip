@@ -1300,10 +1300,11 @@ static int xe_bo_move(struct ttm_buffer_object *ttm_bo, bool evict,
 		else if (handle_system_ccs)
 			flags |= XE_MIGRATE_CLEAR_FLAG_CCS_DATA;
 
-		fence = xe_migrate_clear(migrate, bo, new_mem, flags);
+		fence = xe_migrate_clear(migrate, bo, new_mem, flags,
+					 ctx->interruptible);
 	} else {
 		fence = xe_migrate_copy(migrate, bo, bo, old_mem, new_mem,
-					handle_system_ccs);
+					handle_system_ccs, ctx->interruptible);
 	}
 	if (IS_ERR(fence)) {
 		ret = PTR_ERR(fence);
@@ -1596,7 +1597,7 @@ static int xe_bo_evict_pinned_copy(struct xe_bo *bo, struct xe_bo *backup)
 			goto out_backup;
 
 		fence = xe_migrate_copy(migrate, bo, backup, bo->ttm.resource,
-					backup->ttm.resource, false);
+					backup->ttm.resource, false, false);
 		if (IS_ERR(fence)) {
 			ret = PTR_ERR(fence);
 			goto out_backup;
@@ -1746,7 +1747,7 @@ int xe_bo_restore_pinned(struct xe_bo *bo)
 
 		fence = xe_migrate_copy(migrate, backup, bo,
 					backup->ttm.resource, bo->ttm.resource,
-					false);
+					false, ctx.interruptible);
 		if (IS_ERR(fence)) {
 			ret = PTR_ERR(fence);
 			goto out_unlock_bo;

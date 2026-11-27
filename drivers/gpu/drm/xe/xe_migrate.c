@@ -1298,7 +1298,8 @@ static struct dma_fence *__xe_migrate_copy(struct xe_migrate *m,
 					   struct ttm_resource *src,
 					   struct ttm_resource *dst,
 					   bool copy_only_ccs,
-					   bool is_vram_resolve)
+					   bool is_vram_resolve,
+					   bool intr)
 {
 	struct xe_gt *gt = m->tile->primary_gt;
 	struct xe_device *xe = gt_to_xe(gt);
@@ -1400,7 +1401,7 @@ static struct dma_fence *__xe_migrate_copy(struct xe_migrate *m,
 		batch_size += ((copy_only_ccs) ? 0 : emit_copy_cmd_len(xe)) +
 			((needs_ccs_emit ? EMIT_COPY_CCS_DW : 0));
 
-		bb = xe_bb_new(gt, batch_size, usm);
+		bb = __xe_bb_new(gt, batch_size, usm, intr);
 		if (IS_ERR(bb)) {
 			err = PTR_ERR(bb);
 			goto err_sync;
@@ -1493,6 +1494,7 @@ err_sync:
  * @src: The source TTM resource.
  * @dst: The dst TTM resource.
  * @copy_only_ccs: If true copy only CCS metadata
+ * @intr: Whether to perform any wait interruptibly
  *
  * Copies the contents of @src to @dst: On flat CCS devices,
  * the CCS metadata is copied as well if needed, or if not present,
@@ -1507,9 +1509,10 @@ struct dma_fence *xe_migrate_copy(struct xe_migrate *m,
 				  struct xe_bo *dst_bo,
 				  struct ttm_resource *src,
 				  struct ttm_resource *dst,
-				  bool copy_only_ccs)
+				  bool copy_only_ccs,
+				  bool intr)
 {
-	return __xe_migrate_copy(m, src_bo, dst_bo, src, dst, copy_only_ccs, false);
+	return __xe_migrate_copy(m, src_bo, dst_bo, src, dst, copy_only_ccs, false, intr);
 }
 
 /**
@@ -1527,7 +1530,7 @@ struct dma_fence *xe_migrate_resolve(struct xe_migrate *m,
 				     struct xe_bo *bo,
 				     struct ttm_resource *res)
 {
-	return __xe_migrate_copy(m, bo, bo, res, res, false, true);
+	return __xe_migrate_copy(m, bo, bo, res, res, false, true, true);
 }
 
 /**
@@ -1996,6 +1999,7 @@ static void emit_clear(struct xe_gt *gt, struct xe_bb *bb, u64 src_ofs,
  * @bo: The buffer object @dst is currently bound to.
  * @dst: The dst TTM resource to be cleared.
  * @clear_flags: flags to specify which data to clear: CCS, BO, or both.
+ * @intr: Whether to perform any wait interruptibly.
  *
  * Clear the contents of @dst to zero when XE_MIGRATE_CLEAR_FLAG_BO_DATA is set.
  * On flat CCS devices, the CCS metadata is cleared to zero with XE_MIGRATE_CLEAR_FLAG_CCS_DATA.
@@ -2009,7 +2013,8 @@ static void emit_clear(struct xe_gt *gt, struct xe_bb *bb, u64 src_ofs,
 struct dma_fence *xe_migrate_clear(struct xe_migrate *m,
 				   struct xe_bo *bo,
 				   struct ttm_resource *dst,
-				   u32 clear_flags)
+				   u32 clear_flags,
+				   bool intr)
 {
 	bool clear_vram = is_devmem(bo, dst);
 	bool clear_bo_data = XE_MIGRATE_CLEAR_FLAG_BO_DATA & clear_flags;
@@ -2065,7 +2070,7 @@ struct dma_fence *xe_migrate_clear(struct xe_migrate *m,
 		if (WARN_ON_ONCE(!clear_L0))
 			break;
 
-		bb = xe_bb_new(gt, batch_size, usm);
+		bb = __xe_bb_new(gt, batch_size, usm, intr);
 		if (IS_ERR(bb)) {
 			err = PTR_ERR(bb);
 			goto err_sync;

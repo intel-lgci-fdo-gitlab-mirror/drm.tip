@@ -526,7 +526,7 @@ int xe_vram_memtest(struct xe_device *xe)
 		xe_bo_lock(last_page_bo, false);
 		fence = xe_migrate_clear(tile->migrate, last_page_bo,
 					 last_page_bo->ttm.resource,
-					 XE_MIGRATE_CLEAR_FLAG_BO_DATA);
+					 XE_MIGRATE_CLEAR_FLAG_BO_DATA, false);
 		xe_bo_unlock(last_page_bo);
 
 		if (!IS_ERR(fence)) {

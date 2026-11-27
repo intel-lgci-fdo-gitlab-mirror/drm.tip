@@ -112,7 +112,7 @@ static void test_copy(struct xe_migrate *m, struct xe_bo *bo,
 
 	xe_map_memset(xe, &remote->vmap, 0, 0xd0, xe_bo_size(remote));
 	fence = xe_migrate_clear(m, remote, remote->ttm.resource,
-				 XE_MIGRATE_CLEAR_FLAG_FULL);
+				 XE_MIGRATE_CLEAR_FLAG_FULL, false);
 	if (!sanity_fence_failed(xe, fence, big ? "Clearing remote big bo" :
 				 "Clearing remote small bo", test)) {
 		retval = xe_map_rd(xe, &remote->vmap, 0, u64);
@@ -130,7 +130,7 @@ static void test_copy(struct xe_migrate *m, struct xe_bo *bo,
 
 	expected = 0xc0c0c0c0c0c0c0c0;
 	fence = xe_migrate_copy(m, remote, bo, remote->ttm.resource,
-				bo->ttm.resource, false);
+				bo->ttm.resource, false, false);
 	if (!sanity_fence_failed(xe, fence, big ? "Copying big bo remote -> vram" :
 				 "Copying small bo remote -> vram", test)) {
 		retval = xe_map_rd(xe, &bo->vmap, 0, u64);
@@ -147,7 +147,7 @@ static void test_copy(struct xe_migrate *m, struct xe_bo *bo,
 	xe_map_memset(xe, &bo->vmap, 0, 0xc0, xe_bo_size(bo));
 
 	fence = xe_migrate_copy(m, bo, remote, bo->ttm.resource,
-				remote->ttm.resource, false);
+				remote->ttm.resource, false, false);
 	if (!sanity_fence_failed(xe, fence, big ? "Copying big bo vram -> remote" :
 				 "Copying small bo vram -> remote", test)) {
 		retval = xe_map_rd(xe, &remote->vmap, 0, u64);
@@ -287,7 +287,7 @@ static void xe_migrate_sanity_test(struct xe_migrate *m, struct kunit *test,
 	xe_map_memset(xe, &tiny->vmap, 0, 0x22, xe_bo_size(tiny));
 	expected = 0;
 	fence = xe_migrate_clear(m, tiny, tiny->ttm.resource,
-				 XE_MIGRATE_CLEAR_FLAG_FULL);
+				 XE_MIGRATE_CLEAR_FLAG_FULL, false);
 	if (sanity_fence_failed(xe, fence, "Clearing small bo", test))
 		goto out;
 
@@ -309,7 +309,7 @@ static void xe_migrate_sanity_test(struct xe_migrate *m, struct kunit *test,
 	xe_map_memset(xe, &big->vmap, 0, 0x11, xe_bo_size(big));
 	expected = 0;
 	fence = xe_migrate_clear(m, big, big->ttm.resource,
-				 XE_MIGRATE_CLEAR_FLAG_FULL);
+				 XE_MIGRATE_CLEAR_FLAG_FULL, false);
 	if (sanity_fence_failed(xe, fence, "Clearing big bo", test))
 		goto out;
 
@@ -611,7 +611,7 @@ static void test_clear(struct xe_device *xe, struct xe_tile *tile,
 	kunit_info(test, "Clear vram buffer object\n");
 	expected = 0x0000000000000000;
 	fence = xe_migrate_clear(tile->migrate, vram_bo, vram_bo->ttm.resource,
-				 XE_MIGRATE_CLEAR_FLAG_FULL);
+				 XE_MIGRATE_CLEAR_FLAG_FULL, false);
 	if (sanity_fence_failed(xe, fence, "Clear vram_bo", test))
 		return;
 	dma_fence_put(fence);

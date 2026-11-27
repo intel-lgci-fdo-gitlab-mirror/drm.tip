@@ -56,7 +56,8 @@ struct dma_fence *xe_migrate_copy(struct xe_migrate *m,
 				  struct xe_bo *dst_bo,
 				  struct ttm_resource *src,
 				  struct ttm_resource *dst,
-				  bool copy_only_ccs);
+				  bool copy_only_ccs,
+				  bool intr);
 
 struct dma_fence *xe_migrate_resolve(struct xe_migrate *m,
 				     struct xe_bo *bo,
@@ -87,7 +88,8 @@ int xe_migrate_access_memory(struct xe_migrate *m, struct xe_bo *bo,
 struct dma_fence *xe_migrate_clear(struct xe_migrate *m,
 				   struct xe_bo *bo,
 				   struct ttm_resource *dst,
-				   u32 clear_flags);
+				   u32 clear_flags,
+				   bool intr);
 
 struct xe_vm *xe_migrate_get_vm(struct xe_migrate *m);
 

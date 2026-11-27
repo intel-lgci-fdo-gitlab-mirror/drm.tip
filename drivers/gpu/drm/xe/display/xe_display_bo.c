@@ -192,7 +192,8 @@ static struct drm_gem_object *xe_display_bo_fbdev_bios_fb_takeover(struct drm_ge
 			break;
 
 		fence = xe_migrate_copy(xe_device_get_root_tile(xe)->migrate, orig_bo, copy_bo,
-					orig_bo->ttm.resource, copy_bo->ttm.resource, false);
+					orig_bo->ttm.resource, copy_bo->ttm.resource, false,
+					false);
 		if (IS_ERR(fence)) {
 			err = PTR_ERR(fence);
 			break;

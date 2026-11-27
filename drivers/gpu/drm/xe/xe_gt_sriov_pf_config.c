@@ -3009,7 +3009,8 @@ static int pf_sanitize_lmem(struct xe_tile *tile, struct xe_bo *bo, long timeout
 		return 0;
 
 	xe_bo_lock(bo, false);
-	fence = xe_migrate_clear(m, bo, bo->ttm.resource, XE_MIGRATE_CLEAR_FLAG_FULL);
+	fence = xe_migrate_clear(m, bo, bo->ttm.resource,
+				 XE_MIGRATE_CLEAR_FLAG_FULL, false);
 	if (IS_ERR(fence)) {
 		err = PTR_ERR(fence);
 	} else if (!fence) {

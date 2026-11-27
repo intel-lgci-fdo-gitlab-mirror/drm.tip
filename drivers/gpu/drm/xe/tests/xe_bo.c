@@ -270,7 +270,7 @@ static int ccs_test_migrate(struct xe_tile *tile, struct xe_bo *bo,
 	/* Optionally clear bo *and* CCS data in VRAM. */
 	if (clear) {
 		fence = xe_migrate_clear(tile->migrate, bo, bo->ttm.resource,
-					 XE_MIGRATE_CLEAR_FLAG_FULL);
+					 XE_MIGRATE_CLEAR_FLAG_FULL, false);
 		if (IS_ERR(fence)) {
 			KUNIT_FAIL(test, "Failed to submit bo clear.\n");
 			return PTR_ERR(fence);
