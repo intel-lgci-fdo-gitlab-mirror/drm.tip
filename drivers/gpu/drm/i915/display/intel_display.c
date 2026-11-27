@@ -7649,6 +7649,11 @@ static void intel_atomic_dsb_finish(struct intel_atomic_state *state,
 
 	if (new_crtc_state->commit_type == INTEL_COMMIT_DSB &&
 	    !intel_color_uses_chained_dsb(new_crtc_state)) {
+		struct intel_crtc *primary_crtc = intel_primary_crtc(new_crtc_state);
+		/* One transcoder: the joiner primary pushes and waits for PSR */
+		bool via_primary = primary_crtc != crtc &&
+			intel_atomic_get_new_crtc_state(state, primary_crtc);
+
 		/*
 		 * Dsb wait vblank may or may not skip. Let's remove it for PSR
 		 * trans push case to ensure we are not waiting two vblanks
@@ -7656,7 +7661,8 @@ static void intel_atomic_dsb_finish(struct intel_atomic_state *state,
 		if (!intel_psr_use_trans_push(new_crtc_state))
 			intel_dsb_wait_vblanks(new_crtc_state->dsb_commit, 1);
 
-		intel_vrr_send_push(new_crtc_state->dsb_commit, new_crtc_state);
+		if (!via_primary)
+			intel_vrr_send_push(new_crtc_state->dsb_commit, new_crtc_state);
 
 		/*
 		 * Wait for idle is needed for corner case where PSR HW
@@ -7665,8 +7671,9 @@ static void intel_atomic_dsb_finish(struct intel_atomic_state *state,
 		 * here for both Frame Change mechanism (trans push
 		 * and register write).
 		 */
-		intel_psr_wait_for_idle_dsb(new_crtc_state->dsb_commit,
-					    new_crtc_state);
+		if (!via_primary)
+			intel_psr_wait_for_idle_dsb(new_crtc_state->dsb_commit,
+						    new_crtc_state);
 
 		/*
 		 * In case PSR uses trans push as a "frame change" event and
