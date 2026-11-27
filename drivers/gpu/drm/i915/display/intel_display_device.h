@@ -196,7 +196,7 @@ struct intel_display_platforms {
 #define HAS_PIPELOCK(__display)		(DISPLAY_VER(__display) >= 30)
 #define HAS_PIXEL_NORMALIZER(__display)	(DISPLAY_VER(__display) >= 35)
 #define HAS_PMDEMAND(__display)		(DISPLAY_VER(__display) >= 14)
-#define HAS_PORT_SYNC(__display)	(IS_DISPLAY_VER(__display, 9, 30))
+#define HAS_PORT_SYNC(__display)	(IS_DISPLAY_VER(__display, 9, 20))
 #define HAS_PSR(__display)		(DISPLAY_INFO(__display)->has_psr)
 #define HAS_PSR_HW_TRACKING(__display)	(DISPLAY_INFO(__display)->has_psr_hw_tracking)
 #define HAS_PSR2_SEL_FETCH(__display)	(DISPLAY_VER(__display) >= 12)
