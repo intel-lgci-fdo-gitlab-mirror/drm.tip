@@ -12,6 +12,11 @@
 
 #include "xe_ras_types.h"
 
+/* Entries built from RAS error logs carry fixed-size details */
+#define XE_CPER_INTEL_EVENT_SIZE \
+	(offsetof(struct xe_cper_intel_event, metadata) + \
+	 sizeof_field(struct xe_ras_error_log, details))
+
 /*
  * Validation bits definition for validation_bits in struct
  * xe_cper_intel_hdr. When set, corresponding fields in header
@@ -40,10 +45,37 @@
 	GUID_INIT(0x4ae12aef, 0x8745, 0x5fc7, \
 		  0xb9, 0x96, 0x71, 0xee, 0xbb, 0x51, 0xf2, 0x23)
 
+#define INTEL_CPER_NOTIFY_DRV_ERROR \
+	GUID_INIT(0xcef7e934, 0x51e7, 0x535f, \
+		  0xa6, 0x78, 0x5a, 0x4c, 0xcc, 0xb6, 0x96, 0x09)
+
 /* Section Types */
 #define INTEL_CPER_SECTION_ACCEL_GENERIC \
 	GUID_INIT(0xea9d8f84, 0x4258, 0x5227, \
 		  0x80, 0x28, 0xb9, 0xb1, 0x3e, 0x6d, 0x58, 0xb0)
+
+/**
+ * struct xe_cper_driver_error_class - Intel GPU CPER driver-detected error classification
+ */
+struct xe_cper_driver_error_class {
+	/** @error_type: CPER severity: CPER_SEV_* */
+	u8  error_type;
+	/** @reserved0: Reserved, must be zero */
+	u8  reserved0;
+	/** @error_component: Driver component id: CLASS[7:0].TYPE[15:8] */
+	u16 error_component;
+	/** @tile: Driver location id: TYPE[7:0].ID[15:8] ('tile' and 'GT' field region) */
+	u16 tile;
+	/** @reserved1: Reserved, must be zero */
+	u16 reserved1;
+	/** @cause: errno of the failing operation, or 0 if none */
+	u32 cause;
+};
+
+/* Same size as the counter-sourced error_class */
+#define XE_CPER_ERROR_CLASS_SIZE	12
+
+static_assert(sizeof(struct xe_cper_driver_error_class) == XE_CPER_ERROR_CLASS_SIZE);
 
 /**
  * struct xe_cper_intel_hdr - Intel-specific CPER header
@@ -52,8 +84,13 @@
  * All multi-byte fields are little-endian.
  */
 struct xe_cper_intel_hdr {
-	/** @counter: Error class (severity, component, location, cause) */
-	struct xe_ras_error_class counter;
+	/** @error_class: Error classification */
+	union xe_cper_error_class {
+		/** @error_class.counter: Error class (severity, component, location, cause) */
+		struct xe_ras_error_class counter;
+		/** @error_class.driver: Driver-detected error classification */
+		struct xe_cper_driver_error_class driver;
+	} error_class;
 	/** @first_timestamp: First occurrence of this error class, in ticks */
 	u64 first_timestamp;
 	/** @sig_id: Aggregated error class SIG ID; set to U32_MAX if unknown */
@@ -67,14 +104,50 @@ struct xe_cper_intel_hdr {
 	/** @drv_version: Driver source version string (THIS_MODULE->srcversion) */
 	char drv_version[25];
 	/** @reserved: Reserved for future use, must be zero */
-	u8 reserved[261];
+	u8 reserved[258];
+	/** @einfo_size: Size of xe_cper_intel_info */
+	u16 einfo_size;
+	/** @reserved1: Reserved for future use, must be zero */
+	u8 reserved1;
+} __packed;
+
+/**
+ * struct xe_cper_intel_info - Variable-length Intel-specific CPER error information
+ *
+ * Contains the counter and event queue, and is appended after
+ * &xe_cper_intel_hdr when detailed error information is available.
+ */
+struct xe_cper_intel_info {
+	/** @counter: Error class (severity, component, location, cause) */
+	struct xe_ras_error_class counter;
+	/** @error_count: Total number of errors recorded */
+	u32 error_count;
+	/** @event_queue_size: Total size of @event_queue in bytes */
+	u32 event_queue_size;
+	/** @event_queue_count: Number of events in @event_queue */
+	u32 event_queue_count;
+	/** @event_queue: Packed array of xe_cper_intel_event records */
+	u8 event_queue[];
+} __packed;
+
+/**
+ * struct xe_cper_intel_event - Single error event in the CPER event queue
+ */
+struct xe_cper_intel_event {
+	/** @size: Byte size of the @metadata payload */
+	u32 size;
+	/** @timestamp: &xe_ras_error_log::timestamp */
+	u64 timestamp;
+	/** @metadata: &xe_ras_error_log::details */
+	u8 metadata[];
 } __packed;
 
 /**
  * struct xe_cper_nonstd_record - Intel GPU CPER record
  *
  * Contains the standard CPER record header, section descriptor, and the
- * Intel error section header.
+ * Intel section header. A &xe_cper_intel_info payload may be
+ * appended dynamically.
  */
 struct xe_cper_nonstd_record {
 	/** @record_hdr: Standard CPER record header (UEFI Appendix N.2.1) */
@@ -97,6 +170,20 @@ struct xe_device_guid_entry {
 	u16       device_id;
 	/** @guid: Corresponding UUIDv5 device GUID */
 	guid_t    guid;
+};
+
+/**
+ * struct xe_cper_info_entry - One CPER info payload and its source counter
+ */
+struct xe_cper_info_entry {
+	/** @hdr: Error class and error count used for the CPER section header */
+	struct xe_ras_dynamic_counter_hdr hdr;
+	/** @einfo: Allocated info payload, NULL if none */
+	struct xe_cper_intel_info *einfo;
+	/** @einfo_size: Byte size of @einfo including the event queue */
+	u32 einfo_size;
+	/** @timestamp: Timestamp of the first occurrence of this error class */
+	u64 timestamp;
 };
 
 /**
