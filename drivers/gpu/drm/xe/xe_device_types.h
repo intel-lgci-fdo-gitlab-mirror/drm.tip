@@ -659,7 +659,6 @@ struct xe_device {
 	 */
 
 	struct intel_uncore {
-		spinlock_t lock;
 	} uncore;
 #endif
 };
