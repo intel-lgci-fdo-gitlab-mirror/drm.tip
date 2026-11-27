@@ -164,10 +164,10 @@ out_reassert_interrupt:
 	switch (alert_reason) {
 	case AMC_ALERT_FW_DOWNLOAD:
 	case AMC_ALERT_OOB_RESET:
-	case AMC_ALERT_CATERR:
 		alert_str = amc_alert[alert_reason];
 		recovery = DRM_WEDGE_RECOVERY_REBIND | DRM_WEDGE_RECOVERY_BUS_RESET;
 		break;
+	case AMC_ALERT_CATERR:
 	case AMC_ALERT_OOB_REQUEST:
 	case AMC_ALERT_THERMAL_TRIP:
 		alert_str = amc_alert[alert_reason];
