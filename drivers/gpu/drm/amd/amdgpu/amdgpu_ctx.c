@@ -170,6 +170,7 @@ static unsigned int amdgpu_ctx_get_hw_prio(struct amdgpu_ctx *ctx, u32 hw_ip)
 /* Calculate the time spend on the hw */
 static ktime_t amdgpu_ctx_fence_time(struct dma_fence *fence)
 {
+	ktime_t scheduled_ts, finished_ts;
 	struct drm_sched_fence *s_fence;
 
 	if (!fence)
@@ -177,15 +178,15 @@ static ktime_t amdgpu_ctx_fence_time(struct dma_fence *fence)
 
 	/* When the fence is not even scheduled it can't have spend time */
 	s_fence = to_drm_sched_fence(fence);
-	if (!test_bit(DMA_FENCE_FLAG_TIMESTAMP_BIT, &s_fence->scheduled.flags))
+
+	if (dma_fence_timestamp(&s_fence->scheduled, &scheduled_ts) != 0)
 		return ns_to_ktime(0);
 
 	/* When it is still running account how much already spend */
-	if (!test_bit(DMA_FENCE_FLAG_TIMESTAMP_BIT, &s_fence->finished.flags))
-		return ktime_sub(ktime_get(), s_fence->scheduled.timestamp);
+	if (dma_fence_timestamp(&s_fence->finished, &finished_ts) != 0)
+		return ktime_sub(ktime_get(), scheduled_ts);
 
-	return ktime_sub(s_fence->finished.timestamp,
-			 s_fence->scheduled.timestamp);
+	return ktime_sub(finished_ts, scheduled_ts);
 }
 
 static ktime_t amdgpu_ctx_entity_time(struct amdgpu_ctx *ctx,
