@@ -54,6 +54,26 @@
  *
  * - Admin/userspace consumer can use firmware flashing tools like fwupd to flash
  *   firmware and restore device to normal operation.
+ *
+ * Case: Firmware Download (AMC alert)
+ * -----------------------------------
+ *
+ * Identification Hint
+ * +++++++++++++++++++
+ *
+ * ``WEDGED=vendor-specific`` drm device wedged uevent with
+ * ``/sys/bus/pci/devices/<device>/xe_amc_alert_reason`` reporting
+ * ``Firmware Download`` indicates that a firmware download is in progress and
+ * the AMC will reset the device when it completes.
+ *
+ * Recovery Procedure
+ * ++++++++++++++++++
+ *
+ * Once ``WEDGED=vendor-specific`` drm device wedged uevent is received, follow
+ * the below steps
+ *
+ * - Check the AMC alert reason sysfs. If it reports ``Firmware Download``,
+ *   once the AMC-initiated reset completes, rescan the PCI device.
  */
 
 /**

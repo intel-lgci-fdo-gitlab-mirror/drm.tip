@@ -214,6 +214,9 @@ out_reassert_interrupt:
 
 	switch (alert_reason) {
 	case AMC_ALERT_FW_DOWNLOAD:
+		alert_str = amc_alert[alert_reason];
+		recovery = DRM_WEDGE_RECOVERY_VENDOR;
+		break;
 	case AMC_ALERT_OOB_RESET:
 		alert_str = amc_alert[alert_reason];
 		recovery = DRM_WEDGE_RECOVERY_REBIND | DRM_WEDGE_RECOVERY_BUS_RESET;
