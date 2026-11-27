@@ -49,6 +49,7 @@ enum xe_amc_alert {
 };
 
 static const char * const amc_alert[] = {
+	[AMC_ALERT_UNKNOWN]		= "unknown",
 	[AMC_ALERT_FW_DOWNLOAD]		= "Firmware Download",
 	[AMC_ALERT_THERMAL_TRIP]	= "Thermal Trip",
 	[AMC_ALERT_OOB_REQUEST]		= "OOB Request",
@@ -59,6 +60,8 @@ static const char * const amc_alert[] = {
 struct xe_amc {
 	struct xe_i2c *i2c;
 	struct work_struct work;
+	enum xe_amc_alert alert_reason;
+	bool alert_seen;
 };
 
 struct amc_header {
@@ -106,6 +109,50 @@ static const struct amc_request amc_get_alert_reason = {
 		.command	= AMC_GET_ALERT_REASON,
 	},
 };
+
+/**
+ * DOC: AMC Alert Reason
+ *
+ * Expose the most recent AMC alert reason through device sysfs.
+ *
+ * See Documentation/ABI/testing/sysfs-driver-intel-xe-amc for the ABI
+ * specification.
+ */
+
+static enum xe_amc_alert amc_alert_reason(struct xe_amc *amc)
+{
+	return READ_ONCE(amc->alert_reason);
+}
+
+static ssize_t amc_alert_reason_show(struct device *dev,
+				     struct device_attribute *attr, char *buf)
+{
+	struct xe_device *xe = pdev_to_xe_device(to_pci_dev(dev));
+	struct xe_amc *amc = xe->i2c->amc;
+	enum xe_amc_alert alert_reason;
+
+	if (!READ_ONCE(amc->alert_seen))
+		return sysfs_emit(buf, "none\n");
+
+	alert_reason = amc_alert_reason(amc);
+
+	return sysfs_emit(buf, "%s\n", amc_alert[alert_reason]);
+}
+static DEVICE_ATTR_RO(amc_alert_reason);
+
+static void amc_remove_alert_sysfs(struct xe_i2c *i2c)
+{
+	struct device *dev = i2c->drm_dev;
+
+	device_remove_file(dev, &dev_attr_amc_alert_reason);
+}
+
+static int amc_create_alert_sysfs(struct xe_i2c *i2c)
+{
+	struct device *dev = i2c->drm_dev;
+
+	return device_create_file(dev, &dev_attr_amc_alert_reason);
+}
 
 static void xe_amc_work(struct work_struct *work)
 {
@@ -156,10 +203,14 @@ static void xe_amc_work(struct work_struct *work)
 	}
 
 	alert_reason = response.value;
-	dev_dbg(&client->dev, "Alert reason: %d\n", alert_reason);
+	dev_dbg(&client->dev, "Alert reason: %u\n", (unsigned int)alert_reason);
 
 out_reassert_interrupt:
 	xe_mmio_rmw32(amc->i2c->mmio, I2C_CONFIG_CMD, PCI_COMMAND_INTX_DISABLE, 0);
+
+	WRITE_ONCE(amc->alert_reason, alert_reason < ARRAY_SIZE(amc_alert) ?
+		   alert_reason : AMC_ALERT_UNKNOWN);
+	WRITE_ONCE(amc->alert_seen, true);
 
 	switch (alert_reason) {
 	case AMC_ALERT_FW_DOWNLOAD:
@@ -174,11 +225,12 @@ out_reassert_interrupt:
 		recovery = DRM_WEDGE_RECOVERY_COLD_RESET;
 		break;
 	default:
-		alert_str = "unknown";
+		alert_str = amc_alert[AMC_ALERT_UNKNOWN];
 		break;
 	}
 
-	dev_warn(amc->i2c->drm_dev, "AMC Alert: %s (%u)\n", alert_str, alert_reason);
+	dev_warn(amc->i2c->drm_dev, "AMC Alert: %s (%u)\n", alert_str, (unsigned int)alert_reason);
+
 	if (recovery)
 		xe_wedge_declare(i2c_client_to_xe_device(client), recovery);
 
@@ -193,6 +245,7 @@ void xe_amc_handle_alert(struct xe_i2c *i2c)
 int xe_amc_init(struct xe_i2c *i2c)
 {
 	struct xe_amc *amc;
+	int ret;
 
 	amc = kzalloc_obj(*amc);
 	if (!amc)
@@ -202,13 +255,21 @@ int xe_amc_init(struct xe_i2c *i2c)
 	i2c->amc = amc;
 	amc->i2c = i2c;
 
-	return 0;
+	ret = amc_create_alert_sysfs(i2c);
+	if (ret) {
+		kfree(i2c->amc);
+		i2c->amc = NULL;
+	}
+
+	return ret;
 }
 
 void xe_amc_exit(struct xe_i2c *i2c)
 {
 	if (i2c->amc) {
+		amc_remove_alert_sysfs(i2c);
 		cancel_work_sync(&i2c->amc->work);
 		kfree(i2c->amc);
+		i2c->amc = NULL;
 	}
 }

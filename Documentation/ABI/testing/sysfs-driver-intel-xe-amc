@@ -1,0 +1,24 @@
+What:		/sys/bus/pci/drivers/xe/.../xe_amc_alert_reason
+Date:		October 2026
+KernelVersion:	7.5
+Contact:	intel-xe@lists.freedesktop.org
+Description:
+		This file exposes the reason for the most recent Add-In
+		Management Controller (AMC) alert on supported Intel Xe platforms.
+
+		An AMC alert is delivered via an SMBus interrupt. The device may
+		be wedged; the required recovery method depends on the alert.
+		The attribute is read-only and available to all users.
+
+		Read returns a single line containing one of the following
+		alert reasons:
+
+			"none"
+				No AMC alert has been received
+			"unknown"
+				AMC alert received but with unknown reason
+			"Firmware Download"
+			"Thermal Trip"
+			"OOB Request"
+			"OOB Reset"
+			"Catastrophic"
