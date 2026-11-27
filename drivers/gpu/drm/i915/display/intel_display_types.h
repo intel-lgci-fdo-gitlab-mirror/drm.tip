@@ -1395,6 +1395,12 @@ struct intel_crtc_state {
 	/* Bitmask of secondary transcoders synced to this one */
 	u16 sync_secondaries_mask;
 
+	/* Only valid on a pipelock secondary */
+	struct {
+		u16 tg_start_delay;
+		bool per_frame_sync;
+	} pipelock;
+
 	/* Only valid on TGL+ */
 	enum transcoder mst_master_transcoder;
 
