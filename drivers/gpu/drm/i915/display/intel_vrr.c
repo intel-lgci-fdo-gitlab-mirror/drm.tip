@@ -620,22 +620,13 @@ static bool intel_vrr_use_optimized_guardband(const struct intel_crtc_state *crt
 	return true;
 }
 
-void intel_vrr_compute_guardband(struct intel_crtc_state *crtc_state)
+void intel_vrr_set_guardband(struct intel_crtc_state *crtc_state, int guardband)
 {
 	struct intel_display *display = to_intel_display(crtc_state);
 	struct drm_display_mode *adjusted_mode = &crtc_state->hw.adjusted_mode;
 	struct drm_display_mode *pipe_mode = &crtc_state->hw.pipe_mode;
-	int guardband;
 
-	if (!intel_vrr_possible(crtc_state))
-		return;
-
-	if (intel_vrr_use_optimized_guardband(crtc_state))
-		guardband = intel_vrr_compute_optimized_guardband(crtc_state);
-	else
-		guardband = crtc_state->vrr.vmin - adjusted_mode->crtc_vdisplay;
-
-	crtc_state->vrr.guardband = min(guardband, intel_vrr_max_guardband(crtc_state));
+	crtc_state->vrr.guardband = guardband;
 
 	if (intel_vrr_always_use_vrr_tg(display)) {
 		adjusted_mode->crtc_vblank_start  =
@@ -652,6 +643,23 @@ void intel_vrr_compute_guardband(struct intel_crtc_state *crtc_state)
 		crtc_state->vrr.pipeline_full =
 			intel_vrr_guardband_to_pipeline_full(crtc_state,
 							     crtc_state->vrr.guardband);
+}
+
+void intel_vrr_compute_guardband(struct intel_crtc_state *crtc_state)
+{
+	struct drm_display_mode *adjusted_mode = &crtc_state->hw.adjusted_mode;
+	int guardband;
+
+	if (!intel_vrr_possible(crtc_state))
+		return;
+
+	if (intel_vrr_use_optimized_guardband(crtc_state))
+		guardband = intel_vrr_compute_optimized_guardband(crtc_state);
+	else
+		guardband = crtc_state->vrr.vmin - adjusted_mode->crtc_vdisplay;
+
+	intel_vrr_set_guardband(crtc_state,
+				min(guardband, intel_vrr_max_guardband(crtc_state)));
 }
 
 static u32 trans_vrr_ctl(const struct intel_crtc_state *crtc_state)

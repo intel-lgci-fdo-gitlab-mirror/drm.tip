@@ -24,6 +24,7 @@ void intel_vrr_check_modeset(struct intel_atomic_state *state);
 void intel_vrr_compute_config(struct intel_crtc_state *crtc_state,
 			      struct drm_connector_state *conn_state);
 void intel_vrr_compute_guardband(struct intel_crtc_state *crtc_state);
+void intel_vrr_set_guardband(struct intel_crtc_state *crtc_state, int guardband);
 void intel_vrr_set_transcoder_timings(const struct intel_crtc_state *crtc_state);
 void intel_vrr_enable(const struct intel_crtc_state *crtc_state);
 void intel_vrr_send_push(struct intel_dsb *dsb,
