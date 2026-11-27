@@ -888,6 +888,11 @@ enum xe_ras_recovery_action xe_ras_process_errors(struct xe_device *xe)
 			case XE_RAS_COMP_DEVICE_MEMORY:
 				action = handle_device_memory_errors(xe, arr);
 				break;
+			case XE_RAS_COMP_FABRIC:
+				xe_log_comp(xe, ras_sev_to_cper_sev(severity), FABRIC,
+					    &arr->counter, sizeof(arr->counter),
+					    "error detected\n");
+				fallthrough;
 			default:
 				/* For any other component, reset */
 				action = XE_RAS_RECOVERY_ACTION_RESET;
@@ -1298,6 +1303,9 @@ static ssize_t gpu_health_show(struct device *dev, struct device_attribute *attr
 	size_t rlen;
 	int ret;
 
+	if (xe_wedged(xe) && !xe_wedge_mode_is_no_reset(xe))
+		return -ECANCELED;
+
 	xe_sysctrl_create_command(&command, XE_SYSCTRL_GROUP_GFSP, XE_SYSCTRL_CMD_GET_HEALTH,
 				  &request, sizeof(request), &response, sizeof(response));
 	guard(xe_pm_runtime)(xe);
@@ -1340,6 +1348,9 @@ static ssize_t gpu_health_store(struct device *dev, struct device_attribute *att
 	state = sysfs_match_string(gpu_health_states, buf);
 	if (state < 0)
 		return -EINVAL;
+
+	if (xe_wedged(xe) && !xe_wedge_mode_is_no_reset(xe))
+		return -ECANCELED;
 
 	request.health = state;
 
