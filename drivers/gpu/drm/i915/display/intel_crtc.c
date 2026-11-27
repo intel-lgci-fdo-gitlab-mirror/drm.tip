@@ -185,7 +185,7 @@ void intel_crtc_state_reset(struct intel_crtc_state *crtc_state,
 	__drm_atomic_helper_crtc_state_init(&crtc_state->uapi, &crtc->base);
 
 	crtc_state->cpu_transcoder = INVALID_TRANSCODER;
-	crtc_state->master_transcoder = INVALID_TRANSCODER;
+	crtc_state->sync_primary_transcoder = INVALID_TRANSCODER;
 	crtc_state->hsw_workaround_pipe = INVALID_PIPE;
 	crtc_state->scaler_state.scaler_id = -1;
 	crtc_state->mst_master_transcoder = INVALID_TRANSCODER;

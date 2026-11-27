@@ -6963,9 +6963,9 @@ static int intel_modeset_synced_crtcs(struct intel_atomic_state *state,
 	if (!old_crtc_state->hw.active)
 		return 0;
 
-	transcoders = old_crtc_state->sync_mode_slaves_mask;
-	if (old_crtc_state->master_transcoder != INVALID_TRANSCODER)
-		transcoders |= BIT(old_crtc_state->master_transcoder);
+	transcoders = old_crtc_state->sync_secondaries_mask;
+	if (old_crtc_state->sync_primary_transcoder != INVALID_TRANSCODER)
+		transcoders |= BIT(old_crtc_state->sync_primary_transcoder);
 
 	return intel_modeset_affected_transcoders(state,
 						  transcoders);
