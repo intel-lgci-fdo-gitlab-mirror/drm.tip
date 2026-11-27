@@ -20,6 +20,7 @@
 #include "intel_lt_phy.h"
 #include "intel_lt_phy_regs.h"
 #include "intel_panel.h"
+#include "intel_pipelock.h"
 #include "intel_psr.h"
 #include "intel_tc.h"
 
@@ -1337,6 +1338,9 @@ intel_lt_phy_pll_is_ssc_enabled(struct intel_crtc_state *crtc_state,
 	if (intel_crtc_has_dp_encoder(crtc_state)) {
 		if (intel_panel_use_ssc(display)) {
 			struct intel_dp *intel_dp = enc_to_intel_dp(encoder);
+
+			if (intel_pipelock_connector_possible(intel_dp->attached_connector))
+				return false;
 
 			return (intel_dp->dpcd[DP_MAX_DOWNSPREAD] & DP_MAX_DOWNSPREAD_0_5);
 		}
