@@ -16,6 +16,7 @@
 #include "regs/xe_pcode_regs.h"
 #include "xe_device.h"
 #include "xe_hwmon.h"
+#include "xe_late_bind_fw.h"
 #include "xe_log.h"
 #include "xe_mmio.h"
 #include "xe_pcode.h"
@@ -259,6 +260,8 @@ struct xe_hwmon {
 	struct device *hwmon_dev;
 	/** @xe: Xe device */
 	struct xe_device *xe;
+	/** @registration_lock: serialize registration with late-binding updates */
+	struct mutex registration_lock;
 	/** @hwmon_lock: lock for rw attributes*/
 	struct mutex hwmon_lock;
 	/** @scl_shift_power: pkg power unit */
@@ -292,6 +295,13 @@ struct xe_hwmon {
 	/** @groups: NULL-terminated list of extra attribute groups */
 	const struct attribute_group *groups[3];
 };
+
+static void xe_hwmon_flush_late_bind(void *arg)
+{
+	struct xe_device *xe = arg;
+
+	xe_late_bind_pm_suspend(&xe->late_bind);
+}
 
 static inline int prepare_power_limit_param2(const struct xe_hwmon *hwmon, int channel)
 {
@@ -1808,7 +1818,6 @@ static int xe_hwmon_read_fan_control_info(struct xe_hwmon *hwmon)
 		if (!IS_FAN_ENABLED(hwmon, fan))
 			continue;
 
-		fi->pwm_enable_mode = XE_FAN_PWM_UNINITIALIZED;
 		fi->fan_table[STOCK_FAN_TABLE].point_count = 0;
 
 		ret = xe_hwmon_pcode_read_fan_control(hwmon, FSC_READ_MAX_FAN_RPS, fan,
@@ -2480,7 +2489,9 @@ xe_hwmon_fan_read(struct xe_hwmon *hwmon, u32 attr, int channel, long *val)
 	case hwmon_fan_input:
 		return xe_hwmon_fan_input_read(hwmon, channel, val);
 	case hwmon_fan_max:
+		mutex_lock(&hwmon->hwmon_lock);
 		*val = mul_u32_u32(hwmon->fi[channel].max_rps, 60);
+		mutex_unlock(&hwmon->hwmon_lock);
 		return 0;
 	default:
 		return -EOPNOTSUPP;
@@ -2948,9 +2959,21 @@ int xe_hwmon_register(struct xe_device *xe)
 	if (ret)
 		return ret;
 
+	ret = devm_mutex_init(dev, &hwmon->registration_lock);
+	if (ret)
+		return ret;
+
+	/* Flush late-bind work before devm releases the hwmon state it may use. */
+	ret = devm_add_action_or_reset(dev, xe_hwmon_flush_late_bind, xe);
+	if (ret)
+		return ret;
+
+	guard(mutex)(&hwmon->registration_lock);
+
 	/* There's only one instance of hwmon per device */
 	hwmon->xe = xe;
-	xe->hwmon = hwmon;
+	/* Pair with the acquire load in xe_hwmon_fan_update_post_lb(). */
+	smp_store_release(&xe->hwmon, hwmon);
 
 	ret = xe_hwmon_get_preregistration_info(hwmon);
 	if (ret)
@@ -2977,7 +3000,7 @@ int xe_hwmon_register(struct xe_device *xe)
 	return 0;
 
 err_null_hwmon:
-	xe->hwmon = NULL;
+	WRITE_ONCE(xe->hwmon, NULL);
 	return ret;
 }
 
@@ -2990,11 +3013,21 @@ err_null_hwmon:
  */
 void xe_hwmon_unregister(struct xe_device *xe)
 {
-	if (!xe->hwmon)
+	struct xe_hwmon *hwmon;
+
+	/* Stop updates before unregistering hwmon or unplugging the device. */
+	xe_late_bind_pm_suspend(&xe->late_bind);
+
+	hwmon = READ_ONCE(xe->hwmon);
+	if (!hwmon)
 		return;
 
-	hwmon_device_unregister(xe->hwmon->hwmon_dev);
-	xe->hwmon = NULL;
+	mutex_lock(&hwmon->registration_lock);
+	if (READ_ONCE(xe->hwmon) == hwmon) {
+		hwmon_device_unregister(hwmon->hwmon_dev);
+		WRITE_ONCE(xe->hwmon, NULL);
+	}
+	mutex_unlock(&hwmon->registration_lock);
 }
 
 /**
@@ -3115,6 +3148,32 @@ void xe_hwmon_resume(struct xe_device *xe, bool runtime)
 		xe_dbg(xe, "fan %d user table restored\n", fan);
 		fi->restore_user_table = false;
 	}
+
+	mutex_unlock(&hwmon->hwmon_lock);
+}
+
+/**
+ * xe_hwmon_fan_update_post_lb - Update fan info after late binding
+ * @xe: xe device instance
+ *
+ * This function reads the number of fans and their stock table after late binding.
+ */
+void xe_hwmon_fan_update_post_lb(struct xe_device *xe)
+{
+	/* Pair with the release store in xe_hwmon_register(). */
+	struct xe_hwmon *hwmon = smp_load_acquire(&xe->hwmon);
+
+	if (!hwmon || !xe->info.has_fan_control)
+		return;
+
+	guard(mutex)(&hwmon->registration_lock);
+	if (READ_ONCE(xe->hwmon) != hwmon)
+		return;
+
+	mutex_lock(&hwmon->hwmon_lock);
+
+	if (xe_hwmon_read_fan_control_info(hwmon))
+		xe_warn(hwmon->xe, "failed to read stock fan tables after late binding\n");
 
 	mutex_unlock(&hwmon->hwmon_lock);
 }
