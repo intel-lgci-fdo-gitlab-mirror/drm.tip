@@ -219,6 +219,8 @@ struct xe_hwmon_fan_info {
 	u8 pwm_enable_mode;
 	/** @is_full_speed: flag indicating if fan is in full speed */
 	bool is_full_speed;
+	/** @restore_user_table: restore user fan table on next resume */
+	bool restore_user_table;
 };
 
 /**
@@ -3010,4 +3012,111 @@ void xe_hwmon_unregister(struct xe_device *xe)
 	hwmon_device_unregister(xe->hwmon->hwmon_dev);
 	xe->hwmon = NULL;
 }
+
+/**
+ * xe_hwmon_suspend - Save hwmon state before suspend
+ * @xe: xe device instance
+ * @runtime: true for runtime suspend, false for system suspend or FLR prepare
+ *
+ * Save any hwmon runtime state that must survive PM suspend transitions.
+ */
+void xe_hwmon_suspend(struct xe_device *xe, bool runtime)
+{
+	struct xe_hwmon *hwmon = xe->hwmon;
+	int fan;
+
+	if (!hwmon || !xe->info.has_fan_control)
+		return;
+
+	/* Runtime suspend keeps the fan tables unless the device enters d3cold. */
+	if (runtime && !xe->d3cold.allowed) {
+		xe_dbg(xe, "d3cold not allowed, skipping fan user-table snapshot\n");
+		return;
+	}
+
+	mutex_lock(&hwmon->hwmon_lock);
+
+	for (fan = 0; fan < FAN_MAX; fan++) {
+		struct xe_hwmon_fan_info *fi = &hwmon->fi[fan];
+		u32 point_count = fi->fan_table[USER_FAN_TABLE].point_count;
+
+		if (!IS_FAN_ENABLED(hwmon, fan))
+			continue;
+
+		fi->restore_user_table = false;
+		if (fi->pwm_enable_mode != XE_FAN_PWM_MANUAL_USER_TABLE &&
+		    fi->pwm_enable_mode != XE_FAN_PWM_FULL_SPEED)
+			continue;
+
+		if (point_count < MIN_FAN_CONTROL_POINTS ||
+		    point_count > MAX_FAN_CONTROL_POINTS)
+			continue;
+		fi->restore_user_table = true;
+		xe_dbg(hwmon->xe,
+		       "fan %d cached user table marked for restore, point_count=%u\n", fan,
+		       point_count);
+	}
+
+	mutex_unlock(&hwmon->hwmon_lock);
+}
+
+/**
+ * xe_hwmon_resume - Restore hwmon state after resume
+ * @xe: xe device instance
+ * @runtime: true for runtime resume, false for system resume or FLR done
+ *
+ * Restore any hwmon runtime state that was saved across suspend.
+ */
+void xe_hwmon_resume(struct xe_device *xe, bool runtime)
+{
+	struct xe_hwmon *hwmon = xe->hwmon;
+	int fan;
+
+	if (!hwmon || !xe->info.has_fan_control)
+		return;
+
+	if (runtime && !xe->d3cold.allowed) {
+		xe_dbg(xe, "d3cold not allowed, skipping fan user-table restore\n");
+		return;
+	}
+
+	mutex_lock(&hwmon->hwmon_lock);
+
+	for (fan = 0; fan < FAN_MAX; fan++) {
+		struct xe_hwmon_fan_info *fi = &hwmon->fi[fan];
+		int ret;
+
+		if (!IS_FAN_ENABLED(hwmon, fan))
+			continue;
+
+		if (!fi->restore_user_table) {
+			xe_dbg(xe, "fan %d user table restore not required\n", fan);
+			continue;
+		}
+
+		/* Re-program cached user-table settings for fans active before suspend. */
+		ret = xe_hwmon_activate_user_fan_table(hwmon, fan,
+						       fi->is_full_speed,
+						       USER_FAN_TABLE);
+		if (ret) {
+			xe_warn(xe, "failed to restore fan %d user table after resume, ret=%d\n",
+				fan, ret);
+			fi->fan_table[USER_FAN_TABLE].point_count = 0;
+			fi->restore_user_table = false;
+			ret = xe_hwmon_fan_set_auto(hwmon, fan);
+			if (ret) {
+				xe_warn(xe, "fan %d stock fallback failed, state unconfirmed, ret=%d\n",
+					fan, ret);
+				continue;
+			}
+			continue;
+		}
+
+		xe_dbg(xe, "fan %d user table restored\n", fan);
+		fi->restore_user_table = false;
+	}
+
+	mutex_unlock(&hwmon->hwmon_lock);
+}
+
 MODULE_IMPORT_NS("INTEL_PMT_TELEMETRY");

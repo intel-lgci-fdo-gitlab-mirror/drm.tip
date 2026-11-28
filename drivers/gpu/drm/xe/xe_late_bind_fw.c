@@ -517,10 +517,17 @@ void xe_late_bind_pm_suspend(struct xe_late_bind *late_bind)
  */
 void xe_late_bind_pm_resume(struct xe_late_bind *late_bind)
 {
+	struct xe_late_bind_fw *fan_control_fw;
+	bool fan_control_fw_pending;
+
 	if (!late_bind->component_added || late_bind->disable)
 		return;
 
+	fan_control_fw = &late_bind->late_bind_fw[XE_LB_FW_FAN_CONTROL];
+	fan_control_fw_pending = !!fan_control_fw->payload;
 	xe_late_bind_fw_load(late_bind);
+	if (fan_control_fw_pending)
+		flush_work(&fan_control_fw->work);
 }
 
 /**
