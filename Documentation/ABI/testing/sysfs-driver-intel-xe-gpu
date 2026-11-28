@@ -21,6 +21,21 @@ Description:
 		This sysfs file is present only on Crescent Island devices.
 		It is readable by all users.
 
+What:		/sys/bus/pci/drivers/xe/.../tjmax_fan_control_enable
+Date:		November 2026
+KernelVersion:	7.5
+Contact:	intel-xe@lists.freedesktop.org
+Description:
+		RW. Firmware thermal fan control mode.
+
+		Write 1 to enable or 0 to disable the mode that forces maximum
+		acoustic PWM as SoC temperature approaches shutdown or GDDR/VR
+		temperature approaches its thermal maximum. Reads return the
+		status reported by firmware.
+
+		This sysfs file is present only on devices that support
+		this command.
+
 What:		/sys/bus/pci/drivers/xe/.../tile<N>/memory/max_freq
 Date:		October 2026
 KernelVersion:	7.5

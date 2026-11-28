@@ -35,6 +35,9 @@
  * lb_voltage_regulator_version - Voltage regulator version provisioned by late
  * binding. Exposed only if supported by the device.
  *
+ * tjmax_fan_control_enable - Report/change firmware TjMax fan control mode.
+ * Exposed only if supported by the device.
+ *
  * shrinker_non_purgeable_seeks - Report/change the cost, relative to
  * purgeable buffer objects, of recreating non-purgeable buffer objects
  * reclaimed by the shrinker. Higher values reduce reclaim pressure on
@@ -201,6 +204,73 @@ static umode_t late_bind_attr_is_visible(struct kobject *kobj,
 static const struct attribute_group late_bind_attr_group = {
 	.attrs = late_bind_attrs,
 	.is_visible = late_bind_attr_is_visible,
+};
+
+static ssize_t
+tjmax_fan_control_enable_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct xe_device *xe = pdev_to_xe_device(to_pci_dev(dev));
+	u32 val = 0;
+	int ret;
+
+	guard(xe_pm_runtime)(xe);
+	ret = xe_pcode_read(xe_device_get_root_tile(xe),
+			    PCODE_MBOX(FAN_SPEED_CONTROL, FSC_READ_TJMAX_FAN_CONTROL_MODE, 0),
+			    &val, NULL);
+	drm_dbg(&xe->drm, "pcode READ_TJMAX_FAN_CONTROL_MODE: val %#x, ret %d\n",
+		ret ? 0 : val, ret);
+
+	return ret ?: sysfs_emit(buf, "%u\n", val);
+}
+
+static ssize_t
+tjmax_fan_control_enable_store(struct device *dev, struct device_attribute *attr,
+			       const char *buf, size_t count)
+{
+	struct xe_device *xe = pdev_to_xe_device(to_pci_dev(dev));
+	u32 val;
+	int ret;
+
+	ret = kstrtou32(buf, 0, &val);
+	if (ret)
+		return ret;
+	if (val > 1)
+		return -EINVAL;
+
+	guard(xe_pm_runtime)(xe);
+	ret = xe_pcode_write(xe_device_get_root_tile(xe),
+			     PCODE_MBOX(FAN_SPEED_CONTROL, FSC_WRITE_TJMAX_FAN_CONTROL_MODE, 0),
+			     val);
+	drm_dbg(&xe->drm, "pcode WRITE_TJMAX_FAN_CONTROL_MODE: val %u, ret %d\n", val, ret);
+
+	return ret ?: count;
+}
+static DEVICE_ATTR_RW(tjmax_fan_control_enable);
+
+static struct attribute *fan_control_attrs[] = {
+	&dev_attr_tjmax_fan_control_enable.attr,
+	NULL
+};
+
+static umode_t fan_control_attr_is_visible(struct kobject *kobj,
+					   struct attribute *attr, int n)
+{
+	struct device *dev = kobj_to_dev(kobj);
+	struct xe_device *xe = pdev_to_xe_device(to_pci_dev(dev));
+	u32 val;
+	int ret;
+
+	guard(xe_pm_runtime)(xe);
+	ret = xe_pcode_read(xe_device_get_root_tile(xe),
+			    PCODE_MBOX(FAN_SPEED_CONTROL, FSC_READ_TJMAX_FAN_CONTROL_MODE, 0),
+			    &val, NULL);
+
+	return ret ? 0 : attr->mode;
+}
+
+static const struct attribute_group fan_control_attr_group = {
+	.attrs = fan_control_attrs,
+	.is_visible = fan_control_attr_is_visible,
 };
 
 /**
@@ -424,6 +494,12 @@ int xe_device_sysfs_init(struct xe_device *xe)
 
 	if (xe->info.has_device_uid) {
 		ret = devm_device_add_group(dev, &device_uid_attr_group);
+		if (ret)
+			return ret;
+	}
+
+	if (xe->info.has_fan_control) {
+		ret = devm_device_add_group(dev, &fan_control_attr_group);
 		if (ret)
 			return ret;
 	}
