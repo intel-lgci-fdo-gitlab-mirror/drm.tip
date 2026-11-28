@@ -141,6 +141,62 @@ struct xe_hwmon_energy_info {
 };
 
 /**
+ * DOC: Xe fan control
+ *
+ * Xe fan control is exposed through the hwmon pwm and fan interfaces when the
+ * platform advertises PCODE-backed fan management support.
+ *
+ * Attribute visibility is determined during hwmon registration. ``fanN_max``
+ * requires maximum fan speed data, while ``pwmN`` and ``pwmN_enable`` require a
+ * readable stock fan table. Late binding refreshes cached data for existing
+ * fans but does not create attributes that were hidden at registration.
+ *
+ * The implementation tracks two fan tables per fan:
+ *
+ * - A stock table read from firmware through PCODE.
+ * - A user table cached in the driver and programmed back through PCODE.
+ *
+ * The pwmN_enable sysfs value selects how those tables are used:
+ *
+ * - 0 (``XE_FAN_PWM_FULL_SPEED``) programs a two-point user table at 100
+ *   percent duty cycle as a full-speed override.
+ * - 1 (``XE_FAN_PWM_MANUAL_USER_TABLE``) enables the user table for manual
+ *   control.
+ * - 2 (``XE_FAN_PWM_AUTO_STOCK_TABLE``) restores automatic control using the
+ *   stock firmware table.
+ *
+ * The fan-control sysfs files are:
+ *
+ * - ``fanN_input`` reports the measured fan speed in RPM.
+ * - ``fanN_max`` reports the maximum supported fan speed in RPM.
+ * - ``pwmN`` reads or sets the manual PWM duty cycle in the hwmon 0..255
+ *   range.
+ * - ``pwmN_enable`` selects the mode described above.
+ * - ``pwmN_auto_pointM_temp`` exposes the temperature threshold for user-table
+ *   point ``M`` in millidegrees Celsius.
+ * - ``pwmN_auto_pointM_pwm`` exposes the PWM value for user-table point ``M``
+ *   in the hwmon 0..255 range.
+ *
+ * Writes to ``pwmN``, ``pwmN_auto_pointM_temp`` and ``pwmN_auto_pointM_pwm``
+ * are accepted only while ``pwmN_enable`` is 1; otherwise they fail with
+ * -EINVAL. Firmware stores duty cycle in percent, so PWM values read back
+ * rounded to the nearest percent step. Nonzero curve PWM writes are kept at
+ * least 1 percent so rounding cannot turn them into an end marker.
+ *
+ * Writes to ``pwmN_auto_pointM_temp`` and ``pwmN_auto_pointM_pwm`` are staged
+ * in the driver, so intermediate writes never reach firmware as a partial
+ * curve. The staged curve is committed once points 1..K all have both a
+ * temperature and a PWM value and either point K+1 is set to (0, 0) or K is
+ * the last supported point. The (0, 0) end marker is not part of the curve.
+ * A curve must have at least two points, and temperature and PWM must not
+ * decrease from one point to the next; otherwise the completing write fails
+ * with -EINVAL.
+ *
+ * Writes to ``pwmN`` replace the user table with a two-point table at a
+ * constant duty cycle.
+ */
+
+/**
  * enum xe_fan_pwm_enable_mode - fan PWM enable modes
  */
 enum xe_fan_pwm_enable_mode {
